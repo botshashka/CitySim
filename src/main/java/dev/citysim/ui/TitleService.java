@@ -11,6 +11,11 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.time.Duration;
@@ -19,11 +24,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
-public class TitleService {
+public class TitleService implements Listener {
     private final Plugin plugin;
     private final CityManager cityManager;
     private final StatsService statsService;
@@ -33,17 +37,23 @@ public class TitleService {
 
     private final Map<UUID, String> lastCity = new HashMap<>();
     private final Map<UUID, Long> lastShownTick = new HashMap<>();
-    private final Map<UUID, Boolean> enabled = new ConcurrentHashMap<>();
+    private final DisplayPreferencesStore displayPreferencesStore;
 
-    public TitleService(Plugin plugin, CityManager cityManager, StatsService statsService) {
+    public TitleService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.statsService = statsService;
+        this.displayPreferencesStore = displayPreferencesStore;
     }
 
     public void start() {
         if (taskId != -1) {
             return;
+        }
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            City current = cityManager.cityAt(player.getLocation());
+            lastCity.put(player.getUniqueId(), current != null ? current.id : null);
         }
         taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, 20L, 20L);
     }
@@ -53,8 +63,23 @@ public class TitleService {
             Bukkit.getScheduler().cancelTask(taskId);
         }
         taskId = -1;
+        HandlerList.unregisterAll(this);
         lastCity.clear();
         lastShownTick.clear();
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        City current = cityManager.cityAt(player.getLocation());
+        lastCity.put(player.getUniqueId(), current != null ? current.id : null);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        lastCity.remove(uuid);
+        lastShownTick.remove(uuid);
     }
 
     private void tick() {
@@ -108,11 +133,11 @@ public class TitleService {
     }
 
     public void setEnabled(UUID uuid, boolean on) {
-        enabled.put(uuid, on);
+        displayPreferencesStore.setTitlesEnabled(uuid, on);
     }
 
     public boolean isEnabled(UUID uuid) {
-        return enabled.getOrDefault(uuid, true);
+        return displayPreferencesStore.isTitlesEnabled(uuid);
     }
 
     private String resolveMessage(String key) {

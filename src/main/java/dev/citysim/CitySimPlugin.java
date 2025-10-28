@@ -7,6 +7,7 @@ import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
+import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -17,6 +18,7 @@ public class CitySimPlugin extends JavaPlugin {
     private BossBarService bossBarService;
     private ScoreboardService scoreboardService;
     private TitleService titleService;
+    private DisplayPreferencesStore displayPreferencesStore;
 
     @Override
     public void onEnable() {
@@ -33,16 +35,19 @@ public class CitySimPlugin extends JavaPlugin {
         this.statsService.start();
         getLogger().info("StatsService started");
 
-        this.bossBarService = new BossBarService(this, cityManager, statsService);
+        this.displayPreferencesStore = new DisplayPreferencesStore(this);
+        this.displayPreferencesStore.load();
+
+        this.bossBarService = new BossBarService(this, cityManager, statsService, displayPreferencesStore);
         getLogger().info("BossBarService created");
         this.bossBarService.start();
         getLogger().info("BossBarService started");
 
-        this.scoreboardService = new ScoreboardService(this, cityManager, statsService);
+        this.scoreboardService = new ScoreboardService(this, cityManager, statsService, displayPreferencesStore);
         this.scoreboardService.start();
         getLogger().info("ScoreboardService started");
 
-        this.titleService = new TitleService(this, cityManager, statsService);
+        this.titleService = new TitleService(this, cityManager, statsService, displayPreferencesStore);
         this.titleService.start();
         getLogger().info("TitleService started");
 
@@ -84,6 +89,9 @@ public class CitySimPlugin extends JavaPlugin {
         if (cityManager != null) {
             cityManager.save();
         }
+        if (displayPreferencesStore != null) {
+            displayPreferencesStore.save();
+        }
         getLogger().info("CitySim disabled.");
     }
 
@@ -105,6 +113,10 @@ public class CitySimPlugin extends JavaPlugin {
 
     public TitleService getTitleService() {
         return titleService;
+    }
+
+    public DisplayPreferencesStore getDisplayPreferencesStore() {
+        return displayPreferencesStore;
     }
 }
 

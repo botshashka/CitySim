@@ -12,7 +12,6 @@ import org.bukkit.plugin.Plugin;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class BossBarService {
     private final Plugin plugin;
@@ -21,11 +20,11 @@ public class BossBarService {
     private int taskId = -1;
 
     private final Map<UUID, BossBar> bars = new HashMap<>();
-    private final Map<UUID, Boolean> enabled = new ConcurrentHashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
+    private final dev.citysim.ui.DisplayPreferencesStore displayPreferencesStore;
 
-    public BossBarService(Plugin plugin, CityManager cm, StatsService ss) {
-        this.plugin = plugin; this.cityManager = cm; this.statsService = ss;
+    public BossBarService(Plugin plugin, CityManager cm, StatsService ss, dev.citysim.ui.DisplayPreferencesStore displayPreferencesStore) {
+        this.plugin = plugin; this.cityManager = cm; this.statsService = ss; this.displayPreferencesStore = displayPreferencesStore;
     }
 
     public void start() {
@@ -72,13 +71,13 @@ public class BossBarService {
 
 
     public void setEnabled(Player p, boolean on) {
-        enabled.put(p.getUniqueId(), on);
+        displayPreferencesStore.setBossBarEnabled(p.getUniqueId(), on);
         if (!on) {
             BossBar bar = bars.remove(p.getUniqueId());
             if (bar != null) p.hideBossBar(bar);
         }
     }
     public boolean isEnabled(Player p) {
-        return enabled.getOrDefault(p.getUniqueId(), true);
+        return displayPreferencesStore.isBossBarEnabled(p.getUniqueId());
     }
 }
