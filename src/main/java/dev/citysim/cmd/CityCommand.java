@@ -270,17 +270,29 @@ public class CityCommand implements CommandExecutor {
 
                 var hb = statsService.updateCity(cty, true);
                 var mm = MiniMessage.miniMessage();
+                var penaltyParts = new java.util.ArrayList<String>(2);
+                if (hb.overcrowdingPenalty > 0) {
+                    penaltyParts.add("<red>Overcrowding:</red> -%.1f".formatted(hb.overcrowdingPenalty));
+                }
+                if (hb.pollutionPenalty > 0) {
+                    penaltyParts.add("<red>Pollution:</red> -%.1f".formatted(hb.pollutionPenalty));
+                }
+
+                String breakdownLines = "<yellow>Light:</yellow> %.1f  <aqua>Employment:</aqua> %.1f  <green>Nature:</green> %.1f  <blue>Housing:</blue> %.1f"
+                        .formatted(hb.lightPoints, hb.employmentPoints, hb.naturePoints, hb.housingPoints);
+                if (!penaltyParts.isEmpty()) {
+                    breakdownLines += "\n" + String.join("  ", penaltyParts);
+                }
+
                 String msg = """
                 <gray><b>%s — City stats</b></gray>
                 <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
                 <gold>Happiness:</gold> %d  <gray>(base 50)</gray>
-                <yellow>Light:</yellow> %.1f  <aqua>Employment:</aqua> %.1f  <red>Overcrowding:</red> -%.1f
-                <green>Nature:</green> %.1f  <red>Pollution:</red> -%.1f  <blue>Housing:</blue> %.1f
+                %s
                 """.formatted(
                         cty.name, cty.population, cty.employed, cty.unemployed,
                         hb.total,
-                        hb.lightPoints, hb.employmentPoints, hb.overcrowdingPenalty,
-                        hb.naturePoints, hb.pollutionPenalty, hb.housingPoints
+                        breakdownLines
                 );
                 p.sendMessage(mm.deserialize(msg));
                 return true;

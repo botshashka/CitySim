@@ -35,6 +35,7 @@ public class StatsService {
 
     // Weights
     private static final int HIGHRISE_VERTICAL_STEP = 4;
+    private static final double OVERCROWDING_BASELINE = 3.0;
 
     private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
@@ -241,7 +242,7 @@ public class StatsService {
             return 0.0;
         }
         double density = pop / (effectiveArea / 1000.0);
-        double penalty = density * 0.5;
+        double penalty = density * 0.5 - OVERCROWDING_BASELINE;
         if (penalty < 0.0) {
             penalty = 0.0;
         }
