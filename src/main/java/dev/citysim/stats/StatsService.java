@@ -27,11 +27,11 @@ public class StatsService {
     // Weights
     private double lightMaxPts = 10;
     private double employmentMaxPts = 15;
-    private double golemsMaxPts = 2.5;
+    private double safetyMaxPts = 2.5;
     private double overcrowdMaxPenalty = 10;
     private double natureMaxPts = 10;
     private double pollutionMaxPenalty = 15;
-    private double bedsMaxPts = 10;
+    private double housingMaxPts = 10;
     private double waterMaxPts = 5;
     private double beautyMaxPts = 5;
 
@@ -161,8 +161,8 @@ public class StatsService {
         hb.employmentPoints = clamp(employmentScore * employmentMaxPts, -employmentMaxPts, employmentMaxPts);
 
         double expectedGolems = Math.max(1.0, pop / 10.0);
-        double golemRatio = golems / expectedGolems;
-        hb.golemPoints = clamp((golemRatio - 1.0) * golemsMaxPts, -golemsMaxPts, golemsMaxPts);
+        double safetyRatio = golems / expectedGolems;
+        hb.safetyPoints = clamp((safetyRatio - 1.0) * safetyMaxPts, -safetyMaxPts, safetyMaxPts);
 
         double area2D = totalArea2D(city);
         double density = area2D <= 0 ? 0 : pop / (area2D / 1000.0);
@@ -179,8 +179,8 @@ public class StatsService {
         hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
 
         int beds = countBeds(city);
-        double bedRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
-        hb.bedsPoints = clamp((bedRatio - 1.0) * bedsMaxPts, -bedsMaxPts, bedsMaxPts);
+        double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
+        hb.housingPoints = clamp((housingRatio - 1.0) * housingMaxPts, -housingMaxPts, housingMaxPts);
 
         double water = waterRatio(city);
         double waterTarget = 0.1;
@@ -195,11 +195,11 @@ public class StatsService {
         double total = hb.base
                 + hb.lightPoints
                 + hb.employmentPoints
-                + hb.golemPoints
+                + hb.safetyPoints
                 - hb.overcrowdingPenalty
                 + hb.naturePoints
                 - hb.pollutionPenalty
-                + hb.bedsPoints
+                + hb.housingPoints
                 + hb.waterPoints
                 + hb.beautyPoints;
 
@@ -325,11 +325,11 @@ public class StatsService {
 
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
         employmentMaxPts = c.getDouble("happiness_weights.employment_max_points", 15);
-        golemsMaxPts = c.getDouble("happiness_weights.golems_max_points", 2.5);
+        safetyMaxPts = c.getDouble("happiness_weights.safety_max_points", 2.5);
         overcrowdMaxPenalty = c.getDouble("happiness_weights.overcrowding_max_penalty", 10);
         natureMaxPts = c.getDouble("happiness_weights.nature_max_points", 10);
         pollutionMaxPenalty = c.getDouble("happiness_weights.pollution_max_penalty", 15);
-        bedsMaxPts = c.getDouble("happiness_weights.beds_max_points", 10);
+        housingMaxPts = c.getDouble("happiness_weights.housing_max_points", 10);
         waterMaxPts = c.getDouble("happiness_weights.water_max_points", 5);
         beautyMaxPts = c.getDouble("happiness_weights.beauty_max_points", 5);
     }

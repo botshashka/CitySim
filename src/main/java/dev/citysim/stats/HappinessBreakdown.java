@@ -11,11 +11,11 @@ public class HappinessBreakdown {
 
     public double lightPoints;
     public double employmentPoints;
-    public double golemPoints;
+    public double safetyPoints;
     public double overcrowdingPenalty;
     public double naturePoints;
     public double pollutionPenalty;
-    public double bedsPoints;
+    public double housingPoints;
     public double waterPoints;
     public double beautyPoints;
 
@@ -83,11 +83,11 @@ public class HappinessBreakdown {
         List<Contribution> list = new ArrayList<>();
         list.add(new Contribution(lightPoints, "bright", "dark"));
         list.add(new Contribution(employmentPoints, "employment_good", "employment_bad"));
-        list.add(new Contribution(golemPoints, "golems_good", "golems_bad"));
+        list.add(new Contribution(safetyPoints, "safety_good", "safety_bad"));
         list.add(new Contribution(-overcrowdingPenalty, "crowding_good", "crowding_bad"));
         list.add(new Contribution(naturePoints, "nature_good", "nature_bad"));
         list.add(new Contribution(-pollutionPenalty, "pollution_good", "pollution_bad"));
-        list.add(new Contribution(bedsPoints, "beds_good", "beds_bad"));
+        list.add(new Contribution(housingPoints, "housing_good", "housing_bad"));
         list.add(new Contribution(waterPoints, "water_good", "water_bad"));
         list.add(new Contribution(beautyPoints, "beauty_good", "beauty_bad"));
         return list;
@@ -159,17 +159,17 @@ public class HappinessBreakdown {
                         "Too many villagers are out of work"
                 };
                 break;
-            case "golems_good":
+            case "safety_good":
                 options = new String[]{
-                        "Golems make it feel safe",
-                        "Patrolling golems keep danger at bay",
-                        "Citizens salute their iron guardians"
+                        "Guards make it feel safe",
+                        "Patrolling defenders keep danger at bay",
+                        "Citizens salute their protectors"
                 };
                 break;
-            case "golems_bad":
+            case "safety_bad":
                 options = new String[]{
                         "Citizens feel unprotected",
-                        "Where are the golems when night falls?",
+                        "Where are the defenders when night falls?",
                         "Villagers fear monsters without guardians"
                 };
                 break;
@@ -215,18 +215,18 @@ public class HappinessBreakdown {
                         "Sooty air keeps citizens indoors"
                 };
                 break;
-            case "beds_good":
+            case "housing_good":
                 options = new String[]{
-                        "Everyone has a bed",
+                        "Everyone has a place to sleep",
                         "Every villager rests easy at night",
-                        "Soft beds keep morale high"
+                        "Comfortable housing keeps morale high"
                 };
                 break;
-            case "beds_bad":
+            case "housing_bad":
                 options = new String[]{
                         "Homelessness is spreading",
-                        "Villagers curl up on floors without beds",
-                        "Citizens are desperate for shelter"
+                        "Villagers curl up on floors without shelter",
+                        "Citizens are desperate for housing"
                 };
                 break;
             case "water_good":
