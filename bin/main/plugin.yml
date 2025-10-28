@@ -1,0 +1,17 @@
+name: SimCity
+main: dev.simcity.SimCityPlugin
+version: 0.4.8
+api-version: 0.4.8
+authors: [ 'you + gpt' ]
+description: SimCity-like city stats for villagers (Paper)
+commands:
+  city:
+    description: Manage cities and view stats
+    usage: /city help
+    aliases: [cities]
+permissions:
+  simcity.admin:
+    default: op
+  simcity.view:
+    default: true
+softdepend: [PlaceholderAPI]

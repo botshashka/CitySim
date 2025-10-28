@@ -1,0 +1,25 @@
+plugins {
+  id 'java'
+}
+
+group = 'dev.simcity'
+version = '0.4.8'
+java {
+  toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+  maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+  mavenCentral()
+  maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+
+dependencies {
+  compileOnly 'me.clip:placeholderapi:2.11.6'
+  compileOnly 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
+  implementation 'com.google.code.gson:gson:2.11.0'
+}
+
+tasks.withType(JavaCompile).configureEach {
+  options.encoding = 'UTF-8'
+}

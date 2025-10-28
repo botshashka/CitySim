@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IntelliJ IDEA / VSCode
+.idea/
+.vscode/
+*.iml
+
+# Logs and runtime files
+logs/
+*.log
+run/
+cache/
+tmp/
+
+# OS files
+.DS_Store
+
+# Minecraft plugin jars (don’t commit built plugins)
+*.jar
+
+# Local environment or secrets
+local.properties

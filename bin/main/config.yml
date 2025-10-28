@@ -1,0 +1,65 @@
+# SimCity plugin configuration
+# You can tweak update intervals and happiness weights later.
+updates:
+  stats_interval_ticks: 100     # ~5 seconds
+  bossbar_interval_ticks: 40    # ~2 seconds
+
+happiness_weights:
+  nature_max_points: 10
+  pollution_max_penalty: 10
+  beds_max_points: 10
+  water_max_points: 5
+  beauty_max_points: 5
+  light_max_points: 10
+  employment_max_points: 15
+  golems_max_points: 10
+  overcrowding_max_penalty: 10
+  job_density_max_points: 10
+
+
+employment:
+  mode: profession_only  # profession_only | profession_and_workstation | workstation_proximity
+  workstation_radius: 16
+  workstation_y_radius: 8
+
+
+titles:
+  enabled: true
+  cooldown_ticks: 80
+  messages:
+    bright: \"Bright, well-lit streets\"
+    dark: \"Too dark — add lighting\"
+    employment_good: \"High employment\"
+    employment_bad: \"Unemployment is hurting morale\"
+    golems_good: \"Golems make it feel safe\"
+    golems_bad: \"Not enough protection\"
+    crowding_good: \"Comfortable spacing\"
+    crowding_bad: \"Overcrowded — expand the city\"
+    jobs_good: \"Plenty of workplaces\"
+    jobs_bad: \"Not enough job sites\"
+    default_good: \"Citizens are content\"
+    default_bad: \"Citizens feel uneasy\"
+
+  messages:
+    bright: "Bright, well-lit streets"
+    dark: "Too dark — add lighting"
+    employment_good: "High employment"
+    employment_bad: "Unemployment is hurting morale"
+    golems_good: "Golems make it feel safe"
+    golems_bad: "Not enough protection"
+    crowding_good: "Comfortable spacing"
+    crowding_bad: "Overcrowded — expand the city"
+    jobs_good: "Plenty of workplaces"
+    jobs_bad: "Not enough job sites"
+    nature_good: "Green, lively parks"
+    nature_bad: "Too little greenery"
+    pollution_good: "Clean air and skies"
+    pollution_bad: "Smoggy, industrial feel"
+    beds_good: "Everyone has a bed"
+    beds_bad: "Not enough housing"
+    water_good: "Soothing water nearby"
+    water_bad: "No water features"
+    beauty_good: "Charming decorations"
+    beauty_bad: "Drab and undecorated"
+    default_good: "Citizens are content"
+    default_bad: "Citizens feel uneasy"
