@@ -25,6 +25,8 @@ public class StatsService {
     private int wsYRadius = 8;
 
     // Weights
+    private static final int HIGHRISE_VERTICAL_STEP = 4;
+
     private double lightMaxPts = 10;
     private double employmentMaxPts = 15;
     private double safetyMaxPts = 2.5;
@@ -164,8 +166,8 @@ public class StatsService {
         double safetyRatio = golems / expectedGolems;
         hb.safetyPoints = clamp((safetyRatio - 1.0) * safetyMaxPts, -safetyMaxPts, safetyMaxPts);
 
-        double area2D = totalArea2D(city);
-        double density = area2D <= 0 ? 0 : pop / (area2D / 1000.0);
+        double effectiveArea = totalEffectiveArea(city);
+        double density = effectiveArea <= 0 ? 0 : pop / (effectiveArea / 1000.0);
         hb.overcrowdingPenalty = Math.min(overcrowdMaxPenalty, density * 0.5);
 
         double nature = natureRatio(city);
@@ -209,9 +211,19 @@ public class StatsService {
         return hb;
     }
 
-    private double totalArea2D(City city) {
+    private double totalEffectiveArea(City city) {
         long sum = 0;
-        for (Cuboid c : city.cuboids) sum += (long)(c.maxX - c.minX + 1) * (long)(c.maxZ - c.minZ + 1);
+        for (Cuboid c : city.cuboids) {
+            long width = (long) (c.maxX - c.minX + 1);
+            long length = (long) (c.maxZ - c.minZ + 1);
+            long area = width * length;
+            if (city.highrise) {
+                long height = (long) (c.maxY - c.minY + 1);
+                if (height < 1) height = 1;
+                area *= height;
+            }
+            sum += area;
+        }
         return (double) sum;
     }
 
@@ -223,10 +235,21 @@ public class StatsService {
             int step = 8;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    int y = w.getHighestBlockYAt(x, z);
-                    int light = w.getBlockAt(x, y, z).getLightLevel();
-                    lightSum += light;
-                    samples++;
+                    if (city.highrise) {
+                        for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
+                            lightSum += w.getBlockAt(x, y, z).getLightLevel();
+                            samples++;
+                        }
+                        if ((c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
+                            lightSum += w.getBlockAt(x, c.maxY, z).getLightLevel();
+                            samples++;
+                        }
+                    } else {
+                        int y = w.getHighestBlockYAt(x, z);
+                        int light = w.getBlockAt(x, y, z).getLightLevel();
+                        lightSum += light;
+                        samples++;
+                    }
                 }
             }
         }
@@ -242,10 +265,23 @@ public class StatsService {
             if (w == null) continue;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    int y = w.getHighestBlockYAt(x, z);
-                    org.bukkit.block.Block b = w.getBlockAt(x, y, z);
-                    if (test.test(b)) found++;
-                    probes++;
+                    if (city.highrise) {
+                        for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
+                            org.bukkit.block.Block b = w.getBlockAt(x, y, z);
+                            if (test.test(b)) found++;
+                            probes++;
+                        }
+                        if ((c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
+                            org.bukkit.block.Block b = w.getBlockAt(x, c.maxY, z);
+                            if (test.test(b)) found++;
+                            probes++;
+                        }
+                    } else {
+                        int y = w.getHighestBlockYAt(x, z);
+                        org.bukkit.block.Block b = w.getBlockAt(x, y, z);
+                        if (test.test(b)) found++;
+                        probes++;
+                    }
                 }
             }
         }
