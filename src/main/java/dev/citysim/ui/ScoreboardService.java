@@ -139,7 +139,6 @@ public class ScoreboardService {
                 raw.add(ChatColor.AQUA + "Employment: " + ChatColor.WHITE + formatPoints(breakdown.employmentPoints));
                 raw.add(ChatColor.GREEN + "Golems: " + ChatColor.WHITE + formatPoints(breakdown.golemPoints));
                 raw.add(ChatColor.RED + "Crowding: " + ChatColor.WHITE + formatPoints(-breakdown.overcrowdingPenalty));
-                raw.add(ChatColor.GRAY + "Worksites: " + ChatColor.WHITE + formatPoints(breakdown.jobDensityPoints));
                 raw.add(ChatColor.DARK_GREEN + "Nature: " + ChatColor.WHITE + formatPoints(breakdown.naturePoints));
                 raw.add(ChatColor.DARK_RED + "Pollution: " + ChatColor.WHITE + formatPoints(-breakdown.pollutionPenalty));
                 raw.add(ChatColor.BLUE + "Beds: " + ChatColor.WHITE + formatPoints(breakdown.bedsPoints));

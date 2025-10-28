@@ -1,5 +1,10 @@
 package dev.citysim.stats;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+
 public class HappinessBreakdown {
 
     public int base = 50;
@@ -8,8 +13,6 @@ public class HappinessBreakdown {
     public double employmentPoints;
     public double golemPoints;
     public double overcrowdingPenalty;
-    public double jobDensityPoints;
-
     public double naturePoints;
     public double pollutionPenalty;
     public double bedsPoints;
@@ -19,78 +22,270 @@ public class HappinessBreakdown {
     public int total;
 
     public String dominantKey() {
-        double[][] arr = new double[][]{
-            { lightPoints, 1 },
-            { employmentPoints, 2 },
-            { golemPoints, 3 },
-            { -overcrowdingPenalty, 4 },
-            { jobDensityPoints, 5 },
-            { naturePoints, 6 },
-            { -pollutionPenalty, 7 },
-            { bedsPoints, 8 },
-            { waterPoints, 9 },
-            { beautyPoints, 10 }
-        };
+        Contribution best = contributions().stream()
+                .max(Comparator.comparingDouble(Contribution::magnitude))
+                .orElse(null);
 
-        double maxMag = Double.NEGATIVE_INFINITY;
-        int which = 0;
-        double value = 0.0;
-
-        for (double[] a : arr) {
-            double v = a[0];
-            double mag = Math.abs(v);
-            if (mag > maxMag) {
-                maxMag = mag;
-                which = (int)a[1];
-                value = v;
-            }
+        if (best == null || best.magnitude() <= 0.0001) {
+            double mood = total > 0 ? total : base;
+            return mood >= base ? "default_good" : "default_bad";
         }
 
-        boolean positive = value >= 0.0;
-        switch (which) {
-            case 1:  return positive ? "bright" : "dark";
-            case 2:  return positive ? "employment_good" : "employment_bad";
-            case 3:  return positive ? "golems_good" : "golems_bad";
-            case 4:  return positive ? "crowding_good" : "crowding_bad";
-            case 5:  return positive ? "jobs_good" : "jobs_bad";
-            case 6:  return positive ? "nature_good" : "nature_bad";
-            case 7:  return positive ? "pollution_good" : "pollution_bad";
-            case 8:  return positive ? "beds_good" : "beds_bad";
-            case 9:  return positive ? "water_good" : "water_bad";
-            case 10: return positive ? "beauty_good" : "beauty_bad";
-            default: return positive ? "default_good" : "default_bad";
-        }
+        return best.key();
     }
 
     public String dominantMessage() {
         return defaultMessageFor(dominantKey());
     }
 
-    public static String defaultMessageFor(String key) {
-        switch (key) {
-            case "bright": return "Bright, well-lit streets";
-            case "dark": return "Too dark — add lighting";
-            case "employment_good": return "High employment";
-            case "employment_bad": return "Unemployment is hurting morale";
-            case "golems_good": return "Golems make it feel safe";
-            case "golems_bad": return "Not enough protection";
-            case "crowding_good": return "Comfortable spacing";
-            case "crowding_bad": return "Overcrowded — expand the city";
-            case "jobs_good": return "Plenty of workplaces";
-            case "jobs_bad": return "Not enough job sites";
-            case "nature_good": return "Green, lively parks";
-            case "nature_bad": return "Too little greenery";
-            case "pollution_good": return "Clean air and skies";
-            case "pollution_bad": return "Smoggy, industrial feel";
-            case "beds_good": return "Everyone has a bed";
-            case "beds_bad": return "Not enough housing";
-            case "water_good": return "Soothing water nearby";
-            case "water_bad": return "No water features";
-            case "beauty_good": return "Charming decorations";
-            case "beauty_bad": return "Drab and undecorated";
-            case "default_good": return "Citizens are content";
-            case "default_bad": return "Citizens feel uneasy";
-            default: return "Citizens are content";
+    public String pickWeightedMessageKey() {
+        List<Contribution> sorted = contributions();
+        sorted.sort(Comparator.comparingDouble(Contribution::magnitude).reversed());
+
+        List<Contribution> shortlist = new ArrayList<>();
+        for (Contribution c : sorted) {
+            if (c.magnitude() <= 0.0001) {
+                continue;
+            }
+            shortlist.add(c);
+            if (shortlist.size() >= 3) {
+                break;
+            }
         }
+
+        if (shortlist.isEmpty()) {
+            double mood = total > 0 ? total : base;
+            return mood >= base ? "default_good" : "default_bad";
+        }
+
+        double totalWeight = 0.0;
+        for (Contribution contribution : shortlist) {
+            totalWeight += contribution.weight();
+        }
+
+        if (totalWeight <= 0.0) {
+            return shortlist.get(0).key();
+        }
+
+        double target = ThreadLocalRandom.current().nextDouble(totalWeight);
+        double running = 0.0;
+        for (Contribution contribution : shortlist) {
+            running += contribution.weight();
+            if (target <= running) {
+                return contribution.key();
+            }
+        }
+
+        return shortlist.get(0).key();
+    }
+
+    private List<Contribution> contributions() {
+        List<Contribution> list = new ArrayList<>();
+        list.add(new Contribution(lightPoints, "bright", "dark"));
+        list.add(new Contribution(employmentPoints, "employment_good", "employment_bad"));
+        list.add(new Contribution(golemPoints, "golems_good", "golems_bad"));
+        list.add(new Contribution(-overcrowdingPenalty, "crowding_good", "crowding_bad"));
+        list.add(new Contribution(naturePoints, "nature_good", "nature_bad"));
+        list.add(new Contribution(-pollutionPenalty, "pollution_good", "pollution_bad"));
+        list.add(new Contribution(bedsPoints, "beds_good", "beds_bad"));
+        list.add(new Contribution(waterPoints, "water_good", "water_bad"));
+        list.add(new Contribution(beautyPoints, "beauty_good", "beauty_bad"));
+        return list;
+    }
+
+    private static class Contribution {
+        private static final double NEGATIVE_WEIGHT_BIAS = 2.5;
+
+        private final double value;
+        private final String positiveKey;
+        private final String negativeKey;
+
+        private Contribution(double value, String positiveKey, String negativeKey) {
+            this.value = value;
+            this.positiveKey = positiveKey;
+            this.negativeKey = negativeKey;
+        }
+
+        private double magnitude() {
+            return Math.abs(value);
+        }
+
+        private boolean positive() {
+            return value >= 0.0;
+        }
+
+        private String key() {
+            return positive() ? positiveKey : negativeKey;
+        }
+
+        private double weight() {
+            double magnitude = magnitude();
+            if (magnitude == 0.0) {
+                return 0.0;
+            }
+            double bias = positive() ? 1.0 : NEGATIVE_WEIGHT_BIAS;
+            return magnitude * bias;
+        }
+    }
+
+    public static String defaultMessageFor(String key) {
+        String[] options;
+        switch (key) {
+            case "bright":
+                options = new String[]{
+                        "Bright, well-lit streets",
+                        "Lanterns chase away the night",
+                        "No shadows left for trouble to hide"
+                };
+                break;
+            case "dark":
+                options = new String[]{
+                        "Dark streets feel unsafe",
+                        "Too many corners lost to darkness",
+                        "Citizens whisper about unlit alleys"
+                };
+                break;
+            case "employment_good":
+                options = new String[]{
+                        "High employment keeps spirits up",
+                        "Every villager has meaningful work",
+                        "Jobs are plentiful and morale is high"
+                };
+                break;
+            case "employment_bad":
+                options = new String[]{
+                        "Rampant unemployment angers citizens",
+                        "Idle hands are stirring frustration",
+                        "Too many villagers are out of work"
+                };
+                break;
+            case "golems_good":
+                options = new String[]{
+                        "Golems make it feel safe",
+                        "Patrolling golems keep danger at bay",
+                        "Citizens salute their iron guardians"
+                };
+                break;
+            case "golems_bad":
+                options = new String[]{
+                        "Citizens feel unprotected",
+                        "Where are the golems when night falls?",
+                        "Villagers fear monsters without guardians"
+                };
+                break;
+            case "crowding_good":
+                options = new String[]{
+                        "Comfortable spacing",
+                        "Plenty of room to breathe",
+                        "Homes feel cozy without feeling cramped"
+                };
+                break;
+            case "crowding_bad":
+                options = new String[]{
+                        "Overcrowded — expand the city",
+                        "Cramped housing sparks complaints",
+                        "Citizens are stacked on top of each other"
+                };
+                break;
+            case "nature_good":
+                options = new String[]{
+                        "Green, lively parks",
+                        "Trees and flowers lift everyone's mood",
+                        "Nature weaves through every street"
+                };
+                break;
+            case "nature_bad":
+                options = new String[]{
+                        "Concrete jungle — residents miss nature",
+                        "Citizens crave trees and gardens",
+                        "A barren city leaves spirits low"
+                };
+                break;
+            case "pollution_good":
+                options = new String[]{
+                        "Clean air and skies",
+                        "Fresh breezes sweep the city",
+                        "Clear skies keep lungs happy"
+                };
+                break;
+            case "pollution_bad":
+                options = new String[]{
+                        "Polluted air is choking the city",
+                        "Smog clouds every sunrise",
+                        "Sooty air keeps citizens indoors"
+                };
+                break;
+            case "beds_good":
+                options = new String[]{
+                        "Everyone has a bed",
+                        "Every villager rests easy at night",
+                        "Soft beds keep morale high"
+                };
+                break;
+            case "beds_bad":
+                options = new String[]{
+                        "Homelessness is spreading",
+                        "Villagers curl up on floors without beds",
+                        "Citizens are desperate for shelter"
+                };
+                break;
+            case "water_good":
+                options = new String[]{
+                        "Soothing water nearby",
+                        "Fountains and canals cool the air",
+                        "Water features calm worried minds"
+                };
+                break;
+            case "water_bad":
+                options = new String[]{
+                        "Parched city — add water",
+                        "Residents thirst for fountains",
+                        "Dry plazas leave tempers hot"
+                };
+                break;
+            case "beauty_good":
+                options = new String[]{
+                        "Charming decorations",
+                        "Artful touches delight citizens",
+                        "Beauty blooms on every corner"
+                };
+                break;
+            case "beauty_bad":
+                options = new String[]{
+                        "Bleak, uninspired streets",
+                        "Drab blocks sap citizen pride",
+                        "The city longs for artistic flair"
+                };
+                break;
+            case "default_good":
+                options = new String[]{
+                        "Citizens are content",
+                        "Life is peaceful in the city",
+                        "Villagers seem pleased overall"
+                };
+                break;
+            case "default_bad":
+                options = new String[]{
+                        "Citizens feel uneasy",
+                        "Whispers of discontent spread",
+                        "Morale is slipping across the city"
+                };
+                break;
+            default:
+                options = new String[]{
+                        "Citizens are content",
+                        "Life is peaceful in the city"
+                };
+                break;
+        }
+        return pickRandom(options);
+    }
+
+    private static String pickRandom(String[] options) {
+        if (options.length == 0) {
+            return "Citizens are content";
+        }
+        int idx = ThreadLocalRandom.current().nextInt(options.length);
+        return options[idx];
     }
 }

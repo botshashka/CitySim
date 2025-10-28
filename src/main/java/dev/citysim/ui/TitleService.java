@@ -15,10 +15,13 @@ import org.bukkit.plugin.Plugin;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 public class TitleService {
     private final Plugin plugin;
@@ -86,7 +89,7 @@ public class TitleService {
 
             statsService.updateCity(current);
             HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(current);
-            String key = breakdown.dominantKey();
+            String key = breakdown.pickWeightedMessageKey();
 
             Component title = Component.text(current.name)
                     .color(NamedTextColor.GOLD)
@@ -114,6 +117,18 @@ public class TitleService {
 
     private String resolveMessage(String key) {
         String path = "titles.messages." + key;
+        List<String> configuredList = plugin.getConfig().getStringList(path);
+        if (!configuredList.isEmpty()) {
+            List<String> filtered = configuredList.stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            if (!filtered.isEmpty()) {
+                int idx = ThreadLocalRandom.current().nextInt(filtered.size());
+                return filtered.get(idx);
+            }
+        }
+
         String configured = plugin.getConfig().getString(path);
         if (configured != null && !configured.isBlank()) {
             return configured;
