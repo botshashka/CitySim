@@ -105,6 +105,24 @@ public class CityManager {
         return c.cuboids.size();
     }
 
+    public int removeCuboidsContaining(String id, Location location) {
+        City city = get(id);
+        if (city == null) {
+            throw new IllegalArgumentException("City with id '" + id + "' does not exist");
+        }
+        if (location.getWorld() == null) {
+            throw new IllegalArgumentException("Location world cannot be null");
+        }
+
+        int before = city.cuboids.size();
+        city.cuboids.removeIf(c -> c != null && c.contains(location));
+        int removed = before - city.cuboids.size();
+        if (city.cuboids.isEmpty()) {
+            city.world = null;
+        }
+        return removed;
+    }
+
     public City cityAt(Location loc) {
         for (City c : byId.values()) if (c.contains(loc)) return c;
         return null;
