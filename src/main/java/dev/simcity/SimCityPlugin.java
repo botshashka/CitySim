@@ -2,10 +2,11 @@ package dev.simcity;
 
 import dev.simcity.city.CityManager;
 import dev.simcity.cmd.CityCommand;
+import dev.simcity.cmd.CityTab;
 import dev.simcity.selection.SelectionListener;
 import dev.simcity.stats.BossBarService;
-import dev.simcity.ui.ScoreboardService;
 import dev.simcity.stats.StatsService;
+import dev.simcity.ui.ScoreboardService;
 import dev.simcity.ui.TitleService;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -16,9 +17,10 @@ public class SimCityPlugin extends JavaPlugin {
     private ScoreboardService scoreboardService;
     private TitleService titleService;
 
-    @Override public void onEnable() {
+    @Override
+    public void onEnable() {
         getLogger().info("SimCity onEnable starting...");
-        saveDefaultConfig(); // reserved for later
+        saveDefaultConfig();
 
         this.cityManager = new CityManager(this);
         getLogger().info("CityManager created");
@@ -37,11 +39,12 @@ public class SimCityPlugin extends JavaPlugin {
 
         this.scoreboardService = new ScoreboardService(this, cityManager, statsService);
         this.scoreboardService.start();
+        getLogger().info("ScoreboardService started");
 
         this.titleService = new TitleService(this, cityManager, statsService);
         this.titleService.start();
+        getLogger().info("TitleService started");
 
-        // Register PlaceholderAPI expansion if present
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
                 new dev.simcity.papi.SimCityExpansion(cityManager).register();
@@ -52,33 +55,55 @@ public class SimCityPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            getCommand("city").setTabCompleter(new dev.simcity.cmd.CityTab(cityManager));
+            getCommand("city").setTabCompleter(new CityTab(cityManager));
             getCommand("city").setExecutor(new CityCommand(this, cityManager, statsService));
             getLogger().info("/city command registered");
         } else {
             getLogger().severe("Command 'city' not found in plugin.yml");
         }
-        getServer().getPluginManager().registerEvents(new SelectionListener(), this);
 
+        getServer().getPluginManager().registerEvents(new SelectionListener(), this);
         getLogger().info("SimCity enabled.");
     }
 
-    @Override public void onDisable() {
-        if (bossBarService != null) bossBarService.stop();
-        if (scoreboardService != null) scoreboardService.stop();
-        if (titleService != null) titleService.stop();
-        if (statsService != null) statsService.stop();
-        if (cityManager != null) cityManager.save();
+    @Override
+    public void onDisable() {
+        if (bossBarService != null) {
+            bossBarService.stop();
+        }
+        if (scoreboardService != null) {
+            scoreboardService.stop();
+        }
+        if (titleService != null) {
+            titleService.stop();
+        }
+        if (statsService != null) {
+            statsService.stop();
+        }
+        if (cityManager != null) {
+            cityManager.save();
+        }
         getLogger().info("SimCity disabled.");
     }
 
+    public CityManager getCityManager() {
+        return cityManager;
+    }
 
-public dev.simcity.ui.ScoreboardService getScoreboardService() { return scoreboardService; }
+    public StatsService getStatsService() {
+        return statsService;
+    }
 
+    public BossBarService getBossBarService() {
+        return bossBarService;
+    }
 
+    public ScoreboardService getScoreboardService() {
+        return scoreboardService;
+    }
 
-    public dev.simcity.stats.BossBarService getBossBarService() { return bossBarService; }
-
-
-    public dev.simcity.ui.TitleService getTitleService() { return titleService; }
+    public TitleService getTitleService() {
+        return titleService;
+    }
 }
+

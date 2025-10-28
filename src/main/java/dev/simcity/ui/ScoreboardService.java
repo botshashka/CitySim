@@ -1,100 +1,193 @@
-
 package dev.simcity.ui;
-
-import dev.simcity.stats.StatsService;
 
 import dev.simcity.city.City;
 import dev.simcity.city.CityManager;
+import dev.simcity.stats.HappinessBreakdown;
+import dev.simcity.stats.StatsService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
-import org.bukkit.scoreboard.Score;
 import org.bukkit.scoreboard.Scoreboard;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ScoreboardService {
+    private static final char[] UNIQUE_SUFFIX_CODES =
+            new char[]{'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','k','l','m','n','o','r'};
+
     public enum Mode { COMPACT, FULL }
-    private final java.util.Map<java.util.UUID, Mode> modes = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final Map<UUID, Mode> modes = new ConcurrentHashMap<>();
     private final StatsService statsService;
     private final Plugin plugin;
     private final CityManager cityManager;
     private int taskId = -1;
 
-    private final Map<UUID, Boolean> enabled = new HashMap<>();
+    private final Map<UUID, Boolean> enabled = new ConcurrentHashMap<>();
     private final Map<UUID, Scoreboard> boards = new HashMap<>();
 
-    public ScoreboardService(Plugin plugin, CityManager cm, StatsService statsService) { this.statsService = statsService;
-        this.plugin = plugin; this.cityManager = cm;
+    public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService) {
+        this.statsService = statsService;
+        this.plugin = plugin;
+        this.cityManager = cityManager;
     }
 
     public void start() {
-        if (taskId != -1) return;
+        if (taskId != -1) {
+            return;
+        }
         taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, 20L, 40L);
     }
+
     public void stop() {
-        if (taskId != -1) Bukkit.getScheduler().cancelTask(taskId);
+        if (taskId != -1) {
+            Bukkit.getScheduler().cancelTask(taskId);
+        }
         taskId = -1;
-        // clear boards
+
+        var manager = Bukkit.getScoreboardManager();
         for (var entry : boards.entrySet()) {
-            Player p = Bukkit.getPlayer(entry.getKey());
-            if (p != null && p.isOnline()) p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player != null && player.isOnline() && manager != null) {
+                player.setScoreboard(manager.getMainScoreboard());
+            }
         }
         boards.clear();
     }
 
-    public void setEnabled(Player p, boolean on) {
-        enabled.put(p.getUniqueId(), on);
+    public void setEnabled(Player player, boolean on) {
+        enabled.put(player.getUniqueId(), on);
+        var manager = Bukkit.getScoreboardManager();
         if (!on) {
-            // reset to main scoreboard
-            p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
-            boards.remove(p.getUniqueId());
+            if (manager != null) {
+                player.setScoreboard(manager.getMainScoreboard());
+            }
+            boards.remove(player.getUniqueId());
+        } else {
+            boards.remove(player.getUniqueId());
         }
     }
-    public boolean isEnabled(Player p) { return enabled.getOrDefault(p.getUniqueId(), false); }
+
+    public boolean isEnabled(Player player) {
+        return enabled.getOrDefault(player.getUniqueId(), false);
+    }
 
     private void tick() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (!isEnabled(p)) continue;
-            City c = cityManager.cityAt(p.getLocation());
-            if (c == null) {
-                // No city; clear personal board
-                p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
-                boards.remove(p.getUniqueId());
+        var manager = Bukkit.getScoreboardManager();
+        if (manager == null) {
+            return;
+        }
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!isEnabled(player)) {
                 continue;
             }
-            Scoreboard board = boards.computeIfAbsent(p.getUniqueId(), id -> Bukkit.getScoreboardManager().getNewScoreboard());
-            Objective obj = board.getObjective("simcity");
-            if (obj == null) {
-                obj = board.registerNewObjective("simcity", "dummy", ChatColor.GOLD + "SimCity");
-                obj.setDisplaySlot(DisplaySlot.SIDEBAR);
+
+            City city = cityManager.cityAt(player.getLocation());
+            if (city == null) {
+                player.setScoreboard(manager.getMainScoreboard());
+                boards.remove(player.getUniqueId());
+                continue;
             }
-            obj.setDisplayName(ChatColor.YELLOW + "" + ChatColor.BOLD + c.name);
 
-            // Clear old scores by resetting entries
-            for (String e : board.getEntries()) board.resetScores(e);
+            statsService.updateCity(city);
+            HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(city);
 
-            Score s1 = obj.getScore(ChatColor.GREEN + "Population: " + ChatColor.WHITE + c.population);
-            Score s2 = obj.getScore(ChatColor.AQUA + "Employed: " + ChatColor.WHITE + c.employed);
-            Score s3 = obj.getScore(ChatColor.YELLOW + "Unemployed: " + ChatColor.WHITE + c.unemployed);
-            Score s4 = obj.getScore(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + c.happiness);
+            Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());
+            Objective objective = board.getObjective("simcity");
+            if (objective == null) {
+                objective = board.registerNewObjective("simcity", "dummy", ChatColor.GOLD + "SimCity");
+                objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+            }
+            objective.setDisplayName(ChatColor.YELLOW + "" + ChatColor.BOLD + city.name);
 
-            // Scores must be unique integers; higher score renders on top
-            s4.setScore(1);
-            s3.setScore(2);
-            s2.setScore(3);
-            s1.setScore(4);
+            clearBoardEntries(board);
 
-            p.setScoreboard(board);
+            List<String> lines = buildLines(city, breakdown, getMode(player.getUniqueId()));
+            applyLines(objective, board, lines);
+
+            player.setScoreboard(board);
         }
     }
 
+    private void clearBoardEntries(Scoreboard board) {
+        for (String entry : new ArrayList<>(board.getEntries())) {
+            board.resetScores(entry);
+        }
+    }
 
-    public void setMode(java.util.UUID uuid, Mode mode) { modes.put(uuid, mode); }
-    public Mode getMode(java.util.UUID uuid) { return modes.getOrDefault(uuid, Mode.COMPACT); }
+    private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
+        List<String> raw = new ArrayList<>();
+        String mood = shortenText(breakdown.dominantMessage(), 24);
+        switch (mode) {
+            case FULL -> {
+                raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
+                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
+                raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness);
+                raw.add(ChatColor.BLUE + "Mood: " + ChatColor.WHITE + mood);
+                raw.add(ChatColor.DARK_GRAY + " ");
+                raw.add(ChatColor.YELLOW + "Light: " + ChatColor.WHITE + formatPoints(breakdown.lightPoints));
+                raw.add(ChatColor.AQUA + "Employment: " + ChatColor.WHITE + formatPoints(breakdown.employmentPoints));
+                raw.add(ChatColor.GREEN + "Golems: " + ChatColor.WHITE + formatPoints(breakdown.golemPoints));
+                raw.add(ChatColor.RED + "Crowding: " + ChatColor.WHITE + formatPoints(-breakdown.overcrowdingPenalty));
+                raw.add(ChatColor.GRAY + "Worksites: " + ChatColor.WHITE + formatPoints(breakdown.jobDensityPoints));
+                raw.add(ChatColor.DARK_GREEN + "Nature: " + ChatColor.WHITE + formatPoints(breakdown.naturePoints));
+                raw.add(ChatColor.DARK_RED + "Pollution: " + ChatColor.WHITE + formatPoints(-breakdown.pollutionPenalty));
+                raw.add(ChatColor.BLUE + "Beds: " + ChatColor.WHITE + formatPoints(breakdown.bedsPoints));
+                raw.add(ChatColor.DARK_AQUA + "Water: " + ChatColor.WHITE + formatPoints(breakdown.waterPoints));
+                raw.add(ChatColor.LIGHT_PURPLE + "Beauty: " + ChatColor.WHITE + formatPoints(breakdown.beautyPoints));
+            }
+            case COMPACT -> {
+                raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
+                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
+                raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness);
+                raw.add(ChatColor.BLUE + "Mood: " + ChatColor.WHITE + mood);
+            }
+        }
+        return decorateLines(raw);
+    }
+
+    private List<String> decorateLines(List<String> raw) {
+        List<String> decorated = new ArrayList<>(raw.size());
+        for (int i = 0; i < raw.size(); i++) {
+            char code = UNIQUE_SUFFIX_CODES[i % UNIQUE_SUFFIX_CODES.length];
+            decorated.add(raw.get(i) + ChatColor.COLOR_CHAR + code);
+        }
+        return decorated;
+    }
+
+    private String formatPoints(double value) {
+        return (value >= 0 ? "+" : "") + String.format(Locale.US, "%.1f", value);
+    }
+
+    private String shortenText(String text, int maxLength) {
+        if (text.length() <= maxLength) {
+            return text;
+        }
+        return text.substring(0, Math.max(0, maxLength - 1)) + "…";
+    }
+
+    private void applyLines(Objective objective, Scoreboard board, List<String> lines) {
+        int score = lines.size();
+        for (String line : lines) {
+            objective.getScore(line).setScore(score--);
+        }
+    }
+
+    public void setMode(UUID uuid, Mode mode) {
+        modes.put(uuid, mode);
+    }
+
+    public Mode getMode(UUID uuid) {
+        return modes.getOrDefault(uuid, Mode.COMPACT);
+    }
 }

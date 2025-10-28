@@ -26,20 +26,7 @@ employment:
 titles:
   enabled: true
   cooldown_ticks: 80
-  messages:
-    bright: \"Bright, well-lit streets\"
-    dark: \"Too dark — add lighting\"
-    employment_good: \"High employment\"
-    employment_bad: \"Unemployment is hurting morale\"
-    golems_good: \"Golems make it feel safe\"
-    golems_bad: \"Not enough protection\"
-    crowding_good: \"Comfortable spacing\"
-    crowding_bad: \"Overcrowded — expand the city\"
-    jobs_good: \"Plenty of workplaces\"
-    jobs_bad: \"Not enough job sites\"
-    default_good: \"Citizens are content\"
-    default_bad: \"Citizens feel uneasy\"
-
+  # MiniMessage formatted text. Use {city} as a placeholder for the city name.
   messages:
     bright: "Bright, well-lit streets"
     dark: "Too dark — add lighting"

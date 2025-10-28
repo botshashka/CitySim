@@ -28,8 +28,16 @@ public class CityManager {
 
     public City create(String name) {
         String id = slug(name);
+        if (id.isEmpty()) {
+            throw new IllegalArgumentException("City name must contain letters or numbers");
+        }
+        if (byId.containsKey(id)) {
+            throw new IllegalArgumentException("City with id '" + id + "' already exists");
+        }
         City c = new City();
-        c.id = id; c.name = name; c.priority = byId.size();
+        c.id = id;
+        c.name = name;
+        c.priority = byId.size();
         byId.put(id, c);
         return c;
     }

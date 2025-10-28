@@ -25,12 +25,21 @@ public class CityTab implements TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         // Subcommand (arg0)
         if (args.length == 1) {
-            return filter(Arrays.asList("stats", "titles", "scoreboard", "top"), args[0]);
+            return filter(Arrays.asList("create", "wand", "stats", "titles", "bossbar", "scoreboard", "top"), args[0]);
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
 
         switch (sub) {
+            case "create":
+                if (args.length == 2) {
+                    return filter(Arrays.asList("<name>"), args[1]);
+                }
+                return List.of();
+
+            case "wand":
+                return List.of();
+
             case "stats":
                 // /city stats [cityId]
                 if (args.length == 2) {
@@ -41,6 +50,12 @@ public class CityTab implements TabCompleter {
 
             case "titles":
                 // /city titles on|off
+                if (args.length == 2) {
+                    return filter(Arrays.asList("on", "off"), args[1]);
+                }
+                return List.of();
+
+            case "bossbar":
                 if (args.length == 2) {
                     return filter(Arrays.asList("on", "off"), args[1]);
                 }

@@ -3,13 +3,25 @@ package dev.simcity.cmd;
 import dev.simcity.SimCityPlugin;
 import dev.simcity.city.City;
 import dev.simcity.city.CityManager;
+import dev.simcity.city.Cuboid;
+import dev.simcity.selection.SelectionListener;
+import dev.simcity.selection.SelectionState;
 import dev.simcity.stats.StatsService;
+import dev.simcity.ui.ScoreboardService;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+
+import java.util.Arrays;
+import java.util.Locale;
 
 public class CityCommand implements CommandExecutor {
 
@@ -29,6 +41,62 @@ public class CityCommand implements CommandExecutor {
         String sub = args[0].toLowerCase();
 
         switch (sub) {
+            case "create": {
+                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
+                if (!checkAdmin(s)) return true;
+                if (args.length < 2) {
+                    p.sendMessage(ChatColor.YELLOW + "Usage: /city create <name>");
+                    return true;
+                }
+
+                String name = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
+                if (name.isEmpty()) {
+                    p.sendMessage(ChatColor.RED + "City name cannot be empty.");
+                    return true;
+                }
+
+                SelectionState sel = SelectionListener.get(p);
+                if (!sel.ready()) {
+                    p.sendMessage(ChatColor.RED + "Select two corners with the SimCity wand first.");
+                    return true;
+                }
+                if (sel.world != p.getWorld()) {
+                    p.sendMessage(ChatColor.RED + "Your selection is in a different world.");
+                    return true;
+                }
+
+                try {
+                    City created = cityManager.create(name);
+                    Cuboid cuboid = new Cuboid(sel.world, sel.pos1, sel.pos2, sel.yMode == SelectionState.YMode.FULL);
+                    cityManager.addCuboid(created.id, cuboid);
+                    cityManager.save();
+                    statsService.updateCity(created);
+                    SelectionListener.selections.put(p.getUniqueId(), new SelectionState());
+                    p.sendMessage(ChatColor.GREEN + "Created city " + created.name + " (" + created.id + ") with region " + formatCuboid(cuboid) + ".");
+                } catch (IllegalArgumentException ex) {
+                    p.sendMessage(ChatColor.RED + ex.getMessage());
+                }
+                return true;
+            }
+
+            case "wand": {
+                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
+                if (!checkAdmin(s)) return true;
+
+                ItemStack wand = new ItemStack(SelectionListener.WAND);
+                ItemMeta meta = wand.getItemMeta();
+                meta.displayName(Component.text("SimCity Wand", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+                meta.lore(java.util.List.of(
+                        Component.text("Left click: set corner 1", NamedTextColor.YELLOW),
+                        Component.text("Right click: set corner 2", NamedTextColor.YELLOW)
+                ));
+                wand.setItemMeta(meta);
+
+                p.getInventory().addItem(wand);
+                p.sendMessage(ChatColor.GREEN + "SimCity wand given. Left/right click blocks to set the selection.");
+                return true;
+            }
+
             case "stats": {
                 if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
                 City cty = null;
@@ -64,13 +132,25 @@ public class CityCommand implements CommandExecutor {
                 return true;
             }
 
+            case "bossbar": {
+                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
+                if (args.length < 2) {
+                    p.sendMessage(ChatColor.YELLOW + "Usage: /city bossbar on|off");
+                    return true;
+                }
+                boolean on = args[1].equalsIgnoreCase("on");
+                plugin.getBossBarService().setEnabled(p, on);
+                p.sendMessage(on ? ChatColor.GREEN + "City bossbar enabled" : ChatColor.RED + "City bossbar disabled");
+                return true;
+            }
+
             case "scoreboard": {
                 if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
                 if (args.length >= 2 && args[1].equalsIgnoreCase("mode")) {
                     if (args.length < 3) { p.sendMessage(ChatColor.YELLOW+"Usage: /city scoreboard mode compact|full"); return true; }
-                    var mode = args[2].equalsIgnoreCase("full") ? dev.simcity.ui.ScoreboardService.Mode.FULL : dev.simcity.ui.ScoreboardService.Mode.COMPACT;
+                    ScoreboardService.Mode mode = args[2].equalsIgnoreCase("full") ? ScoreboardService.Mode.FULL : ScoreboardService.Mode.COMPACT;
                     plugin.getScoreboardService().setMode(p.getUniqueId(), mode);
-                    p.sendMessage(ChatColor.GRAY+"Scoreboard mode set to "+mode);
+                    p.sendMessage(ChatColor.GRAY+"Scoreboard mode set to "+mode.name().toLowerCase(Locale.ROOT));
                     return true;
                 }
                 if (args.length >= 2) {
@@ -109,9 +189,26 @@ public class CityCommand implements CommandExecutor {
         }
     }
 
+    private boolean checkAdmin(CommandSender sender) {
+        if (sender.hasPermission("simcity.admin")) {
+            return true;
+        }
+        sender.sendMessage(ChatColor.RED + "You do not have permission to do that.");
+        return false;
+    }
+
+    private String formatCuboid(Cuboid c) {
+        return "[" + c.world + " " +
+                c.minX + "," + c.minY + "," + c.minZ + " -> " +
+                c.maxX + "," + c.maxY + "," + c.maxZ + "]";
+    }
+
     private boolean help(CommandSender s) {
+        s.sendMessage(ChatColor.GRAY + "/city wand");
+        s.sendMessage(ChatColor.GRAY + "/city create <name>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
         s.sendMessage(ChatColor.GRAY + "/city titles on|off");
+        s.sendMessage(ChatColor.GRAY + "/city bossbar on|off");
         s.sendMessage(ChatColor.GRAY + "/city scoreboard on|off");
         s.sendMessage(ChatColor.GRAY + "/city scoreboard mode compact|full");
         s.sendMessage(ChatColor.GRAY + "/city top [happy|pop]");

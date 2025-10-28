@@ -63,10 +63,10 @@ public class HappinessBreakdown {
     }
 
     public String dominantMessage() {
-        return defaultMessage(dominantKey());
+        return defaultMessageFor(dominantKey());
     }
 
-    private String defaultMessage(String key) {
+    public static String defaultMessageFor(String key) {
         switch (key) {
             case "bright": return "Bright, well-lit streets";
             case "dark": return "Too dark — add lighting";
