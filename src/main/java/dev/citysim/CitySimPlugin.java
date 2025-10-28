@@ -1,16 +1,17 @@
-package dev.simcity;
+package dev.citysim;
 
-import dev.simcity.city.CityManager;
-import dev.simcity.cmd.CityCommand;
-import dev.simcity.cmd.CityTab;
-import dev.simcity.selection.SelectionListener;
-import dev.simcity.stats.BossBarService;
-import dev.simcity.stats.StatsService;
-import dev.simcity.ui.ScoreboardService;
-import dev.simcity.ui.TitleService;
+import dev.citysim.city.CityManager;
+import dev.citysim.cmd.CityCommand;
+import dev.citysim.cmd.CityTab;
+import dev.citysim.papi.CitySimExpansion;
+import dev.citysim.selection.SelectionListener;
+import dev.citysim.stats.BossBarService;
+import dev.citysim.stats.StatsService;
+import dev.citysim.ui.ScoreboardService;
+import dev.citysim.ui.TitleService;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class SimCityPlugin extends JavaPlugin {
+public class CitySimPlugin extends JavaPlugin {
     private CityManager cityManager;
     private StatsService statsService;
     private BossBarService bossBarService;
@@ -19,7 +20,7 @@ public class SimCityPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        getLogger().info("SimCity onEnable starting...");
+        getLogger().info("CitySim onEnable starting...");
         saveDefaultConfig();
 
         this.cityManager = new CityManager(this);
@@ -47,8 +48,8 @@ public class SimCityPlugin extends JavaPlugin {
 
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
-                new dev.simcity.papi.SimCityExpansion(cityManager).register();
-                getLogger().info("PlaceholderAPI detected: SimCity placeholders registered.");
+                new CitySimExpansion(cityManager).register();
+                getLogger().info("PlaceholderAPI detected: CitySim placeholders registered.");
             } catch (Throwable t) {
                 getLogger().warning("Failed to register PlaceholderAPI expansion: " + t.getMessage());
             }
@@ -63,7 +64,7 @@ public class SimCityPlugin extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new SelectionListener(), this);
-        getLogger().info("SimCity enabled.");
+        getLogger().info("CitySim enabled.");
     }
 
     @Override
@@ -83,7 +84,7 @@ public class SimCityPlugin extends JavaPlugin {
         if (cityManager != null) {
             cityManager.save();
         }
-        getLogger().info("SimCity disabled.");
+        getLogger().info("CitySim disabled.");
     }
 
     public CityManager getCityManager() {

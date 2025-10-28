@@ -1,4 +1,4 @@
-# SimCity plugin configuration
+# CitySim plugin configuration
 # You can tweak update intervals and happiness weights later.
 updates:
   stats_interval_ticks: 100     # ~5 seconds

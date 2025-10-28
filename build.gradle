@@ -2,7 +2,7 @@ plugins {
   id 'java'
 }
 
-group = 'dev.simcity'
+group = 'dev.citysim'
 version = '0.4.8'
 java {
   toolchain { languageVersion = JavaLanguageVersion.of(21) }

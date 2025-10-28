@@ -1,13 +1,13 @@
-package dev.simcity.cmd;
+package dev.citysim.cmd;
 
-import dev.simcity.SimCityPlugin;
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
-import dev.simcity.city.Cuboid;
-import dev.simcity.selection.SelectionListener;
-import dev.simcity.selection.SelectionState;
-import dev.simcity.stats.StatsService;
-import dev.simcity.ui.ScoreboardService;
+import dev.citysim.CitySimPlugin;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
+import dev.citysim.city.Cuboid;
+import dev.citysim.selection.SelectionListener;
+import dev.citysim.selection.SelectionState;
+import dev.citysim.stats.StatsService;
+import dev.citysim.ui.ScoreboardService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -25,11 +25,11 @@ import java.util.Locale;
 
 public class CityCommand implements CommandExecutor {
 
-    private final SimCityPlugin plugin;
+    private final CitySimPlugin plugin;
     private final CityManager cityManager;
     private final StatsService statsService;
 
-    public CityCommand(SimCityPlugin plugin, CityManager cityManager, StatsService statsService) {
+    public CityCommand(CitySimPlugin plugin, CityManager cityManager, StatsService statsService) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.statsService = statsService;
@@ -57,7 +57,7 @@ public class CityCommand implements CommandExecutor {
 
                 SelectionState sel = SelectionListener.get(p);
                 if (!sel.ready()) {
-                    p.sendMessage(ChatColor.RED + "Select two corners with the SimCity wand first.");
+                    p.sendMessage(ChatColor.RED + "Select two corners with the CitySim wand first.");
                     return true;
                 }
                 if (sel.world != p.getWorld()) {
@@ -85,7 +85,7 @@ public class CityCommand implements CommandExecutor {
 
                 ItemStack wand = new ItemStack(SelectionListener.WAND);
                 ItemMeta meta = wand.getItemMeta();
-                meta.displayName(Component.text("SimCity Wand", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+                meta.displayName(Component.text("CitySim Wand", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
                 meta.lore(java.util.List.of(
                         Component.text("Left click: set corner 1", NamedTextColor.YELLOW),
                         Component.text("Right click: set corner 2", NamedTextColor.YELLOW)
@@ -93,7 +93,7 @@ public class CityCommand implements CommandExecutor {
                 wand.setItemMeta(meta);
 
                 p.getInventory().addItem(wand);
-                p.sendMessage(ChatColor.GREEN + "SimCity wand given. Left/right click blocks to set the selection.");
+                p.sendMessage(ChatColor.GREEN + "CitySim wand given. Left/right click blocks to set the selection.");
                 return true;
             }
 
@@ -190,7 +190,7 @@ public class CityCommand implements CommandExecutor {
     }
 
     private boolean checkAdmin(CommandSender sender) {
-        if (sender.hasPermission("simcity.admin")) {
+        if (sender.hasPermission("citysim.admin")) {
             return true;
         }
         sender.sendMessage(ChatColor.RED + "You do not have permission to do that.");

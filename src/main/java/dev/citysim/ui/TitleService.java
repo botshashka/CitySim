@@ -1,9 +1,9 @@
-package dev.simcity.ui;
+package dev.citysim.ui;
 
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
-import dev.simcity.stats.HappinessBreakdown;
-import dev.simcity.stats.StatsService;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
+import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.StatsService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;

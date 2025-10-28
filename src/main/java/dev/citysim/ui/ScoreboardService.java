@@ -1,9 +1,9 @@
-package dev.simcity.ui;
+package dev.citysim.ui;
 
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
-import dev.simcity.stats.HappinessBreakdown;
-import dev.simcity.stats.StatsService;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
+import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.StatsService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
@@ -103,9 +103,9 @@ public class ScoreboardService {
             HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(city);
 
             Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());
-            Objective objective = board.getObjective("simcity");
+            Objective objective = board.getObjective("citysim");
             if (objective == null) {
-                objective = board.registerNewObjective("simcity", "dummy", ChatColor.GOLD + "SimCity");
+                objective = board.registerNewObjective("citysim", "dummy", ChatColor.GOLD + "CitySim");
                 objective.setDisplaySlot(DisplaySlot.SIDEBAR);
             }
             objective.setDisplayName(ChatColor.YELLOW + "" + ChatColor.BOLD + city.name);

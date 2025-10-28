@@ -1,4 +1,5 @@
 # CitySim (Paper 1.21.x) — v0.1.8
+SimCity-like city stats for villagers (Paper).
 
 ## Build (macOS)
 ```bash
@@ -6,7 +7,7 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 export PATH="$JAVA_HOME/bin:$PATH"
 java -version
 
-cd ./simcity-paper
+cd ./citysim-paper
 
 # If the Gradle wrapper files exist in this zip:
 chmod +x gradlew
@@ -23,9 +24,9 @@ chmod +x gradlew
 ## Deploy
 - Stop your server.
 - Delete any older CitySim jars from `plugins/`.
-- Copy `build/libs/simcity-paper-0.1.8.jar` to `plugins/`.
+- Copy `build/libs/citysim-paper-0.1.8.jar` to `plugins/`.
 - Start the server.
-- `/version SimCity` should show `0.1.8`.
+- `/version CitySim` should show `0.1.8`.
 ```
 /city create MyTown
 /city wand

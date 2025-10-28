@@ -1,9 +1,9 @@
 
-package dev.simcity.stats;
+package dev.citysim.stats;
 
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
-import dev.simcity.city.Cuboid;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
+import dev.citysim.city.Cuboid;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
