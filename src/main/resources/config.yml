@@ -7,12 +7,12 @@ updates:
 happiness_weights:
   nature_max_points: 10
   pollution_max_penalty: 15
-  beds_max_points: 10
+  housing_max_points: 10
   water_max_points: 5
   beauty_max_points: 5
   light_max_points: 10
   employment_max_points: 15
-  golems_max_points: 2.5
+  safety_max_points: 2.5
   overcrowding_max_penalty: 10
 
 
@@ -43,13 +43,13 @@ titles:
       - "Rampant unemployment angers citizens"
       - "Idle hands are stirring frustration"
       - "Too many villagers are out of work"
-    golems_good:
-      - "Golems make it feel safe"
-      - "Patrolling golems keep danger at bay"
-      - "Citizens salute their iron guardians"
-    golems_bad:
+    safety_good:
+      - "Guards make it feel safe"
+      - "Patrolling defenders keep danger at bay"
+      - "Citizens salute their protectors"
+    safety_bad:
       - "Citizens feel unprotected"
-      - "Where are the golems when night falls?"
+      - "Where are the defenders when night falls?"
       - "Villagers fear monsters without guardians"
     crowding_good:
       - "Comfortable spacing"
@@ -75,14 +75,14 @@ titles:
       - "Polluted air is choking the city"
       - "Smog clouds every sunrise"
       - "Sooty air keeps citizens indoors"
-    beds_good:
-      - "Everyone has a bed"
+    housing_good:
+      - "Everyone has a place to sleep"
       - "Every villager rests easy at night"
-      - "Soft beds keep morale high"
-    beds_bad:
+      - "Comfortable housing keeps morale high"
+    housing_bad:
       - "Homelessness is spreading"
-      - "Villagers curl up on floors without beds"
-      - "Citizens are desperate for shelter"
+      - "Villagers curl up on floors without shelter"
+      - "Citizens are desperate for housing"
     water_good:
       - "Soothing water nearby"
       - "Fountains and canals cool the air"
