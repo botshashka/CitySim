@@ -357,6 +357,43 @@ public class StatsService {
         return sampleSurface(city, step, test).ratio();
     }
 
+    private double ratioHighriseColumns(City city, int step, BlockTest test) {
+        int columnsWithMatch = 0;
+        int totalColumns = 0;
+        for (Cuboid c : city.cuboids) {
+            World w = Bukkit.getWorld(c.world);
+            if (w == null) continue;
+            for (int x = c.minX; x <= c.maxX; x += step) {
+                for (int z = c.minZ; z <= c.maxZ; z += step) {
+                    boolean sampled = false;
+                    boolean columnMatched = false;
+                    for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
+                        org.bukkit.block.Block b = w.getBlockAt(x, y, z);
+                        sampled = true;
+                        if (test.test(b)) {
+                            columnMatched = true;
+                            break;
+                        }
+                    }
+                    if (!columnMatched && (c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
+                        org.bukkit.block.Block b = w.getBlockAt(x, c.maxY, z);
+                        sampled = true;
+                        if (test.test(b)) {
+                            columnMatched = true;
+                        }
+                    }
+                    if (sampled) {
+                        totalColumns++;
+                        if (columnMatched) {
+                            columnsWithMatch++;
+                        }
+                    }
+                }
+            }
+        }
+        return totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
+    }
+
     private SurfaceSampleResult sampleSurface(City city, int step, BlockTest test) {
         int found = 0, probes = 0;
         for (Cuboid c : city.cuboids) {
@@ -388,7 +425,7 @@ public class StatsService {
     }
 
     private double natureRatio(City city) {
-        return ratioSurface(city, 6, b -> {
+        BlockTest natureTest = b -> {
             org.bukkit.Material type = b.getType();
             if (org.bukkit.Tag.LOGS.isTagged(type) || org.bukkit.Tag.LEAVES.isTagged(type)) {
                 return true;
@@ -400,7 +437,13 @@ public class StatsService {
                      OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
                 default -> false;
             };
-        });
+        };
+
+        if (city.highrise) {
+            return ratioHighriseColumns(city, 6, natureTest);
+        }
+
+        return ratioSurface(city, 6, natureTest);
     }
 
     private record PollutionStats(double ratio, int blockCount) {}
