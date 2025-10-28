@@ -287,45 +287,51 @@ public class CityCommand implements CommandExecutor {
                 return true;
             }
 
-            case "titles": {
-                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
-                if (args.length < 2) { p.sendMessage(ChatColor.YELLOW+"Usage: /city titles on|off"); return true; }
-                boolean on = args[1].equalsIgnoreCase("on");
-                plugin.getTitleService().setEnabled(p.getUniqueId(), on);
-                p.sendMessage(on ? ChatColor.GREEN+"Enter titles enabled" : ChatColor.RED+"Enter titles disabled");
-                return true;
-            }
-
-            case "bossbar": {
+            case "display": {
                 if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
                 if (args.length < 2) {
-                    p.sendMessage(ChatColor.YELLOW + "Usage: /city bossbar on|off");
+                    sendDisplayUsage(p);
                     return true;
                 }
-                boolean on = args[1].equalsIgnoreCase("on");
-                plugin.getBossBarService().setEnabled(p, on);
-                p.sendMessage(on ? ChatColor.GREEN + "City bossbar enabled" : ChatColor.RED + "City bossbar disabled");
-                return true;
-            }
 
-            case "scoreboard": {
-                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
-                if (args.length >= 2 && args[1].equalsIgnoreCase("mode")) {
-                    if (args.length < 3) { p.sendMessage(ChatColor.YELLOW+"Usage: /city scoreboard mode compact|full"); return true; }
-                    ScoreboardService.Mode mode = args[2].equalsIgnoreCase("full") ? ScoreboardService.Mode.FULL : ScoreboardService.Mode.COMPACT;
-                    plugin.getScoreboardService().setMode(p.getUniqueId(), mode);
-                    p.sendMessage(ChatColor.GRAY+"Scoreboard mode set to "+mode.name().toLowerCase(Locale.ROOT));
-                    return true;
+                String type = args[1].toLowerCase(Locale.ROOT);
+                switch (type) {
+                    case "titles": {
+                        if (args.length < 3) { p.sendMessage(ChatColor.YELLOW + "Usage: /city display titles on|off"); return true; }
+                        boolean on = args[2].equalsIgnoreCase("on");
+                        plugin.getTitleService().setEnabled(p.getUniqueId(), on);
+                        p.sendMessage(on ? ChatColor.GREEN + "Enter titles enabled" : ChatColor.RED + "Enter titles disabled");
+                        return true;
+                    }
+                    case "bossbar": {
+                        if (args.length < 3) { p.sendMessage(ChatColor.YELLOW + "Usage: /city display bossbar on|off"); return true; }
+                        boolean on = args[2].equalsIgnoreCase("on");
+                        plugin.getBossBarService().setEnabled(p, on);
+                        p.sendMessage(on ? ChatColor.GREEN + "City bossbar enabled" : ChatColor.RED + "City bossbar disabled");
+                        return true;
+                    }
+                    case "scoreboard": {
+                        if (args.length >= 3 && args[2].equalsIgnoreCase("mode")) {
+                            if (args.length < 4) { p.sendMessage(ChatColor.YELLOW + "Usage: /city display scoreboard mode compact|full"); return true; }
+                            ScoreboardService.Mode mode = args[3].equalsIgnoreCase("full") ? ScoreboardService.Mode.FULL : ScoreboardService.Mode.COMPACT;
+                            plugin.getScoreboardService().setMode(p.getUniqueId(), mode);
+                            p.sendMessage(ChatColor.GRAY + "Scoreboard mode set to " + mode.name().toLowerCase(Locale.ROOT));
+                            return true;
+                        }
+                        if (args.length >= 3) {
+                            boolean on = args[2].equalsIgnoreCase("on");
+                            plugin.getScoreboardService().setEnabled(p, on);
+                            p.sendMessage(on ? ChatColor.GREEN + "Scoreboard enabled" : ChatColor.RED + "Scoreboard disabled");
+                            return true;
+                        }
+                        p.sendMessage(ChatColor.GRAY + "/city display scoreboard on|off");
+                        p.sendMessage(ChatColor.GRAY + "/city display scoreboard mode compact|full");
+                        return true;
+                    }
+                    default:
+                        sendDisplayUsage(p);
+                        return true;
                 }
-                if (args.length >= 2) {
-                    boolean on = args[1].equalsIgnoreCase("on");
-                    plugin.getScoreboardService().setEnabled(p, on);
-                    p.sendMessage(on ? ChatColor.GREEN+"Scoreboard enabled" : ChatColor.RED+"Scoreboard disabled");
-                    return true;
-                }
-                s.sendMessage(ChatColor.GRAY + "/city scoreboard on|off");
-                s.sendMessage(ChatColor.GRAY + "/city scoreboard mode compact|full");
-                return true;
             }
 
             case "ymode": {
@@ -395,6 +401,14 @@ public class CityCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> highrise <true|false>");
     }
 
+    private void sendDisplayUsage(CommandSender sender) {
+        sender.sendMessage(ChatColor.YELLOW + "Usage:");
+        sender.sendMessage(ChatColor.YELLOW + "/city display titles on|off");
+        sender.sendMessage(ChatColor.YELLOW + "/city display bossbar on|off");
+        sender.sendMessage(ChatColor.YELLOW + "/city display scoreboard on|off");
+        sender.sendMessage(ChatColor.YELLOW + "/city display scoreboard mode compact|full");
+    }
+
     private boolean help(CommandSender s) {
         s.sendMessage(ChatColor.GRAY + "/city wand");
         s.sendMessage(ChatColor.GRAY + "/city create <name>");
@@ -407,10 +421,10 @@ public class CityCommand implements CommandExecutor {
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> highrise <true|false>");
         s.sendMessage(ChatColor.GRAY + "/city ymode <full|span>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
-        s.sendMessage(ChatColor.GRAY + "/city titles on|off");
-        s.sendMessage(ChatColor.GRAY + "/city bossbar on|off");
-        s.sendMessage(ChatColor.GRAY + "/city scoreboard on|off");
-        s.sendMessage(ChatColor.GRAY + "/city scoreboard mode compact|full");
+        s.sendMessage(ChatColor.GRAY + "/city display titles on|off");
+        s.sendMessage(ChatColor.GRAY + "/city display bossbar on|off");
+        s.sendMessage(ChatColor.GRAY + "/city display scoreboard on|off");
+        s.sendMessage(ChatColor.GRAY + "/city display scoreboard mode compact|full");
         s.sendMessage(ChatColor.GRAY + "/city top [happy|pop]");
         return true;
     }
