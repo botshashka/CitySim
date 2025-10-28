@@ -1,4 +1,4 @@
-package dev.simcity.city;
+package dev.citysim.city;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

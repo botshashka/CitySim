@@ -1,4 +1,4 @@
-package dev.simcity.city;
+package dev.citysim.city;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,7 +1,7 @@
-package dev.simcity.cmd;
+package dev.citysim.cmd;
 
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;

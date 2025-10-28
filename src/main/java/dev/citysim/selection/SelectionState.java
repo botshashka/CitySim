@@ -1,4 +1,4 @@
-package dev.simcity.selection;
+package dev.citysim.selection;
 
 import org.bukkit.Location;
 import org.bukkit.World;

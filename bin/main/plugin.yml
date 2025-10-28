@@ -1,5 +1,5 @@
-name: SimCity
-main: dev.simcity.SimCityPlugin
+name: CitySim
+main: dev.citysim.CitySimPlugin
 version: 0.4.8
 api-version: 0.4.8
 authors: [ 'you + gpt' ]
@@ -10,8 +10,8 @@ commands:
     usage: /city help
     aliases: [cities]
 permissions:
-  simcity.admin:
+  citysim.admin:
     default: op
-  simcity.view:
+  citysim.view:
     default: true
 softdepend: [PlaceholderAPI]

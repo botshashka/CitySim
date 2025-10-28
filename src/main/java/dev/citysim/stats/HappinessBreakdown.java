@@ -1,4 +1,4 @@
-package dev.simcity.stats;
+package dev.citysim.stats;
 
 public class HappinessBreakdown {
 

@@ -1,20 +1,19 @@
+package dev.citysim.papi;
 
-package dev.simcity.papi;
-
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
 import org.jetbrains.annotations.NotNull;
 
-public class SimCityExpansion extends PlaceholderExpansion {
+public class CitySimExpansion extends PlaceholderExpansion {
     private final CityManager cityManager;
 
-    public SimCityExpansion(CityManager cm) {
+    public CitySimExpansion(CityManager cm) {
         this.cityManager = cm;
     }
 
-    @Override public @NotNull String getIdentifier() { return "simcity"; }
+    @Override public @NotNull String getIdentifier() { return "citysim"; }
     @Override public @NotNull String getAuthor() { return "you+gpt"; }
     @Override public @NotNull String getVersion() { return "0.1.0"; }
     @Override public boolean persist() { return true; }
@@ -22,9 +21,9 @@ public class SimCityExpansion extends PlaceholderExpansion {
     @Override
     public String onRequest(OfflinePlayer player, @NotNull String params) {
         // Supported:
-        // %simcity_city% (current city name)
-        // %simcity_pop% / employed / unemployed / happiness (current city)
-        // %simcity_pop_<cityId>% (by id); same for employed/unemployed/happiness/cityname_
+        // %citysim_city% (current city name)
+        // %citysim_pop% / employed / unemployed / happiness (current city)
+        // %citysim_pop_<cityId>% (by id); same for employed/unemployed/happiness/cityname_
         String[] parts = params.split("_", 2);
         String key = parts[0].toLowerCase();
 

@@ -1,7 +1,7 @@
-package dev.simcity.stats;
+package dev.citysim.stats;
 
-import dev.simcity.city.City;
-import dev.simcity.city.CityManager;
+import dev.citysim.city.City;
+import dev.citysim.city.CityManager;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
