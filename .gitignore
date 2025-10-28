@@ -21,5 +21,6 @@ tmp/
 # Minecraft plugin jars (don’t commit built plugins)
 *.jar
 
+
 # Local environment or secrets
 local.properties

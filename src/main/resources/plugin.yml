@@ -1,7 +1,7 @@
 name: SimCity
 main: dev.simcity.SimCityPlugin
 version: 0.4.8
-api-version: 0.4.8
+api-version: 1.21
 authors: [ 'you + gpt' ]
 description: SimCity-like city stats for villagers (Paper)
 commands:

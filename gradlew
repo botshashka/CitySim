@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright © 2015 the original authors.
+# Copyright © 2015-2021 the original authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,6 +88,79 @@ APP_BASE_NAME=${0##*/}
 # Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
 APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
 
+# Location of the wrapper JAR and its metadata
+WRAPPER_JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+WRAPPER_PROPERTIES="$APP_HOME/gradle/wrapper/gradle-wrapper.properties"
+
+download_gradle_wrapper_jar() {
+    # shellcheck disable=SC2039
+    tmp_dir=$( mktemp -d 2>/dev/null || mktemp -d -t gradle-wrapper ) || return 1
+    tmp_jar="$tmp_dir/gradle-wrapper.jar"
+
+    if command -v curl >/dev/null 2>&1; then
+        if ! curl -fLso "$tmp_jar" "$1"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if ! wget -qO "$tmp_jar" "$1"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    else
+        printf '%s\n' "Cannot download the Gradle wrapper JAR because neither curl nor wget is installed." >&2
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    if [ ! -s "$tmp_jar" ]; then
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    mkdir -p "${WRAPPER_JAR%/*}" || {
+        rm -rf "$tmp_dir"
+        return 1
+    }
+
+    mv "$tmp_jar" "$WRAPPER_JAR" 2>/dev/null || {
+        rm -rf "$tmp_dir"
+        return 1
+    }
+
+    rm -rf "$tmp_dir"
+    return 0
+}
+
+ensure_gradle_wrapper_jar() {
+    [ -f "$WRAPPER_JAR" ] && return 0
+
+    if [ ! -f "$WRAPPER_PROPERTIES" ]; then
+        warn "Gradle wrapper properties not found at $WRAPPER_PROPERTIES"
+        return 1
+    fi
+
+    distribution_url=$( sed -n 's/^distributionUrl=//p' "$WRAPPER_PROPERTIES" | tail -n 1 | tr -d '\r' ) || distribution_url=
+    distribution_url=$( printf '%s' "$distribution_url" | sed 's#\\:#:#g; s#\\=#=#g' )
+
+    version=${distribution_url##*/gradle-}
+    version=${version%%-*}
+
+    if [ -z "$version" ]; then
+        warn "Unable to determine Gradle version from $WRAPPER_PROPERTIES"
+        return 1
+    fi
+
+    jar_url="https://raw.githubusercontent.com/gradle/gradle/v${version}/gradle/wrapper/gradle-wrapper.jar"
+
+    if ! download_gradle_wrapper_jar "$jar_url"; then
+        warn "Failed to download Gradle wrapper JAR from $jar_url"
+        return 1
+    fi
+
+    return 0
+}
+
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
 
@@ -114,6 +187,15 @@ case "$( uname )" in                #(
   NONSTOP* )        nonstop=true ;;
 esac
 
+if ! ensure_gradle_wrapper_jar; then
+    die "ERROR: Gradle wrapper JAR is missing and could not be downloaded."
+fi
+
+if [ -n "$CLASSPATH" ]; then
+    CLASSPATH="$WRAPPER_JAR:$CLASSPATH"
+else
+    CLASSPATH="$WRAPPER_JAR"
+fi
 
 
 # Determine the Java command to use to start the JVM.
@@ -171,6 +253,7 @@ fi
 # For Cygwin or MSYS, switch paths to Windows format before running java
 if "$cygwin" || "$msys" ; then
     APP_HOME=$( cygpath --path --mixed "$APP_HOME" )
+    CLASSPATH=$( cygpath --path --mixed "$CLASSPATH" )
 
     JAVACMD=$( cygpath --unix "$JAVACMD" )
 
@@ -210,7 +293,8 @@ DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
 
 set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
-        -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" \
+        -classpath "$CLASSPATH" \
+        org.gradle.wrapper.GradleWrapperMain \
         "$@"
 
 # Stop when "xargs" is not available.

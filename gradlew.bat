@@ -35,6 +35,9 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+set WRAPPER_JAR=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
+set WRAPPER_PROPERTIES=%APP_HOME%\gradle\wrapper\gradle-wrapper.properties
+
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
@@ -70,10 +73,18 @@ goto fail
 :execute
 @rem Setup the command line
 
+call :ensureWrapperJar
+if %ERRORLEVEL% neq 0 goto fail
+
+if defined CLASSPATH (
+    set "CLASSPATH=%WRAPPER_JAR%;%CLASSPATH%"
+) else (
+    set CLASSPATH=%WRAPPER_JAR%
+)
 
 
 @rem Execute Gradle
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
 
 :end
 @rem End local scope for the variables with windows NT shell
@@ -91,3 +102,31 @@ exit /b %EXIT_CODE%
 if "%OS%"=="Windows_NT" endlocal
 
 :omega
+
+goto :eof
+
+:ensureWrapperJar
+if exist "%WRAPPER_JAR%" exit /b 0
+if not exist "%WRAPPER_PROPERTIES%" (
+    echo ERROR: Gradle wrapper properties not found at "%WRAPPER_PROPERTIES%" 1>&2
+    exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference = 'Stop';" ^
+  "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls;" ^
+  "$propsPath = [IO.Path]::GetFullPath('%WRAPPER_PROPERTIES%');" ^
+  "$line = Select-String -Path $propsPath -Pattern '^distributionUrl=' | Select-Object -Last 1;" ^
+  "if (-not $line) { throw 'distributionUrl not found'; }" ^
+  "$url = $line.Line.Substring('distributionUrl='.Length).Replace('\:',':').Replace('\=','=');" ^
+  "$match = [regex]::Match($url, 'gradle-([0-9.]+)-');" ^
+  "if (-not $match.Success) { throw 'Unable to determine Gradle version'; }" ^
+  "$version = $match.Groups[1].Value;" ^
+  "$jarUrl = \"https://raw.githubusercontent.com/gradle/gradle/v$version/gradle/wrapper/gradle-wrapper.jar\";" ^
+  "$target = [IO.Path]::GetFullPath('%WRAPPER_JAR%');" ^
+  "$dir = [IO.Path]::GetDirectoryName($target);" ^
+  "if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null; }" ^
+  "Invoke-WebRequest -Uri $jarUrl -OutFile $target -UseBasicParsing;" ^
+  "if (-not (Test-Path $target)) { throw 'Download failed'; }"
+
+exit /b %ERRORLEVEL%
