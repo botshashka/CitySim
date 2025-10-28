@@ -98,8 +98,7 @@ public class ScoreboardService {
                 continue;
             }
 
-            statsService.updateCity(city);
-            HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(city);
+            HappinessBreakdown breakdown = statsService.updateCity(city);
 
             Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());
             Objective objective = board.getObjective("citysim");

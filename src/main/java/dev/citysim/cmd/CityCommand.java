@@ -268,8 +268,7 @@ public class CityCommand implements CommandExecutor {
                 if (cty == null) cty = cityManager.cityAt(p.getLocation());
                 if (cty == null) { p.sendMessage(ChatColor.RED + "Stand in a city or pass /city stats <cityId>"); return true; }
 
-                statsService.updateCity(cty);
-                var hb = statsService.computeHappinessBreakdown(cty);
+                var hb = statsService.updateCity(cty);
                 var mm = MiniMessage.miniMessage();
                 String msg = """
                 <gray><b>%s — City stats</b></gray>
