@@ -9,11 +9,8 @@ happiness_weights:
   nature_max_points: 10
   pollution_max_penalty: 15
   housing_max_points: 10
-  water_max_points: 5
-  beauty_max_points: 5
   light_max_points: 10
   employment_max_points: 15
-  safety_max_points: 2.5
   overcrowding_max_penalty: 10
 
 
@@ -43,14 +40,6 @@ titles:
       - "Rampant unemployment angers citizens"
       - "Idle hands are stirring frustration"
       - "Too many villagers are out of work"
-    safety_good:
-      - "Guards make it feel safe"
-      - "Patrolling defenders keep danger at bay"
-      - "Citizens salute their protectors"
-    safety_bad:
-      - "Citizens feel unprotected"
-      - "Where are the defenders when night falls?"
-      - "Villagers fear monsters without guardians"
     crowding_good:
       - "Comfortable spacing"
       - "Plenty of room to breathe"
@@ -83,22 +72,6 @@ titles:
       - "Homelessness is spreading"
       - "Villagers curl up on floors without shelter"
       - "Citizens are desperate for housing"
-    water_good:
-      - "Soothing water nearby"
-      - "Fountains and canals cool the air"
-      - "Water features calm worried minds"
-    water_bad:
-      - "Parched city — add water"
-      - "Residents thirst for fountains"
-      - "Dry plazas leave tempers hot"
-    beauty_good:
-      - "Charming decorations"
-      - "Artful touches delight citizens"
-      - "Beauty blooms on every corner"
-    beauty_bad:
-      - "Bleak, uninspired streets"
-      - "Drab blocks sap citizen pride"
-      - "The city longs for artistic flair"
     default_good:
       - "Citizens are content"
       - "Life is peaceful in the city"

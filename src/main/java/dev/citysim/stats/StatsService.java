@@ -38,13 +38,10 @@ public class StatsService {
 
     private double lightMaxPts = 10;
     private double employmentMaxPts = 15;
-    private double safetyMaxPts = 2.5;
     private double overcrowdMaxPenalty = 10;
     private double natureMaxPts = 10;
     private double pollutionMaxPenalty = 15;
     private double housingMaxPts = 10;
-    private double waterMaxPts = 5;
-    private double beautyMaxPts = 5;
 
     public StatsService(Plugin plugin, CityManager cm) {
         this.plugin = plugin;
@@ -171,8 +168,6 @@ public class StatsService {
     private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
         int pop = city.population;
         int employed = city.employed;
-        int golems = Math.max(0, city.golems);
-
         HappinessBreakdown hb = new HappinessBreakdown();
 
         double lightScore = metrics.light;
@@ -183,10 +178,6 @@ public class StatsService {
         double employmentRate = pop <= 0 ? 0.0 : (double) employed / (double) pop;
         double employmentScore = (employmentRate - 0.5) / 0.5; // 50% employment is neutral
         hb.employmentPoints = clamp(employmentScore * employmentMaxPts, -employmentMaxPts, employmentMaxPts);
-
-        double expectedGolems = Math.max(1.0, pop / 10.0);
-        double safetyRatio = golems / expectedGolems;
-        hb.safetyPoints = clamp((safetyRatio - 1.0) * safetyMaxPts, -safetyMaxPts, safetyMaxPts);
 
         hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
 
@@ -204,26 +195,13 @@ public class StatsService {
         double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
         hb.housingPoints = clamp((housingRatio - 1.0) * housingMaxPts, -housingMaxPts, housingMaxPts);
 
-        double water = metrics.water;
-        double waterTarget = 0.1;
-        double waterScore = (water - waterTarget) / waterTarget;
-        hb.waterPoints = clamp(waterScore * waterMaxPts, -waterMaxPts, waterMaxPts);
-
-        double beauty = metrics.beauty;
-        double beautyTarget = 0.15;
-        double beautyScore = (beauty - beautyTarget) / beautyTarget;
-        hb.beautyPoints = clamp(beautyScore * beautyMaxPts, -beautyMaxPts, beautyMaxPts);
-
         double total = hb.base
                 + hb.lightPoints
                 + hb.employmentPoints
-                + hb.safetyPoints
                 - hb.overcrowdingPenalty
                 + hb.naturePoints
                 - hb.pollutionPenalty
-                + hb.housingPoints
-                + hb.waterPoints
-                + hb.beautyPoints;
+                + hb.housingPoints;
 
         if (total < 0) total = 0;
         if (total > 100) total = 100;
@@ -247,8 +225,6 @@ public class StatsService {
         cache.light = averageSurfaceLight(city);
         cache.nature = natureRatio(city);
         cache.pollution = pollutionRatio(city);
-        cache.water = waterRatio(city);
-        cache.beauty = beautyRatio(city);
         cache.overcrowdingPenalty = computeOvercrowdingPenalty(city);
         cache.timestamp = now;
         city.blockScanCache = cache;
@@ -408,20 +384,6 @@ public class StatsService {
         return beds / 2;
     }
 
-    private double waterRatio(City city) {
-        return ratioSurface(city, 6, b -> switch (b.getType()) {
-            case WATER, WATER_CAULDRON -> true;
-            default -> false;
-        });
-    }
-
-    private double beautyRatio(City city) {
-        return ratioSurface(city, 6, b -> switch (b.getType()) {
-            case LANTERN, SOUL_LANTERN, FLOWER_POT, TORCH, SOUL_TORCH, CANDLE, CANDLE_CAKE -> true;
-            default -> false;
-        });
-    }
-
     private static double clamp(double value, double min, double max) {
         if (value < min) return min;
         if (value > max) return max;
@@ -458,13 +420,10 @@ public class StatsService {
 
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
         employmentMaxPts = c.getDouble("happiness_weights.employment_max_points", 15);
-        safetyMaxPts = c.getDouble("happiness_weights.safety_max_points", 2.5);
         overcrowdMaxPenalty = c.getDouble("happiness_weights.overcrowding_max_penalty", 10);
         natureMaxPts = c.getDouble("happiness_weights.nature_max_points", 10);
         pollutionMaxPenalty = c.getDouble("happiness_weights.pollution_max_penalty", 15);
         housingMaxPts = c.getDouble("happiness_weights.housing_max_points", 10);
-        waterMaxPts = c.getDouble("happiness_weights.water_max_points", 5);
-        beautyMaxPts = c.getDouble("happiness_weights.beauty_max_points", 5);
     }
 
     private void scheduleTask() {

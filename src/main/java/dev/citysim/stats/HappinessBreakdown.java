@@ -11,13 +11,10 @@ public class HappinessBreakdown {
 
     public double lightPoints;
     public double employmentPoints;
-    public double safetyPoints;
     public double overcrowdingPenalty;
     public double naturePoints;
     public double pollutionPenalty;
     public double housingPoints;
-    public double waterPoints;
-    public double beautyPoints;
 
     public int total;
 
@@ -83,13 +80,10 @@ public class HappinessBreakdown {
         List<Contribution> list = new ArrayList<>();
         list.add(new Contribution(lightPoints, "bright", "dark"));
         list.add(new Contribution(employmentPoints, "employment_good", "employment_bad"));
-        list.add(new Contribution(safetyPoints, "safety_good", "safety_bad"));
         list.add(new Contribution(-overcrowdingPenalty, "crowding_good", "crowding_bad"));
         list.add(new Contribution(naturePoints, "nature_good", "nature_bad"));
         list.add(new Contribution(-pollutionPenalty, "pollution_good", "pollution_bad"));
         list.add(new Contribution(housingPoints, "housing_good", "housing_bad"));
-        list.add(new Contribution(waterPoints, "water_good", "water_bad"));
-        list.add(new Contribution(beautyPoints, "beauty_good", "beauty_bad"));
         return list;
     }
 
@@ -159,20 +153,6 @@ public class HappinessBreakdown {
                         "Too many villagers are out of work"
                 };
                 break;
-            case "safety_good":
-                options = new String[]{
-                        "Guards make it feel safe",
-                        "Patrolling defenders keep danger at bay",
-                        "Citizens salute their protectors"
-                };
-                break;
-            case "safety_bad":
-                options = new String[]{
-                        "Citizens feel unprotected",
-                        "Where are the defenders when night falls?",
-                        "Villagers fear monsters without guardians"
-                };
-                break;
             case "crowding_good":
                 options = new String[]{
                         "Comfortable spacing",
@@ -227,34 +207,6 @@ public class HappinessBreakdown {
                         "Homelessness is spreading",
                         "Villagers curl up on floors without shelter",
                         "Citizens are desperate for housing"
-                };
-                break;
-            case "water_good":
-                options = new String[]{
-                        "Soothing water nearby",
-                        "Fountains and canals cool the air",
-                        "Water features calm worried minds"
-                };
-                break;
-            case "water_bad":
-                options = new String[]{
-                        "Parched city — add water",
-                        "Residents thirst for fountains",
-                        "Dry plazas leave tempers hot"
-                };
-                break;
-            case "beauty_good":
-                options = new String[]{
-                        "Charming decorations",
-                        "Artful touches delight citizens",
-                        "Beauty blooms on every corner"
-                };
-                break;
-            case "beauty_bad":
-                options = new String[]{
-                        "Bleak, uninspired streets",
-                        "Drab blocks sap citizen pride",
-                        "The city longs for artistic flair"
                 };
                 break;
             case "default_good":
