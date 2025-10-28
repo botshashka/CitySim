@@ -42,6 +42,52 @@ public class CityManager {
         return c;
     }
 
+    public City remove(String id) {
+        if (id == null) {
+            return null;
+        }
+        City removed = byId.remove(id.toLowerCase(Locale.ROOT));
+        if (removed != null) {
+            int index = 0;
+            for (City city : byId.values()) {
+                city.priority = index++;
+            }
+        }
+        return removed;
+    }
+
+    public City rename(String id, String newName) {
+        City city = get(id);
+        if (city == null) {
+            throw new IllegalArgumentException("City with id '" + id + "' does not exist");
+        }
+
+        String newId = slug(newName);
+        if (newId.isEmpty()) {
+            throw new IllegalArgumentException("City name must contain letters or numbers");
+        }
+
+        String oldId = city.id;
+        if (!newId.equals(oldId) && byId.containsKey(newId)) {
+            throw new IllegalArgumentException("City with id '" + newId + "' already exists");
+        }
+
+        city.name = newName;
+        if (newId.equals(oldId)) {
+            return city;
+        }
+
+        List<City> ordered = new ArrayList<>(byId.values());
+        city.id = newId;
+
+        byId.clear();
+        for (City c : ordered) {
+            byId.put(c.id, c);
+        }
+
+        return city;
+    }
+
     public int addCuboid(String id, Cuboid cuboid) {
         City c = get(id);
         if (c == null) {
