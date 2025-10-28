@@ -1,5 +1,7 @@
 package dev.citysim.city;
 
+import dev.citysim.stats.HappinessBreakdown;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,7 +16,10 @@ public class City {
     public int employed = 0;
     public int unemployed = 0;
     public int beds = 0;
+    public int golems = 0;
     public int happiness = 50;
+
+    public HappinessBreakdown happinessBreakdown = null;
 
     public boolean highrise = false;
 

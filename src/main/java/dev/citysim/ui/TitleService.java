@@ -112,8 +112,7 @@ public class TitleService implements Listener {
             }
             lastShownTick.put(player.getUniqueId(), serverTick);
 
-            statsService.updateCity(current);
-            HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(current);
+            HappinessBreakdown breakdown = statsService.updateCity(current);
             String key = breakdown.pickWeightedMessageKey();
 
             Component title = Component.text(current.name)

@@ -60,7 +60,7 @@ public class StatsService {
         }
     }
 
-    public void updateCity(City city) {
+    public HappinessBreakdown updateCity(City city) {
         int pop = 0, employed = 0, golems = 0;
 
         for (Cuboid c : city.cuboids) {
@@ -102,13 +102,18 @@ public class StatsService {
 
         int beds = countBeds(city);
         int unemployed = Math.max(0, pop - employed);
-        int happiness = computeHappiness(city, pop, employed, golems);
 
         city.population = pop;
         city.employed = employed;
         city.unemployed = unemployed;
         city.beds = beds;
-        city.happiness = happiness;
+        city.golems = golems;
+
+        HappinessBreakdown hb = calculateHappinessBreakdown(city);
+        city.happinessBreakdown = hb;
+        city.happiness = hb.total;
+
+        return hb;
     }
 
     private boolean hasNearbyWorkstation(Location loc, int radius, int yRadius) {
@@ -127,31 +132,17 @@ public class StatsService {
         return false;
     }
 
-    private int computeHappiness(City city, int pop, int employed, int golems) {
-        HappinessBreakdown hb = computeHappinessBreakdown(city);
-        return hb.total;
+    public HappinessBreakdown computeHappinessBreakdown(City city) {
+        if (city.happinessBreakdown != null) {
+            return city.happinessBreakdown;
+        }
+        return updateCity(city);
     }
 
-    public HappinessBreakdown computeHappinessBreakdown(City city) {
+    private HappinessBreakdown calculateHappinessBreakdown(City city) {
         int pop = city.population;
         int employed = city.employed;
-        int golems = 0;
-
-        for (Cuboid c : city.cuboids) {
-            World w = Bukkit.getWorld(c.world);
-            if (w == null) continue;
-            int minCX = c.minX >> 4, maxCX = c.maxX >> 4;
-            int minCZ = c.minZ >> 4, maxCZ = c.maxZ >> 4;
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    if (!w.isChunkLoaded(cx, cz)) continue;
-                    Chunk ch = w.getChunkAt(cx, cz);
-                    for (Entity e : ch.getEntities()) {
-                        if (e instanceof IronGolem && c.contains(e.getLocation())) golems++;
-                    }
-                }
-            }
-        }
+        int golems = Math.max(0, city.golems);
 
         HappinessBreakdown hb = new HappinessBreakdown();
 
@@ -182,7 +173,7 @@ public class StatsService {
         double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
         hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
 
-        int beds = countBeds(city);
+        int beds = city.beds;
         double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
         hb.housingPoints = clamp((housingRatio - 1.0) * housingMaxPts, -housingMaxPts, housingMaxPts);
 
@@ -313,8 +304,8 @@ public class StatsService {
         for (Cuboid c : city.cuboids) {
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
-            for (int x = c.minX; x <= c.maxX; x += 3) {
-                for (int z = c.minZ; z <= c.maxZ; z += 3) {
+            for (int x = c.minX; x <= c.maxX; x++) {
+                for (int z = c.minZ; z <= c.maxZ; z++) {
                     for (int y = c.minY; y <= c.maxY; y++) {
                         switch (w.getBlockAt(x, y, z).getType()) {
                             case WHITE_BED, ORANGE_BED, MAGENTA_BED, LIGHT_BLUE_BED, YELLOW_BED, LIME_BED, PINK_BED,
