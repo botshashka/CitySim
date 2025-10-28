@@ -188,7 +188,7 @@ public class StatsService {
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
         double pollution = metrics.pollution;
-        double pollutionTarget = 0.01;
+        double pollutionTarget = 0.025;
         double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
         hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
 
