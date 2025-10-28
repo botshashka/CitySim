@@ -36,6 +36,7 @@ public class StatsService {
     // Weights
     private static final int HIGHRISE_VERTICAL_STEP = 4;
     private static final double OVERCROWDING_BASELINE = 3.0;
+    private static final double TRANSIT_BLOCKS_PER_STATION = 125.0;
 
     private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
@@ -44,6 +45,7 @@ public class StatsService {
     private double natureMaxPts = 10;
     private double pollutionMaxPenalty = 15;
     private double housingMaxPts = 10;
+    private double transitMaxPts = 5;
 
     public StatsService(Plugin plugin, CityManager cm) {
         this.plugin = plugin;
@@ -196,13 +198,16 @@ public class StatsService {
         double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
         hb.housingPoints = clamp((housingRatio - 1.0) * housingMaxPts, -housingMaxPts, housingMaxPts);
 
+        hb.transitPoints = computeTransitPoints(city);
+
         double total = hb.base
                 + hb.lightPoints
                 + hb.employmentPoints
                 - hb.overcrowdingPenalty
                 + hb.naturePoints
                 - hb.pollutionPenalty
-                + hb.housingPoints;
+                + hb.housingPoints
+                + hb.transitPoints;
 
         if (total < 0) total = 0;
         if (total > 100) total = 100;
@@ -277,6 +282,18 @@ public class StatsService {
                 area *= height;
             }
             sum += area;
+        }
+        return (double) sum;
+    }
+
+    private double totalFootprintArea(City city) {
+        long sum = 0;
+        for (Cuboid c : city.cuboids) {
+            long width = (long) (c.maxX - c.minX + 1);
+            long length = (long) (c.maxZ - c.minZ + 1);
+            if (width < 0) width = 0;
+            if (length < 0) length = 0;
+            sum += width * length;
         }
         return (double) sum;
     }
@@ -395,6 +412,23 @@ public class StatsService {
         return value;
     }
 
+    private double computeTransitPoints(City city) {
+        double area = totalFootprintArea(city);
+        if (area <= 0.0 || transitMaxPts <= 0.0) {
+            return 0.0;
+        }
+
+        double requiredStations = area / TRANSIT_BLOCKS_PER_STATION;
+        if (requiredStations <= 0.0) {
+            return 0.0;
+        }
+
+        double actualStations = Math.max(0, city.stations);
+        double densityRatio = actualStations / requiredStations;
+        double score = (densityRatio - 1.0) * transitMaxPts;
+        return clamp(score, -transitMaxPts, transitMaxPts);
+    }
+
     public void updateConfig() {
         var c = plugin.getConfig();
         String mode = c.getString("employment.mode", "profession_only").toLowerCase();
@@ -430,6 +464,7 @@ public class StatsService {
         natureMaxPts = c.getDouble("happiness_weights.nature_max_points", 10);
         pollutionMaxPenalty = c.getDouble("happiness_weights.pollution_max_penalty", 15);
         housingMaxPts = c.getDouble("happiness_weights.housing_max_points", 10);
+        transitMaxPts = Math.max(0.0, c.getDouble("happiness_weights.transit_max_points", 5));
     }
 
     private void scheduleTask() {

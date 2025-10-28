@@ -15,6 +15,7 @@ public class HappinessBreakdown {
     public double naturePoints;
     public double pollutionPenalty;
     public double housingPoints;
+    public double transitPoints;
 
     public int total;
 
@@ -84,6 +85,7 @@ public class HappinessBreakdown {
         list.add(new Contribution(naturePoints, "nature_good", "nature_bad"));
         list.add(new Contribution(-pollutionPenalty, "pollution_good", "pollution_bad"));
         list.add(new Contribution(housingPoints, "housing_good", "housing_bad"));
+        list.add(new Contribution(transitPoints, "transit_good", "transit_bad"));
         return list;
     }
 
@@ -207,6 +209,20 @@ public class HappinessBreakdown {
                         "Homelessness is spreading",
                         "Villagers curl up on floors without shelter",
                         "Citizens are desperate for housing"
+                };
+                break;
+            case "transit_good":
+                options = new String[]{
+                        "Transit lines keep the city connected",
+                        "Stations hum with satisfied commuters",
+                        "Citizens praise the fast transit network"
+                };
+                break;
+            case "transit_bad":
+                options = new String[]{
+                        "Too few stations leave districts isolated",
+                        "Citizens grumble about missing transit stops",
+                        "Transit shortages slow everyone down"
                 };
                 break;
             case "default_good":
