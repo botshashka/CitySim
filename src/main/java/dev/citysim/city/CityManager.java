@@ -42,12 +42,21 @@ public class CityManager {
         return c;
     }
 
-    public void addCuboid(String id, Cuboid cuboid) {
+    public int addCuboid(String id, Cuboid cuboid) {
         City c = get(id);
-        if (c != null) {
-            c.cuboids.add(cuboid);
-            if (c.world == null) c.world = cuboid.world;
+        if (c == null) {
+            throw new IllegalArgumentException("City with id '" + id + "' does not exist");
         }
+        if (cuboid.world == null) {
+            throw new IllegalArgumentException("Cuboid world cannot be null");
+        }
+        if (c.world != null && !c.world.equals(cuboid.world)) {
+            throw new IllegalArgumentException("City '" + c.name + "' is bound to world " + c.world + ".");
+        }
+
+        c.cuboids.add(cuboid);
+        if (c.world == null) c.world = cuboid.world;
+        return c.cuboids.size();
     }
 
     public City cityAt(Location loc) {
@@ -80,6 +89,6 @@ public class CityManager {
 
     private static String slug(String s) {
         String n = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
-        return n.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+","-").replaceAll("(^-|-$)","");
+        return n.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+","_").replaceAll("(^_|_$)","");
     }
 }
