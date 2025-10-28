@@ -39,8 +39,6 @@ public class City {
         public double light;
         public double nature;
         public double pollution;
-        public double water;
-        public double beauty;
         public double overcrowdingPenalty;
         public long timestamp;
     }
