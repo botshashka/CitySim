@@ -69,10 +69,13 @@ public class CityTab implements TabCompleter {
                     return filter(ids, args[1]);
                 }
                 if (args.length == 3) {
-                    return filter(Arrays.asList("name", "addcuboid", "removecuboid"), args[2]);
+                    return filter(Arrays.asList("name", "addcuboid", "removecuboid", "highrise"), args[2]);
                 }
                 if (args.length >= 4 && "name".equalsIgnoreCase(args[2])) {
                     return filter(Arrays.asList("<new name>"), args[3]);
+                }
+                if (args.length == 4 && "highrise".equalsIgnoreCase(args[2])) {
+                    return filter(Arrays.asList("true", "false"), args[3]);
                 }
                 return List.of();
 

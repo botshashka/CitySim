@@ -99,10 +99,34 @@ public class CityManager {
         if (c.world != null && !c.world.equals(cuboid.world)) {
             throw new IllegalArgumentException("City '" + c.name + "' is bound to world " + c.world + ".");
         }
+        if (c.highrise && cuboid.fullHeight) {
+            throw new IllegalArgumentException("Highrise cities cannot contain cuboids with full Y mode.");
+        }
 
         c.cuboids.add(cuboid);
         if (c.world == null) c.world = cuboid.world;
         return c.cuboids.size();
+    }
+
+    public City setHighrise(String id, boolean highrise) {
+        City city = get(id);
+        if (city == null) {
+            throw new IllegalArgumentException("City with id '" + id + "' does not exist");
+        }
+
+        if (highrise) {
+            for (Cuboid cuboid : city.cuboids) {
+                if (cuboid == null) continue;
+                org.bukkit.World world = Bukkit.getWorld(cuboid.world);
+                boolean full = cuboid.fullHeight || cuboid.isFullHeight(world);
+                if (full) {
+                    throw new IllegalArgumentException("City '" + city.name + "' has cuboids using full Y mode.");
+                }
+            }
+        }
+
+        city.highrise = highrise;
+        return city;
     }
 
     public int removeCuboidsContaining(String id, Location location) {
@@ -145,7 +169,22 @@ public class CityManager {
             Type listType = new TypeToken<List<City>>(){}.getType();
             List<City> list = gson.fromJson(fr, listType);
             byId.clear();
-            if (list != null) for (City c : list) byId.put(c.id, c);
+            if (list != null) {
+                for (City c : list) {
+                    if (c.cuboids == null) {
+                        c.cuboids = new ArrayList<>();
+                    }
+                    for (Cuboid cuboid : c.cuboids) {
+                        if (cuboid == null) continue;
+                        if (cuboid.fullHeight) continue;
+                        org.bukkit.World world = Bukkit.getWorld(cuboid.world);
+                        if (cuboid.isFullHeight(world)) {
+                            cuboid.fullHeight = true;
+                        }
+                    }
+                    byId.put(c.id, c);
+                }
+            }
         } catch (IOException e) {
             plugin.getLogger().severe("Failed loading cities: " + e.getMessage());
         }
