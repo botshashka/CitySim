@@ -191,7 +191,7 @@ public class StatsService {
         hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
 
         double nature = metrics.nature;
-        double natureTarget = 0.25;
+        double natureTarget = 0.10;
         double natureScore = (nature - natureTarget) / natureTarget;
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
@@ -366,13 +366,18 @@ public class StatsService {
     }
 
     private double natureRatio(City city) {
-        return ratioSurface(city, 6, b -> switch (b.getType()) {
-            case GRASS_BLOCK, SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN,
-                 OAK_LEAVES, BIRCH_LEAVES, SPRUCE_LEAVES, JUNGLE_LEAVES, ACACIA_LEAVES, DARK_OAK_LEAVES,
-                 AZALEA_LEAVES, FLOWERING_AZALEA_LEAVES, VINE, LILY_PAD,
-                 DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP,
-                 OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
-            default -> false;
+        return ratioSurface(city, 6, b -> {
+            org.bukkit.Material type = b.getType();
+            if (org.bukkit.Tag.LOGS.isTagged(type) || org.bukkit.Tag.LEAVES.isTagged(type)) {
+                return true;
+            }
+            return switch (type) {
+                case GRASS_BLOCK, SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN,
+                     VINE, LILY_PAD,
+                     DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP,
+                     OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
+                default -> false;
+            };
         });
     }
 
