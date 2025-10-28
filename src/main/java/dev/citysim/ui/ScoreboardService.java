@@ -130,8 +130,9 @@ public class ScoreboardService {
         switch (mode) {
             case FULL -> {
                 raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
                 raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness);
+                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
+                raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
                 raw.add(ChatColor.DARK_GRAY + " ");
                 raw.add(ChatColor.YELLOW + "Light: " + ChatColor.WHITE + formatPoints(breakdown.lightPoints));
                 raw.add(ChatColor.AQUA + "Employment: " + ChatColor.WHITE + formatPoints(breakdown.employmentPoints));
@@ -145,8 +146,9 @@ public class ScoreboardService {
             }
             case COMPACT -> {
                 raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
                 raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness);
+                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
+                raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
             }
         }
         return decorateLines(raw);

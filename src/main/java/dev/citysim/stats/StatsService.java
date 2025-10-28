@@ -100,12 +100,14 @@ public class StatsService {
             }
         }
 
+        int beds = countBeds(city);
         int unemployed = Math.max(0, pop - employed);
         int happiness = computeHappiness(city, pop, employed, golems);
 
         city.population = pop;
         city.employed = employed;
         city.unemployed = unemployed;
+        city.beds = beds;
         city.happiness = happiness;
     }
 
