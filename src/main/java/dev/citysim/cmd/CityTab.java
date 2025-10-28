@@ -25,15 +25,37 @@ public class CityTab implements TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         // Subcommand (arg0)
         if (args.length == 1) {
-            return filter(Arrays.asList("create", "wand", "stats", "titles", "bossbar", "scoreboard", "top"), args[0]);
+            return filter(Arrays.asList("create", "add", "list", "remove", "delete", "rename", "wand", "stats", "titles", "bossbar", "scoreboard", "top"), args[0]);
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
 
         switch (sub) {
             case "create":
+            case "add":
                 if (args.length == 2) {
                     return filter(Arrays.asList("<name>"), args[1]);
+                }
+                return List.of();
+
+            case "list":
+                return List.of();
+
+            case "remove":
+            case "delete":
+                if (args.length == 2) {
+                    List<String> ids = cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
+                    return filter(ids, args[1]);
+                }
+                return List.of();
+
+            case "rename":
+                if (args.length == 2) {
+                    List<String> ids = cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
+                    return filter(ids, args[1]);
+                }
+                if (args.length == 3) {
+                    return filter(Arrays.asList("<new name>"), args[2]);
                 }
                 return List.of();
 

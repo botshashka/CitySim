@@ -41,7 +41,8 @@ public class CityCommand implements CommandExecutor {
         String sub = args[0].toLowerCase();
 
         switch (sub) {
-            case "create": {
+            case "create":
+            case "add": {
                 if (!checkAdmin(s)) return true;
                 if (args.length < 2) {
                     s.sendMessage(ChatColor.YELLOW + "Usage: /city create <name>");
@@ -59,6 +60,64 @@ public class CityCommand implements CommandExecutor {
                     cityManager.save();
                     statsService.updateCity(created);
                     s.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + "). Use /city wand and /city addcuboid " + created.id + " to define its area.");
+                } catch (IllegalArgumentException ex) {
+                    s.sendMessage(ChatColor.RED + ex.getMessage());
+                }
+                return true;
+            }
+
+            case "list": {
+                if (cityManager.all().isEmpty()) {
+                    s.sendMessage(ChatColor.YELLOW + "No cities have been created yet.");
+                    return true;
+                }
+
+                s.sendMessage(ChatColor.GRAY + "Cities:");
+                for (City city : cityManager.all()) {
+                    s.sendMessage(ChatColor.GOLD + city.id + ChatColor.GRAY + " — " + ChatColor.WHITE + city.name);
+                }
+                return true;
+            }
+
+            case "remove":
+            case "delete": {
+                if (!checkAdmin(s)) return true;
+                if (args.length < 2) {
+                    s.sendMessage(ChatColor.YELLOW + "Usage: /city remove <cityId>");
+                    return true;
+                }
+
+                String id = args[1];
+                City removed = cityManager.remove(id);
+                if (removed == null) {
+                    s.sendMessage(ChatColor.RED + "City with id '" + id + "' does not exist.");
+                    return true;
+                }
+
+                cityManager.save();
+                s.sendMessage(ChatColor.GREEN + "City '" + removed.name + "' (ID: " + removed.id + ") removed.");
+                return true;
+            }
+
+            case "rename": {
+                if (!checkAdmin(s)) return true;
+                if (args.length < 3) {
+                    s.sendMessage(ChatColor.YELLOW + "Usage: /city rename <cityId> <new name>");
+                    return true;
+                }
+
+                String id = args[1];
+                String newName = String.join(" ", Arrays.copyOfRange(args, 2, args.length)).trim();
+                if (newName.isEmpty()) {
+                    s.sendMessage(ChatColor.RED + "New name cannot be empty.");
+                    return true;
+                }
+
+                try {
+                    City renamed = cityManager.rename(id, newName);
+                    cityManager.save();
+                    statsService.updateCity(renamed);
+                    s.sendMessage(ChatColor.GREEN + "City renamed to " + renamed.name + " (ID: " + renamed.id + ").");
                 } catch (IllegalArgumentException ex) {
                     s.sendMessage(ChatColor.RED + ex.getMessage());
                 }
@@ -260,6 +319,10 @@ public class CityCommand implements CommandExecutor {
     private boolean help(CommandSender s) {
         s.sendMessage(ChatColor.GRAY + "/city wand");
         s.sendMessage(ChatColor.GRAY + "/city create <name>");
+        s.sendMessage(ChatColor.GRAY + "/city add <name>");
+        s.sendMessage(ChatColor.GRAY + "/city list");
+        s.sendMessage(ChatColor.GRAY + "/city remove <cityId>");
+        s.sendMessage(ChatColor.GRAY + "/city rename <cityId> <new name>");
         s.sendMessage(ChatColor.GRAY + "/city addcuboid <cityId>");
         s.sendMessage(ChatColor.GRAY + "/city ymode <full|span>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
