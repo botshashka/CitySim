@@ -31,8 +31,7 @@ public class CityTab implements TabCompleter {
                     "list",
                     "remove",
                     "delete",
-                    "rename",
-                    "addcuboid",
+                    "edit",
                     "wand",
                     "stats",
                     "titles",
@@ -64,20 +63,16 @@ public class CityTab implements TabCompleter {
                 }
                 return List.of();
 
-            case "rename":
+            case "edit":
                 if (args.length == 2) {
                     List<String> ids = cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
                     return filter(ids, args[1]);
                 }
                 if (args.length == 3) {
-                    return filter(Arrays.asList("<new name>"), args[2]);
+                    return filter(Arrays.asList("name", "addcuboid", "removecuboid"), args[2]);
                 }
-                return List.of();
-
-            case "addcuboid":
-                if (args.length == 2) {
-                    List<String> ids = cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
-                    return filter(ids, args[1]);
+                if (args.length >= 4 && "name".equalsIgnoreCase(args[2])) {
+                    return filter(Arrays.asList("<new name>"), args[3]);
                 }
                 return List.of();
 
