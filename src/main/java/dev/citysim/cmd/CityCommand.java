@@ -42,37 +42,71 @@ public class CityCommand implements CommandExecutor {
 
         switch (sub) {
             case "create": {
-                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
                 if (!checkAdmin(s)) return true;
                 if (args.length < 2) {
-                    p.sendMessage(ChatColor.YELLOW + "Usage: /city create <name>");
+                    s.sendMessage(ChatColor.YELLOW + "Usage: /city create <name>");
                     return true;
                 }
 
                 String name = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
                 if (name.isEmpty()) {
-                    p.sendMessage(ChatColor.RED + "City name cannot be empty.");
-                    return true;
-                }
-
-                SelectionState sel = SelectionListener.get(p);
-                if (!sel.ready()) {
-                    p.sendMessage(ChatColor.RED + "Select two corners with the CitySim wand first.");
-                    return true;
-                }
-                if (sel.world != p.getWorld()) {
-                    p.sendMessage(ChatColor.RED + "Your selection is in a different world.");
+                    s.sendMessage(ChatColor.RED + "City name cannot be empty.");
                     return true;
                 }
 
                 try {
                     City created = cityManager.create(name);
-                    Cuboid cuboid = new Cuboid(sel.world, sel.pos1, sel.pos2, sel.yMode == SelectionState.YMode.FULL);
-                    cityManager.addCuboid(created.id, cuboid);
                     cityManager.save();
                     statsService.updateCity(created);
-                    SelectionListener.selections.put(p.getUniqueId(), new SelectionState());
-                    p.sendMessage(ChatColor.GREEN + "Created city " + created.name + " (" + created.id + ") with region " + formatCuboid(cuboid) + ".");
+                    s.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + "). Use /city wand and /city addcuboid " + created.id + " to define its area.");
+                } catch (IllegalArgumentException ex) {
+                    s.sendMessage(ChatColor.RED + ex.getMessage());
+                }
+                return true;
+            }
+
+            case "addcuboid": {
+                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
+                if (!checkAdmin(s)) return true;
+                if (args.length < 2) {
+                    p.sendMessage(ChatColor.YELLOW + "Usage: /city addcuboid <cityId>");
+                    return true;
+                }
+
+                String id = args[1].toLowerCase(Locale.ROOT);
+                SelectionState sel = SelectionListener.get(p);
+                if (!sel.ready()) {
+                    p.sendMessage(ChatColor.RED + "You must select two corners with the CitySim wand first!");
+                    return true;
+                }
+                if (sel.world != sel.pos1.getWorld() || sel.world != sel.pos2.getWorld()) {
+                    p.sendMessage(ChatColor.RED + "Your selection must be in a single world.");
+                    return true;
+                }
+                if (sel.world != p.getWorld()) {
+                    p.sendMessage(ChatColor.RED + "You are in a different world than your selection.");
+                    return true;
+                }
+
+                City city = cityManager.get(id);
+                if (city == null) {
+                    p.sendMessage(ChatColor.RED + "City with id '" + id + "' does not exist.");
+                    return true;
+                }
+
+                boolean fullHeight = sel.yMode == SelectionState.YMode.FULL;
+                Cuboid cuboid = new Cuboid(sel.world, sel.pos1, sel.pos2, fullHeight);
+
+                try {
+                    int index = cityManager.addCuboid(city.id, cuboid);
+                    cityManager.save();
+                    statsService.updateCity(city);
+
+                    int width = cuboid.maxX - cuboid.minX + 1;
+                    int length = cuboid.maxZ - cuboid.minZ + 1;
+                    int height = cuboid.maxY - cuboid.minY + 1;
+                    String mode = fullHeight ? "full" : "span";
+                    p.sendMessage(ChatColor.GREEN + "Added cuboid #" + index + " to " + city.name + " (" + width + "×" + length + "×" + height + ", mode: " + mode + ").");
                 } catch (IllegalArgumentException ex) {
                     p.sendMessage(ChatColor.RED + ex.getMessage());
                 }
@@ -164,6 +198,32 @@ public class CityCommand implements CommandExecutor {
                 return true;
             }
 
+            case "ymode": {
+                if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
+                if (!checkAdmin(s)) return true;
+                if (args.length < 2) {
+                    p.sendMessage(ChatColor.YELLOW + "Usage: /city ymode <full|span>");
+                    return true;
+                }
+
+                String modeArg = args[1].toLowerCase(Locale.ROOT);
+                SelectionState sel = SelectionListener.get(p);
+                switch (modeArg) {
+                    case "full":
+                        sel.yMode = SelectionState.YMode.FULL;
+                        p.sendMessage(ChatColor.GRAY + "Y-mode set to full.");
+                        break;
+                    case "span":
+                        sel.yMode = SelectionState.YMode.SPAN;
+                        p.sendMessage(ChatColor.GRAY + "Y-mode set to span.");
+                        break;
+                    default:
+                        p.sendMessage(ChatColor.RED + "Unknown mode. Use full or span.");
+                        break;
+                }
+                return true;
+            }
+
             case "top": {
                 if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
                 String metric = (args.length >= 2) ? args[1].toLowerCase() : "happy";
@@ -197,15 +257,11 @@ public class CityCommand implements CommandExecutor {
         return false;
     }
 
-    private String formatCuboid(Cuboid c) {
-        return "[" + c.world + " " +
-                c.minX + "," + c.minY + "," + c.minZ + " -> " +
-                c.maxX + "," + c.maxY + "," + c.maxZ + "]";
-    }
-
     private boolean help(CommandSender s) {
         s.sendMessage(ChatColor.GRAY + "/city wand");
         s.sendMessage(ChatColor.GRAY + "/city create <name>");
+        s.sendMessage(ChatColor.GRAY + "/city addcuboid <cityId>");
+        s.sendMessage(ChatColor.GRAY + "/city ymode <full|span>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
         s.sendMessage(ChatColor.GRAY + "/city titles on|off");
         s.sendMessage(ChatColor.GRAY + "/city bossbar on|off");
