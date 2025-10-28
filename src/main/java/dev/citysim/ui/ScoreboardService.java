@@ -134,10 +134,20 @@ public class ScoreboardService {
                 raw.add(ChatColor.DARK_GRAY + " ");
                 raw.add(ChatColor.YELLOW + "Light: " + ChatColor.WHITE + formatPoints(breakdown.lightPoints));
                 raw.add(ChatColor.AQUA + "Employment: " + ChatColor.WHITE + formatPoints(breakdown.employmentPoints));
-                raw.add(ChatColor.RED + "Crowding: " + ChatColor.WHITE + formatPoints(-breakdown.overcrowdingPenalty));
                 raw.add(ChatColor.DARK_GREEN + "Nature: " + ChatColor.WHITE + formatPoints(breakdown.naturePoints));
-                raw.add(ChatColor.DARK_RED + "Pollution: " + ChatColor.WHITE + formatPoints(-breakdown.pollutionPenalty));
                 raw.add(ChatColor.BLUE + "Housing: " + ChatColor.WHITE + formatPoints(breakdown.housingPoints));
+
+                List<String> penalties = new ArrayList<>(2);
+                if (breakdown.overcrowdingPenalty > 0) {
+                    penalties.add(ChatColor.RED + "Crowding: " + ChatColor.WHITE + formatPoints(-breakdown.overcrowdingPenalty));
+                }
+                if (breakdown.pollutionPenalty > 0) {
+                    penalties.add(ChatColor.DARK_RED + "Pollution: " + ChatColor.WHITE + formatPoints(-breakdown.pollutionPenalty));
+                }
+                if (!penalties.isEmpty()) {
+                    raw.add(ChatColor.DARK_GRAY + " ");
+                    raw.addAll(penalties);
+                }
             }
             case COMPACT -> {
                 raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
