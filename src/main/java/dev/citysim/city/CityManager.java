@@ -105,6 +105,7 @@ public class CityManager {
 
         c.cuboids.add(cuboid);
         if (c.world == null) c.world = cuboid.world;
+        c.invalidateBlockScanCache();
         return c.cuboids.size();
     }
 
@@ -126,6 +127,7 @@ public class CityManager {
         }
 
         city.highrise = highrise;
+        city.invalidateBlockScanCache();
         return city;
     }
 
@@ -143,6 +145,9 @@ public class CityManager {
         int removed = before - city.cuboids.size();
         if (city.cuboids.isEmpty()) {
             city.world = null;
+        }
+        if (removed > 0) {
+            city.invalidateBlockScanCache();
         }
         return removed;
     }

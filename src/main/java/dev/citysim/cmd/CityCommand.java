@@ -58,7 +58,7 @@ public class CityCommand implements CommandExecutor {
                 try {
                     City created = cityManager.create(name);
                     cityManager.save();
-                    statsService.updateCity(created);
+                    statsService.updateCity(created, true);
                     s.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + "). Use /city wand and /city edit " + created.id + " addcuboid to define its area.");
                 } catch (IllegalArgumentException ex) {
                     s.sendMessage(ChatColor.RED + ex.getMessage());
@@ -125,7 +125,7 @@ public class CityCommand implements CommandExecutor {
                         try {
                             City renamed = cityManager.rename(id, newName);
                             cityManager.save();
-                            statsService.updateCity(renamed);
+                            statsService.updateCity(renamed, true);
                             s.sendMessage(ChatColor.GREEN + "City renamed to " + renamed.name + " (ID: " + renamed.id + ").");
                         } catch (IllegalArgumentException ex) {
                             s.sendMessage(ChatColor.RED + ex.getMessage());
@@ -162,7 +162,7 @@ public class CityCommand implements CommandExecutor {
                         try {
                             int index = cityManager.addCuboid(city.id, cuboid);
                             cityManager.save();
-                            statsService.updateCity(city);
+                            statsService.updateCity(city, true);
 
                             int width = cuboid.maxX - cuboid.minX + 1;
                             int length = cuboid.maxZ - cuboid.minZ + 1;
@@ -201,7 +201,7 @@ public class CityCommand implements CommandExecutor {
                         try {
                             cityManager.setHighrise(city.id, enable);
                             cityManager.save();
-                            statsService.updateCity(city);
+                            statsService.updateCity(city, true);
                             s.sendMessage(ChatColor.GREEN + "City '" + city.name + "' highrise set to " + enable + ".");
                         } catch (IllegalArgumentException ex) {
                             s.sendMessage(ChatColor.RED + ex.getMessage());
@@ -232,7 +232,7 @@ public class CityCommand implements CommandExecutor {
                         }
 
                         cityManager.save();
-                        statsService.updateCity(city);
+                        statsService.updateCity(city, true);
                         p.sendMessage(ChatColor.GREEN + "Removed " + removed + " cuboid" + (removed == 1 ? "" : "s") + " from " + city.name + ".");
                         return true;
                     }
@@ -268,7 +268,7 @@ public class CityCommand implements CommandExecutor {
                 if (cty == null) cty = cityManager.cityAt(p.getLocation());
                 if (cty == null) { p.sendMessage(ChatColor.RED + "Stand in a city or pass /city stats <cityId>"); return true; }
 
-                var hb = statsService.updateCity(cty);
+                var hb = statsService.updateCity(cty, true);
                 var mm = MiniMessage.miniMessage();
                 String msg = """
                 <gray><b>%s — City stats</b></gray>

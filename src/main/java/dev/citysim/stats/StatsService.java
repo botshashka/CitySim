@@ -23,6 +23,7 @@ public class StatsService {
     private EmploymentMode employmentMode = EmploymentMode.PROFESSION_ONLY;
     private int wsRadius = 16;
     private int wsYRadius = 8;
+    private long blockScanRefreshIntervalMillis = 60000L;
 
     // Weights
     private static final int HIGHRISE_VERTICAL_STEP = 4;
@@ -61,6 +62,10 @@ public class StatsService {
     }
 
     public HappinessBreakdown updateCity(City city) {
+        return updateCity(city, false);
+    }
+
+    public HappinessBreakdown updateCity(City city, boolean forceRefresh) {
         int pop = 0, employed = 0, golems = 0;
 
         for (Cuboid c : city.cuboids) {
@@ -109,7 +114,8 @@ public class StatsService {
         city.beds = beds;
         city.golems = golems;
 
-        HappinessBreakdown hb = calculateHappinessBreakdown(city);
+        City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
+        HappinessBreakdown hb = calculateHappinessBreakdown(city, metrics);
         city.happinessBreakdown = hb;
         city.happiness = hb.total;
 
@@ -133,20 +139,27 @@ public class StatsService {
     }
 
     public HappinessBreakdown computeHappinessBreakdown(City city) {
-        if (city.happinessBreakdown != null) {
+        if (city.happinessBreakdown != null && city.blockScanCache != null) {
             return city.happinessBreakdown;
         }
-        return updateCity(city);
+        City.BlockScanCache metrics = city.blockScanCache;
+        if (metrics != null) {
+            HappinessBreakdown hb = calculateHappinessBreakdown(city, metrics);
+            city.happinessBreakdown = hb;
+            city.happiness = hb.total;
+            return hb;
+        }
+        return updateCity(city, true);
     }
 
-    private HappinessBreakdown calculateHappinessBreakdown(City city) {
+    private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
         int pop = city.population;
         int employed = city.employed;
         int golems = Math.max(0, city.golems);
 
         HappinessBreakdown hb = new HappinessBreakdown();
 
-        double lightScore = averageSurfaceLight(city); // current-time light
+        double lightScore = metrics.light;
         double lightNeutral = 7.5; // half brightness
         double lightScoreNormalized = (lightScore - lightNeutral) / lightNeutral;
         hb.lightPoints = clamp(lightScoreNormalized * lightMaxPts, -lightMaxPts, lightMaxPts);
@@ -159,16 +172,14 @@ public class StatsService {
         double safetyRatio = golems / expectedGolems;
         hb.safetyPoints = clamp((safetyRatio - 1.0) * safetyMaxPts, -safetyMaxPts, safetyMaxPts);
 
-        double effectiveArea = totalEffectiveArea(city);
-        double density = effectiveArea <= 0 ? 0 : pop / (effectiveArea / 1000.0);
-        hb.overcrowdingPenalty = Math.min(overcrowdMaxPenalty, density * 0.5);
+        hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
 
-        double nature = natureRatio(city);
+        double nature = metrics.nature;
         double natureTarget = 0.25;
         double natureScore = (nature - natureTarget) / natureTarget;
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
-        double pollution = pollutionRatio(city);
+        double pollution = metrics.pollution;
         double pollutionTarget = 0.01;
         double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
         hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
@@ -177,12 +188,12 @@ public class StatsService {
         double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
         hb.housingPoints = clamp((housingRatio - 1.0) * housingMaxPts, -housingMaxPts, housingMaxPts);
 
-        double water = waterRatio(city);
+        double water = metrics.water;
         double waterTarget = 0.1;
         double waterScore = (water - waterTarget) / waterTarget;
         hb.waterPoints = clamp(waterScore * waterMaxPts, -waterMaxPts, waterMaxPts);
 
-        double beauty = beautyRatio(city);
+        double beauty = metrics.beauty;
         double beautyTarget = 0.15;
         double beautyScore = (beauty - beautyTarget) / beautyTarget;
         hb.beautyPoints = clamp(beautyScore * beautyMaxPts, -beautyMaxPts, beautyMaxPts);
@@ -202,6 +213,63 @@ public class StatsService {
         if (total > 100) total = 100;
         hb.total = (int)Math.round(total);
         return hb;
+    }
+
+    private City.BlockScanCache ensureBlockScanCache(City city, boolean forceRefresh) {
+        long now = System.currentTimeMillis();
+        City.BlockScanCache cache = city.blockScanCache;
+        boolean expired = cache == null || blockScanRefreshIntervalMillis <= 0
+                || (now - cache.timestamp) >= blockScanRefreshIntervalMillis;
+        if (forceRefresh || expired) {
+            cache = recomputeBlockScanCache(city, now);
+        }
+        return cache;
+    }
+
+    private City.BlockScanCache recomputeBlockScanCache(City city, long now) {
+        City.BlockScanCache cache = new City.BlockScanCache();
+        cache.light = averageSurfaceLight(city);
+        cache.nature = natureRatio(city);
+        cache.pollution = pollutionRatio(city);
+        cache.water = waterRatio(city);
+        cache.beauty = beautyRatio(city);
+        cache.overcrowdingPenalty = computeOvercrowdingPenalty(city);
+        cache.timestamp = now;
+        city.blockScanCache = cache;
+        return cache;
+    }
+
+    private double computeOvercrowdingPenalty(City city) {
+        double effectiveArea = totalEffectiveArea(city);
+        if (effectiveArea <= 0) {
+            return 0.0;
+        }
+        int pop = Math.max(0, city.population);
+        if (pop <= 0) {
+            return 0.0;
+        }
+        double density = pop / (effectiveArea / 1000.0);
+        double penalty = density * 0.5;
+        if (penalty < 0.0) {
+            penalty = 0.0;
+        }
+        if (penalty > overcrowdMaxPenalty) {
+            penalty = overcrowdMaxPenalty;
+        }
+        return penalty;
+    }
+
+    public void invalidateBlockScanCache(City city) {
+        if (city != null) {
+            city.invalidateBlockScanCache();
+        }
+    }
+
+    public City.BlockScanCache refreshBlockScanCache(City city) {
+        if (city == null) {
+            return null;
+        }
+        return ensureBlockScanCache(city, true);
     }
 
     private double totalEffectiveArea(City city) {
@@ -351,6 +419,7 @@ public class StatsService {
         }
         wsRadius = Math.max(1, c.getInt("employment.workstation_radius", 16));
         wsYRadius = Math.max(1, c.getInt("employment.workstation_y_radius", 8));
+        blockScanRefreshIntervalMillis = Math.max(0L, c.getLong("happiness.block_scan_refresh_interval_millis", 60000L));
 
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
         employmentMaxPts = c.getDouble("happiness_weights.employment_max_points", 15);
