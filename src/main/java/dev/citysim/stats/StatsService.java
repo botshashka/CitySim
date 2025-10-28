@@ -25,6 +25,8 @@ public class StatsService {
     private int wsYRadius = 8;
 
     // Weights
+    private static final int HIGHRISE_VERTICAL_STEP = 4;
+
     private double lightMaxPts = 10;
     private double employmentMaxPts = 15;
     private double safetyMaxPts = 2.5;
@@ -233,10 +235,21 @@ public class StatsService {
             int step = 8;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    int y = w.getHighestBlockYAt(x, z);
-                    int light = w.getBlockAt(x, y, z).getLightLevel();
-                    lightSum += light;
-                    samples++;
+                    if (city.highrise) {
+                        for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
+                            lightSum += w.getBlockAt(x, y, z).getLightLevel();
+                            samples++;
+                        }
+                        if ((c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
+                            lightSum += w.getBlockAt(x, c.maxY, z).getLightLevel();
+                            samples++;
+                        }
+                    } else {
+                        int y = w.getHighestBlockYAt(x, z);
+                        int light = w.getBlockAt(x, y, z).getLightLevel();
+                        lightSum += light;
+                        samples++;
+                    }
                 }
             }
         }
@@ -252,10 +265,23 @@ public class StatsService {
             if (w == null) continue;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    int y = w.getHighestBlockYAt(x, z);
-                    org.bukkit.block.Block b = w.getBlockAt(x, y, z);
-                    if (test.test(b)) found++;
-                    probes++;
+                    if (city.highrise) {
+                        for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
+                            org.bukkit.block.Block b = w.getBlockAt(x, y, z);
+                            if (test.test(b)) found++;
+                            probes++;
+                        }
+                        if ((c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
+                            org.bukkit.block.Block b = w.getBlockAt(x, c.maxY, z);
+                            if (test.test(b)) found++;
+                            probes++;
+                        }
+                    } else {
+                        int y = w.getHighestBlockYAt(x, z);
+                        org.bukkit.block.Block b = w.getBlockAt(x, y, z);
+                        if (test.test(b)) found++;
+                        probes++;
+                    }
                 }
             }
         }
