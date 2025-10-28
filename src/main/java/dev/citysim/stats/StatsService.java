@@ -174,7 +174,7 @@ public class StatsService {
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
         double pollution = pollutionRatio(city);
-        double pollutionTarget = 0.05;
+        double pollutionTarget = 0.01;
         double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
         hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
 
