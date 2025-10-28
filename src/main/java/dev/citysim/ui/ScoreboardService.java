@@ -127,13 +127,11 @@ public class ScoreboardService {
 
     private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
         List<String> raw = new ArrayList<>();
-        String mood = shortenText(breakdown.dominantMessage(), 24);
         switch (mode) {
             case FULL -> {
                 raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
                 raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
                 raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness);
-                raw.add(ChatColor.BLUE + "Mood: " + ChatColor.WHITE + mood);
                 raw.add(ChatColor.DARK_GRAY + " ");
                 raw.add(ChatColor.YELLOW + "Light: " + ChatColor.WHITE + formatPoints(breakdown.lightPoints));
                 raw.add(ChatColor.AQUA + "Employment: " + ChatColor.WHITE + formatPoints(breakdown.employmentPoints));
@@ -149,7 +147,6 @@ public class ScoreboardService {
                 raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
                 raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
                 raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness);
-                raw.add(ChatColor.BLUE + "Mood: " + ChatColor.WHITE + mood);
             }
         }
         return decorateLines(raw);
@@ -166,13 +163,6 @@ public class ScoreboardService {
 
     private String formatPoints(double value) {
         return (value >= 0 ? "+" : "") + String.format(Locale.US, "%.1f", value);
-    }
-
-    private String shortenText(String text, int maxLength) {
-        if (text.length() <= maxLength) {
-            return text;
-        }
-        return text.substring(0, Math.max(0, maxLength - 1)) + "…";
     }
 
     private void applyLines(Objective objective, Scoreboard board, List<String> lines) {

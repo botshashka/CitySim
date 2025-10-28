@@ -54,19 +54,18 @@ public class BossBarService {
                 }
                 continue;
             }
-            String text = "<gray>"+c.name+" </gray><white>—</white> " +
-                    "<green>Pop "+c.population+"</green>  " +
-                    "<aqua>Empl "+c.employed+"</aqua>  " +
-                    "<gold>Happy "+c.happiness+"</gold>";
+            String text = "<white>" + c.name + "</white><white> — </white>" +
+                    "<gold>" + c.happiness + "%</gold>";
             Component comp = mm.deserialize(text);
 
             if (bar == null) {
-                bar = BossBar.bossBar(comp, c.happiness / 100f, BossBar.Color.GREEN, BossBar.Overlay.PROGRESS);
+                bar = BossBar.bossBar(comp, c.happiness / 100f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
                 p.showBossBar(bar);
                 bars.put(p.getUniqueId(), bar);
             } else {
                 bar.name(comp);
                 bar.progress(Math.max(0f, Math.min(1f, c.happiness / 100f)));
+                bar.color(BossBar.Color.WHITE);
             }
         }
     }
