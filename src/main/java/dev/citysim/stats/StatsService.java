@@ -405,7 +405,7 @@ public class StatsService {
                 }
             }
         }
-        return beds;
+        return beds / 2;
     }
 
     private double waterRatio(City city) {
