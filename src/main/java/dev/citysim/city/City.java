@@ -19,12 +19,29 @@ public class City {
     public int golems = 0;
     public int happiness = 50;
 
-    public HappinessBreakdown happinessBreakdown = null;
+    public transient HappinessBreakdown happinessBreakdown = null;
+
+    public transient BlockScanCache blockScanCache = null;
 
     public boolean highrise = false;
 
     public boolean contains(org.bukkit.Location loc) {
         for (Cuboid c : cuboids) if (c.contains(loc)) return true;
         return false;
+    }
+
+    public void invalidateBlockScanCache() {
+        blockScanCache = null;
+        happinessBreakdown = null;
+    }
+
+    public static class BlockScanCache {
+        public double light;
+        public double nature;
+        public double pollution;
+        public double water;
+        public double beauty;
+        public double overcrowdingPenalty;
+        public long timestamp;
     }
 }
