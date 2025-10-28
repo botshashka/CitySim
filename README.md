@@ -1,4 +1,4 @@
-# SimCity (Paper 1.21.x) — v0.1.8
+# CitySim (Paper 1.21.x) — v0.1.8
 
 ## Build (macOS)
 ```bash
@@ -22,7 +22,7 @@ chmod +x gradlew
 
 ## Deploy
 - Stop your server.
-- Delete any older SimCity jars from `plugins/`.
+- Delete any older CitySim jars from `plugins/`.
 - Copy `build/libs/simcity-paper-0.1.8.jar` to `plugins/`.
 - Start the server.
 - `/version SimCity` should show `0.1.8`.
