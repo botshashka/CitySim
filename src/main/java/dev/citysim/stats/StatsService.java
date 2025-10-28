@@ -36,6 +36,7 @@ public class StatsService {
     // Weights
     private static final int HIGHRISE_VERTICAL_STEP = 4;
 
+    private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
     private double employmentMaxPts = 15;
     private double overcrowdMaxPenalty = 10;
@@ -171,7 +172,6 @@ public class StatsService {
         HappinessBreakdown hb = new HappinessBreakdown();
 
         double lightScore = metrics.light;
-        double lightNeutral = 7.5; // half brightness
         double lightScoreNormalized = (lightScore - lightNeutral) / lightNeutral;
         hb.lightPoints = clamp(lightScoreNormalized * lightMaxPts, -lightMaxPts, lightMaxPts);
 
@@ -299,14 +299,18 @@ public class StatsService {
                         }
                     } else {
                         int y = w.getHighestBlockYAt(x, z);
-                        int light = w.getBlockAt(x, y, z).getLightLevel();
+                        org.bukkit.block.Block top = w.getBlockAt(x, y, z);
+                        if (top.isLiquid()) {
+                            continue;
+                        }
+                        int light = top.getLightLevel();
                         lightSum += light;
                         samples++;
                     }
                 }
             }
         }
-        return samples == 0 ? 7.5 : (double) lightSum / samples;
+        return samples == 0 ? lightNeutral : (double) lightSum / samples;
     }
 
     private interface BlockTest { boolean test(org.bukkit.block.Block b); }
@@ -418,6 +422,7 @@ public class StatsService {
         }
         statsInitialDelayTicks = configuredDelay;
 
+        lightNeutral = Math.max(0.1, c.getDouble("happiness_weights.light_neutral_level", 2.0));
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
         employmentMaxPts = c.getDouble("happiness_weights.employment_max_points", 15);
         overcrowdMaxPenalty = c.getDouble("happiness_weights.overcrowding_max_penalty", 10);
