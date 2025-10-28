@@ -204,12 +204,12 @@ public class CityCommand implements CommandExecutor {
                 <gray><b>%s — City stats</b></gray>
                 <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
                 <gold>Happiness:</gold> %d  <gray>(base 50)</gray>
-                <yellow>Light:</yellow> %.1f  <aqua>Employment:</aqua> %.1f  <green>Golems:</green> %.1f  <red>Overcrowding:</red> -%.1f  <gray>Job sites:</gray> %.1f
+                <yellow>Light:</yellow> %.1f  <aqua>Employment:</aqua> %.1f  <green>Golems:</green> %.1f  <red>Overcrowding:</red> -%.1f
                 <green>Nature:</green> %.1f  <red>Pollution:</red> -%.1f  <blue>Beds:</blue> %.1f  <aqua>Water:</aqua> %.1f  <light_purple>Beauty:</light_purple> %.1f
                 """.formatted(
                         cty.name, cty.population, cty.employed, cty.unemployed,
                         hb.total,
-                        hb.lightPoints, hb.employmentPoints, hb.golemPoints, hb.overcrowdingPenalty, hb.jobDensityPoints,
+                        hb.lightPoints, hb.employmentPoints, hb.golemPoints, hb.overcrowdingPenalty,
                         hb.naturePoints, hb.pollutionPenalty, hb.bedsPoints, hb.waterPoints, hb.beautyPoints
                 );
                 p.sendMessage(mm.deserialize(msg));
