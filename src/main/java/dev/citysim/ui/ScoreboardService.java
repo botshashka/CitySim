@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class ScoreboardService {
     private static final char[] UNIQUE_SUFFIX_CODES =
@@ -26,19 +25,19 @@ public class ScoreboardService {
 
     public enum Mode { COMPACT, FULL }
 
-    private final Map<UUID, Mode> modes = new ConcurrentHashMap<>();
     private final StatsService statsService;
     private final Plugin plugin;
     private final CityManager cityManager;
     private int taskId = -1;
 
-    private final Map<UUID, Boolean> enabled = new ConcurrentHashMap<>();
     private final Map<UUID, Scoreboard> boards = new HashMap<>();
+    private final DisplayPreferencesStore displayPreferencesStore;
 
-    public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService) {
+    public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
         this.statsService = statsService;
         this.plugin = plugin;
         this.cityManager = cityManager;
+        this.displayPreferencesStore = displayPreferencesStore;
     }
 
     public void start() {
@@ -65,7 +64,7 @@ public class ScoreboardService {
     }
 
     public void setEnabled(Player player, boolean on) {
-        enabled.put(player.getUniqueId(), on);
+        displayPreferencesStore.setScoreboardEnabled(player.getUniqueId(), on);
         var manager = Bukkit.getScoreboardManager();
         if (!on) {
             if (manager != null) {
@@ -78,7 +77,7 @@ public class ScoreboardService {
     }
 
     public boolean isEnabled(Player player) {
-        return enabled.getOrDefault(player.getUniqueId(), false);
+        return displayPreferencesStore.isScoreboardEnabled(player.getUniqueId());
     }
 
     private void tick() {
@@ -112,7 +111,7 @@ public class ScoreboardService {
 
             clearBoardEntries(board);
 
-            List<String> lines = buildLines(city, breakdown, getMode(player.getUniqueId()));
+            List<String> lines = buildLines(city, breakdown, displayPreferencesStore.getScoreboardMode(player.getUniqueId()));
             applyLines(objective, board, lines);
 
             player.setScoreboard(board);
@@ -175,10 +174,10 @@ public class ScoreboardService {
     }
 
     public void setMode(UUID uuid, Mode mode) {
-        modes.put(uuid, mode);
+        displayPreferencesStore.setScoreboardMode(uuid, mode);
     }
 
     public Mode getMode(UUID uuid) {
-        return modes.getOrDefault(uuid, Mode.COMPACT);
+        return displayPreferencesStore.getScoreboardMode(uuid);
     }
 }

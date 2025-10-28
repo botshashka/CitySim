@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -33,12 +32,13 @@ public class TitleService {
 
     private final Map<UUID, String> lastCity = new HashMap<>();
     private final Map<UUID, Long> lastShownTick = new HashMap<>();
-    private final Map<UUID, Boolean> enabled = new ConcurrentHashMap<>();
+    private final DisplayPreferencesStore displayPreferencesStore;
 
-    public TitleService(Plugin plugin, CityManager cityManager, StatsService statsService) {
+    public TitleService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.statsService = statsService;
+        this.displayPreferencesStore = displayPreferencesStore;
     }
 
     public void start() {
@@ -108,11 +108,11 @@ public class TitleService {
     }
 
     public void setEnabled(UUID uuid, boolean on) {
-        enabled.put(uuid, on);
+        displayPreferencesStore.setTitlesEnabled(uuid, on);
     }
 
     public boolean isEnabled(UUID uuid) {
-        return enabled.getOrDefault(uuid, true);
+        return displayPreferencesStore.isTitlesEnabled(uuid);
     }
 
     private String resolveMessage(String key) {
