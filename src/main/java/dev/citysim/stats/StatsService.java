@@ -16,9 +16,17 @@ import org.bukkit.plugin.Plugin;
 public class StatsService {
     public enum EmploymentMode { PROFESSION_ONLY, PROFESSION_AND_WORKSTATION, WORKSTATION_PROXIMITY }
 
+    private static final long DEFAULT_STATS_INITIAL_DELAY_TICKS = 40L;
+    private static final long DEFAULT_STATS_INTERVAL_TICKS = 100L;
+    private static final long MIN_STATS_INTERVAL_TICKS = 20L;
+    private static final long MAX_STATS_INTERVAL_TICKS = 12000L; // 10 minutes at 20 TPS
+    private static final long MAX_STATS_INITIAL_DELAY_TICKS = 6000L; // 5 minutes at 20 TPS
+
     private final Plugin plugin;
     private final CityManager cityManager;
     private int taskId = -1;
+    private long statsInitialDelayTicks = DEFAULT_STATS_INITIAL_DELAY_TICKS;
+    private long statsIntervalTicks = DEFAULT_STATS_INTERVAL_TICKS;
 
     private EmploymentMode employmentMode = EmploymentMode.PROFESSION_ONLY;
     private int wsRadius = 16;
@@ -47,12 +55,20 @@ public class StatsService {
     public void start() {
         updateConfig();
         if (taskId != -1) return;
-        taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, 40L, 100L);
+        scheduleTask();
     }
 
     public void stop() {
-        if (taskId != -1) Bukkit.getScheduler().cancelTask(taskId);
-        taskId = -1;
+        if (taskId != -1) {
+            Bukkit.getScheduler().cancelTask(taskId);
+            taskId = -1;
+        }
+    }
+
+    public void restartTask() {
+        updateConfig();
+        stop();
+        scheduleTask();
     }
 
     private void tick() {
@@ -421,6 +437,20 @@ public class StatsService {
         wsYRadius = Math.max(1, c.getInt("employment.workstation_y_radius", 8));
         blockScanRefreshIntervalMillis = Math.max(0L, c.getLong("happiness.block_scan_refresh_interval_millis", 60000L));
 
+        long configuredInterval = c.getLong("updates.stats_interval_ticks", DEFAULT_STATS_INTERVAL_TICKS);
+        if (configuredInterval < MIN_STATS_INTERVAL_TICKS || configuredInterval > MAX_STATS_INTERVAL_TICKS) {
+            plugin.getLogger().warning("updates.stats_interval_ticks out of range; using default interval of " + DEFAULT_STATS_INTERVAL_TICKS + " ticks.");
+            configuredInterval = DEFAULT_STATS_INTERVAL_TICKS;
+        }
+        statsIntervalTicks = configuredInterval;
+
+        long configuredDelay = c.getLong("updates.stats_initial_delay_ticks", DEFAULT_STATS_INITIAL_DELAY_TICKS);
+        if (configuredDelay < 0L || configuredDelay > MAX_STATS_INITIAL_DELAY_TICKS) {
+            plugin.getLogger().warning("updates.stats_initial_delay_ticks out of range; using default delay of " + DEFAULT_STATS_INITIAL_DELAY_TICKS + " ticks.");
+            configuredDelay = DEFAULT_STATS_INITIAL_DELAY_TICKS;
+        }
+        statsInitialDelayTicks = configuredDelay;
+
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
         employmentMaxPts = c.getDouble("happiness_weights.employment_max_points", 15);
         safetyMaxPts = c.getDouble("happiness_weights.safety_max_points", 2.5);
@@ -430,5 +460,12 @@ public class StatsService {
         housingMaxPts = c.getDouble("happiness_weights.housing_max_points", 10);
         waterMaxPts = c.getDouble("happiness_weights.water_max_points", 5);
         beautyMaxPts = c.getDouble("happiness_weights.beauty_max_points", 5);
+    }
+
+    private void scheduleTask() {
+        if (!plugin.isEnabled()) {
+            return;
+        }
+        taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, statsInitialDelayTicks, statsIntervalTicks);
     }
 }

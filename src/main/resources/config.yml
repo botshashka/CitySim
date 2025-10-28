@@ -1,7 +1,8 @@
 # CitySim plugin configuration
 # You can tweak update intervals and happiness weights later.
 updates:
-  stats_interval_ticks: 100     # ~5 seconds
+  stats_interval_ticks: 100     # ~5 seconds between stat updates (min 20, max 12000)
+  stats_initial_delay_ticks: 40 # Delay before the first stat update (0 - 6000)
   bossbar_interval_ticks: 40    # ~2 seconds
 
 happiness_weights:
