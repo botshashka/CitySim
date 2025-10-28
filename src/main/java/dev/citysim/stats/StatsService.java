@@ -190,9 +190,13 @@ public class StatsService {
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
         double pollution = metrics.pollution;
-        double pollutionTarget = 0.025;
-        double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
-        hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
+        double pollutionTarget = 0.02;
+        if (metrics.pollutingBlocks < 4) {
+            hb.pollutionPenalty = 0.0;
+        } else {
+            double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
+            hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
+        }
 
         int beds = city.beds;
         double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
@@ -230,7 +234,9 @@ public class StatsService {
         City.BlockScanCache cache = new City.BlockScanCache();
         cache.light = averageSurfaceLight(city);
         cache.nature = natureRatio(city);
-        cache.pollution = pollutionRatio(city);
+        PollutionStats pollutionStats = pollutionStats(city);
+        cache.pollution = pollutionStats.ratio();
+        cache.pollutingBlocks = pollutionStats.blockCount();
         cache.overcrowdingPenalty = computeOvercrowdingPenalty(city);
         cache.timestamp = now;
         city.blockScanCache = cache;
@@ -333,7 +339,25 @@ public class StatsService {
 
     private interface BlockTest { boolean test(org.bukkit.block.Block b); }
 
+    private static class SurfaceSampleResult {
+        final int found;
+        final int probes;
+
+        SurfaceSampleResult(int found, int probes) {
+            this.found = found;
+            this.probes = probes;
+        }
+
+        double ratio() {
+            return probes == 0 ? 0.0 : (double) found / (double) probes;
+        }
+    }
+
     private double ratioSurface(City city, int step, BlockTest test) {
+        return sampleSurface(city, step, test).ratio();
+    }
+
+    private SurfaceSampleResult sampleSurface(City city, int step, BlockTest test) {
         int found = 0, probes = 0;
         for (Cuboid c : city.cuboids) {
             World w = Bukkit.getWorld(c.world);
@@ -360,7 +384,7 @@ public class StatsService {
                 }
             }
         }
-        return probes == 0 ? 0.0 : (double) found / (double) probes;
+        return new SurfaceSampleResult(found, probes);
     }
 
     private double natureRatio(City city) {
@@ -379,11 +403,14 @@ public class StatsService {
         });
     }
 
-    private double pollutionRatio(City city) {
-        return ratioSurface(city, 8, b -> switch (b.getType()) {
+    private record PollutionStats(double ratio, int blockCount) {}
+
+    private PollutionStats pollutionStats(City city) {
+        SurfaceSampleResult result = sampleSurface(city, 8, b -> switch (b.getType()) {
             case FURNACE, BLAST_FURNACE, SMOKER, CAMPFIRE, SOUL_CAMPFIRE, LAVA, LAVA_CAULDRON -> true;
             default -> false;
         });
+        return new PollutionStats(result.ratio(), result.found);
     }
 
     private int countBeds(City city) {

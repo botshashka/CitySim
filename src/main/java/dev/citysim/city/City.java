@@ -40,6 +40,7 @@ public class City {
         public double light;
         public double nature;
         public double pollution;
+        public int pollutingBlocks;
         public double overcrowdingPenalty;
         public long timestamp;
     }
