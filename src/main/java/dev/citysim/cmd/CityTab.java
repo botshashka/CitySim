@@ -34,9 +34,7 @@ public class CityTab implements TabCompleter {
                     "edit",
                     "wand",
                     "stats",
-                    "titles",
-                    "bossbar",
-                    "scoreboard",
+                    "display",
                     "ymode",
                     "top"
             ), args[0]);
@@ -90,27 +88,21 @@ public class CityTab implements TabCompleter {
                 }
                 return List.of();
 
-            case "titles":
-                // /city titles on|off
+            case "display":
                 if (args.length == 2) {
-                    return filter(Arrays.asList("on", "off"), args[1]);
+                    return filter(Arrays.asList("titles", "bossbar", "scoreboard"), args[1]);
                 }
-                return List.of();
-
-            case "bossbar":
-                if (args.length == 2) {
-                    return filter(Arrays.asList("on", "off"), args[1]);
+                if (args.length == 3) {
+                    String target = args[1].toLowerCase(Locale.ROOT);
+                    if ("titles".equals(target) || "bossbar".equals(target)) {
+                        return filter(Arrays.asList("on", "off"), args[2]);
+                    }
+                    if ("scoreboard".equals(target)) {
+                        return filter(Arrays.asList("on", "off", "mode"), args[2]);
+                    }
                 }
-                return List.of();
-
-            case "scoreboard":
-                // /city scoreboard on|off
-                // /city scoreboard mode compact|full
-                if (args.length == 2) {
-                    return filter(Arrays.asList("on", "off", "mode"), args[1]);
-                }
-                if (args.length >= 3 && "mode".equalsIgnoreCase(args[1])) {
-                    return filter(Arrays.asList("compact", "full"), args[2]);
+                if (args.length == 4 && "scoreboard".equalsIgnoreCase(args[1]) && "mode".equalsIgnoreCase(args[2])) {
+                    return filter(Arrays.asList("compact", "full"), args[3]);
                 }
                 return List.of();
 
