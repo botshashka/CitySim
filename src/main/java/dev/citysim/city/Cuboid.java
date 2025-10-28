@@ -6,6 +6,7 @@ import org.bukkit.World;
 public class Cuboid {
     public String world;
     public int minX, minY, minZ, maxX, maxY, maxZ;
+    public boolean fullHeight;
 
     public Cuboid() {}
     public Cuboid(World w, Location a, Location b, boolean fullHeight) {
@@ -21,6 +22,17 @@ public class Cuboid {
             this.minY = Math.min(a.getBlockY(), b.getBlockY());
             this.maxY = Math.max(a.getBlockY(), b.getBlockY());
         }
+        this.fullHeight = fullHeight;
+    }
+
+    public boolean isFullHeight(World world) {
+        if (fullHeight) return true;
+        if (world != null) {
+            int worldMin = world.getMinHeight();
+            int worldMax = world.getMaxHeight() - 1;
+            if (minY <= worldMin && maxY >= worldMax) return true;
+        }
+        return (maxY - minY) >= 255;
     }
 
     public boolean contains(Location loc) {

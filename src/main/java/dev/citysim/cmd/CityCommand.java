@@ -175,6 +175,40 @@ public class CityCommand implements CommandExecutor {
                         return true;
                     }
 
+                    case "highrise": {
+                        if (args.length < 4) {
+                            sendEditUsage(s);
+                            return true;
+                        }
+
+                        String value = args[3];
+                        boolean enable;
+                        if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("on")) {
+                            enable = true;
+                        } else if (value.equalsIgnoreCase("false") || value.equalsIgnoreCase("off")) {
+                            enable = false;
+                        } else {
+                            s.sendMessage(ChatColor.RED + "Highrise value must be true/false.");
+                            return true;
+                        }
+
+                        City city = cityManager.get(id);
+                        if (city == null) {
+                            s.sendMessage(ChatColor.RED + "City with id '" + id + "' does not exist.");
+                            return true;
+                        }
+
+                        try {
+                            cityManager.setHighrise(city.id, enable);
+                            cityManager.save();
+                            statsService.updateCity(city);
+                            s.sendMessage(ChatColor.GREEN + "City '" + city.name + "' highrise set to " + enable + ".");
+                        } catch (IllegalArgumentException ex) {
+                            s.sendMessage(ChatColor.RED + ex.getMessage());
+                        }
+                        return true;
+                    }
+
                     case "removecuboid": {
                         if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
 
@@ -204,7 +238,7 @@ public class CityCommand implements CommandExecutor {
                     }
 
                     default:
-                        s.sendMessage(ChatColor.RED + "Unknown edit action. Use name, addcuboid, or removecuboid.");
+                        s.sendMessage(ChatColor.RED + "Unknown edit action. Use name, addcuboid, removecuboid, or highrise.");
                         return true;
                 }
             }
@@ -358,6 +392,7 @@ public class CityCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> name <new name>");
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> addcuboid");
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> removecuboid");
+        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> highrise <true|false>");
     }
 
     private boolean help(CommandSender s) {
@@ -369,6 +404,7 @@ public class CityCommand implements CommandExecutor {
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> name <new name>");
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> addcuboid");
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> removecuboid");
+        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> highrise <true|false>");
         s.sendMessage(ChatColor.GRAY + "/city ymode <full|span>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
         s.sendMessage(ChatColor.GRAY + "/city titles on|off");

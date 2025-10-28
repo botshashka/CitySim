@@ -164,8 +164,8 @@ public class StatsService {
         double safetyRatio = golems / expectedGolems;
         hb.safetyPoints = clamp((safetyRatio - 1.0) * safetyMaxPts, -safetyMaxPts, safetyMaxPts);
 
-        double area2D = totalArea2D(city);
-        double density = area2D <= 0 ? 0 : pop / (area2D / 1000.0);
+        double effectiveArea = totalEffectiveArea(city);
+        double density = effectiveArea <= 0 ? 0 : pop / (effectiveArea / 1000.0);
         hb.overcrowdingPenalty = Math.min(overcrowdMaxPenalty, density * 0.5);
 
         double nature = natureRatio(city);
@@ -209,9 +209,19 @@ public class StatsService {
         return hb;
     }
 
-    private double totalArea2D(City city) {
+    private double totalEffectiveArea(City city) {
         long sum = 0;
-        for (Cuboid c : city.cuboids) sum += (long)(c.maxX - c.minX + 1) * (long)(c.maxZ - c.minZ + 1);
+        for (Cuboid c : city.cuboids) {
+            long width = (long) (c.maxX - c.minX + 1);
+            long length = (long) (c.maxZ - c.minZ + 1);
+            long area = width * length;
+            if (city.highrise) {
+                long height = (long) (c.maxY - c.minY + 1);
+                if (height < 1) height = 1;
+                area *= height;
+            }
+            sum += area;
+        }
         return (double) sum;
     }
 

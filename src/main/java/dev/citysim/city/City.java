@@ -15,6 +15,8 @@ public class City {
     public int unemployed = 0;
     public int happiness = 50;
 
+    public boolean highrise = false;
+
     public boolean contains(org.bukkit.Location loc) {
         for (Cuboid c : cuboids) if (c.contains(loc)) return true;
         return false;
