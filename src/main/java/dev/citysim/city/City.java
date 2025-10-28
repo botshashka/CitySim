@@ -18,6 +18,7 @@ public class City {
     public int beds = 0;
     public int golems = 0;
     public int happiness = 50;
+    public int stations = 0;
 
     public transient HappinessBreakdown happinessBreakdown = null;
 

@@ -209,6 +209,87 @@ public class CityCommand implements CommandExecutor {
                         return true;
                     }
 
+                    case "station": {
+                        if (args.length < 4) {
+                            sendStationUsage(s);
+                            return true;
+                        }
+
+                        City city = cityManager.get(id);
+                        if (city == null) {
+                            s.sendMessage(ChatColor.RED + "City with id '" + id + "' does not exist.");
+                            return true;
+                        }
+
+                        String stationAction = args[3].toLowerCase(Locale.ROOT);
+                        int previous = Math.max(0, city.stations);
+                        int updated = previous;
+
+                        switch (stationAction) {
+                            case "add": {
+                                if (args.length < 5) {
+                                    sendStationUsage(s);
+                                    return true;
+                                }
+                                Integer amount = parseNonNegative(args[4], s, "stations to add");
+                                if (amount == null) {
+                                    return true;
+                                }
+                                updated = previous + amount;
+                                break;
+                            }
+                            case "remove": {
+                                if (args.length < 5) {
+                                    sendStationUsage(s);
+                                    return true;
+                                }
+                                Integer amount = parseNonNegative(args[4], s, "stations to remove");
+                                if (amount == null) {
+                                    return true;
+                                }
+                                updated = Math.max(0, previous - amount);
+                                break;
+                            }
+                            case "set": {
+                                if (args.length < 5) {
+                                    sendStationUsage(s);
+                                    return true;
+                                }
+                                Integer amount = parseNonNegative(args[4], s, "station count");
+                                if (amount == null) {
+                                    return true;
+                                }
+                                updated = amount;
+                                break;
+                            }
+                            case "clear": {
+                                updated = 0;
+                                break;
+                            }
+                            default:
+                                sendStationUsage(s);
+                                return true;
+                        }
+
+                        if (updated < 0) {
+                            updated = 0;
+                        }
+
+                        city.stations = updated;
+                        cityManager.save();
+                        statsService.updateCity(city, true);
+
+                        if (updated == previous) {
+                            String word = updated == 1 ? " station" : " stations";
+                            s.sendMessage(ChatColor.YELLOW + "City '" + city.name + "' remains at " + updated + word + ".");
+                        } else {
+                            String newWord = updated == 1 ? " station" : " stations";
+                            String oldWord = previous == 1 ? " station" : " stations";
+                            s.sendMessage(ChatColor.GREEN + "City '" + city.name + "' now has " + updated + newWord + " (was " + previous + oldWord + ").");
+                        }
+                        return true;
+                    }
+
                     case "removecuboid": {
                         if (!(s instanceof Player p)) { s.sendMessage("Players only."); return true; }
 
@@ -238,7 +319,7 @@ public class CityCommand implements CommandExecutor {
                     }
 
                     default:
-                        s.sendMessage(ChatColor.RED + "Unknown edit action. Use name, addcuboid, removecuboid, or highrise.");
+                        s.sendMessage(ChatColor.RED + "Unknown edit action. Use name, addcuboid, removecuboid, highrise, or station.");
                         return true;
                 }
             }
@@ -270,27 +351,31 @@ public class CityCommand implements CommandExecutor {
 
                 var hb = statsService.updateCity(cty, true);
                 var mm = MiniMessage.miniMessage();
-                var penaltyParts = new java.util.ArrayList<String>(2);
+                var extraParts = new java.util.ArrayList<String>(3);
+                extraParts.add("<light_purple>Transit:</light_purple> %s"
+                        .formatted(String.format(Locale.US, "%+.1f", hb.transitPoints)));
                 if (hb.overcrowdingPenalty > 0) {
-                    penaltyParts.add("<red>Overcrowding:</red> -%.1f".formatted(hb.overcrowdingPenalty));
+                    extraParts.add("<red>Overcrowding:</red> -%.1f".formatted(hb.overcrowdingPenalty));
                 }
                 if (hb.pollutionPenalty > 0) {
-                    penaltyParts.add("<red>Pollution:</red> -%.1f".formatted(hb.pollutionPenalty));
+                    extraParts.add("<red>Pollution:</red> -%.1f".formatted(hb.pollutionPenalty));
                 }
 
                 String breakdownLines = "<yellow>Light:</yellow> %.1f  <aqua>Employment:</aqua> %.1f  <green>Nature:</green> %.1f  <blue>Housing:</blue> %.1f"
                         .formatted(hb.lightPoints, hb.employmentPoints, hb.naturePoints, hb.housingPoints);
-                if (!penaltyParts.isEmpty()) {
-                    breakdownLines += "\n" + String.join("  ", penaltyParts);
+                if (!extraParts.isEmpty()) {
+                    breakdownLines += "\n" + String.join("  ", extraParts);
                 }
 
                 String msg = """
                 <gray><b>%s — City stats</b></gray>
                 <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
+                <blue>Homes:</blue> %d/%d  <light_purple>Stations:</light_purple> %d
                 <gold>Happiness:</gold> %d  <gray>(base 50)</gray>
                 %s
                 """.formatted(
                         cty.name, cty.population, cty.employed, cty.unemployed,
+                        cty.beds, cty.population, cty.stations,
                         hb.total,
                         breakdownLines
                 );
@@ -404,12 +489,32 @@ public class CityCommand implements CommandExecutor {
         return false;
     }
 
+    private Integer parseNonNegative(String value, CommandSender sender, String context) {
+        int amount;
+        try {
+            amount = Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            sender.sendMessage(ChatColor.RED + "Invalid number for " + context + ": " + value);
+            return null;
+        }
+        if (amount < 0) {
+            sender.sendMessage(ChatColor.RED + "Amount must be zero or positive.");
+            return null;
+        }
+        return amount;
+    }
+
+    private void sendStationUsage(CommandSender sender) {
+        sender.sendMessage(ChatColor.YELLOW + "Usage: /city edit <cityId> station <add|remove|set|clear> [amount]");
+    }
+
     private void sendEditUsage(CommandSender sender) {
         sender.sendMessage(ChatColor.YELLOW + "Usage:");
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> name <new name>");
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> addcuboid");
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> removecuboid");
         sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> highrise <true|false>");
+        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> station <add|remove|set|clear> [amount]");
     }
 
     private void sendDisplayUsage(CommandSender sender) {
@@ -430,6 +535,7 @@ public class CityCommand implements CommandExecutor {
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> addcuboid");
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> removecuboid");
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> highrise <true|false>");
+        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> station <add|remove|set|clear> [amount]");
         s.sendMessage(ChatColor.GRAY + "/city ymode <full|span>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
         s.sendMessage(ChatColor.GRAY + "/city display titles on|off");
