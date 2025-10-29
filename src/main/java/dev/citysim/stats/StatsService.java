@@ -27,8 +27,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class StatsService {
 
@@ -40,6 +42,7 @@ public class StatsService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
+    private final StationCounter stationCounter;
     private int taskId = -1;
     private long statsInitialDelayTicks = DEFAULT_STATS_INITIAL_DELAY_TICKS;
     private long statsIntervalTicks = DEFAULT_STATS_INTERVAL_TICKS;
@@ -62,6 +65,8 @@ public class StatsService {
     private double pollutionMaxPenalty = 15;
     private double housingMaxPts = 10;
     private double transitMaxPts = 5;
+    private StationCountingMode stationCountingMode = StationCountingMode.MANUAL;
+    private boolean stationCountingWarningLogged = false;
 
     private final Map<String, ScanRequest> pendingCityUpdates = new LinkedHashMap<>();
     private final Deque<String> scheduledCityQueue = new ArrayDeque<>();
@@ -72,9 +77,10 @@ public class StatsService {
 
     private final ScanDebugManager scanDebugManager = new ScanDebugManager();
 
-    public StatsService(Plugin plugin, CityManager cm) {
+    public StatsService(Plugin plugin, CityManager cm, StationCounter stationCounter) {
         this.plugin = plugin;
         this.cityManager = cm;
+        this.stationCounter = stationCounter;
         updateConfig();
     }
 
@@ -147,6 +153,10 @@ public class StatsService {
             return false;
         }
         return scanDebugManager.toggle(player);
+    }
+
+    public StationCountingMode getStationCountingMode() {
+        return stationCountingMode;
     }
 
     private void addPendingCity(String cityId, boolean forceRefresh, String reason, ScanContext context) {
@@ -730,6 +740,8 @@ public class StatsService {
             city.unemployed = unemployed;
             city.beds = beds;
 
+            refreshStationCount(city);
+
             City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
             result = calculateHappinessBreakdown(city, metrics);
             city.happinessBreakdown = result;
@@ -976,6 +988,42 @@ public class StatsService {
         }
         requestCityUpdate(city, true, "compute happiness breakdown");
         return city.happinessBreakdown != null ? city.happinessBreakdown : new HappinessBreakdown();
+    }
+
+    private void refreshStationCount(City city) {
+        if (city == null) {
+            return;
+        }
+        switch (stationCountingMode) {
+            case DISABLED -> city.stations = 0;
+            case TRAIN_CARTS -> {
+                if (stationCounter == null) {
+                    if (!stationCountingWarningLogged) {
+                        plugin.getLogger().warning("TrainCarts station counting requested but integration is unavailable; using manual station totals.");
+                        stationCountingWarningLogged = true;
+                    }
+                    return;
+                }
+                try {
+                    OptionalInt counted = stationCounter.countStations(city);
+                    if (counted.isPresent()) {
+                        city.stations = Math.max(0, counted.getAsInt());
+                        stationCountingWarningLogged = false;
+                    } else if (!stationCountingWarningLogged) {
+                        plugin.getLogger().warning("Failed to refresh TrainCarts station count for city '" + city.name + "'; keeping the previous value.");
+                        stationCountingWarningLogged = true;
+                    }
+                } catch (RuntimeException ex) {
+                    if (!stationCountingWarningLogged) {
+                        plugin.getLogger().log(Level.WARNING, "Unexpected error counting TrainCarts stations for city '" + city.name + "'", ex);
+                        stationCountingWarningLogged = true;
+                    }
+                }
+            }
+            case MANUAL -> {
+                stationCountingWarningLogged = false;
+            }
+        }
     }
 
     private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
@@ -1323,6 +1371,10 @@ public class StatsService {
     }
 
     private double computeTransitPoints(City city) {
+        if (stationCountingMode == StationCountingMode.DISABLED) {
+            return 0.0;
+        }
+
         double area = totalFootprintArea(city);
         if (area <= 0.0 || transitMaxPts <= 0.0) {
             return 0.0;
@@ -1343,6 +1395,19 @@ public class StatsService {
     public void updateConfig() {
         var c = plugin.getConfig();
         blockScanRefreshIntervalMillis = Math.max(0L, c.getLong("happiness.block_scan_refresh_interval_millis", 60000L));
+
+        StationCountingMode configuredMode = StationCountingMode.fromConfig(c.getString("stations.counting_mode", "manual"));
+        if (configuredMode == StationCountingMode.TRAIN_CARTS && stationCounter == null) {
+            if (stationCountingMode != StationCountingMode.MANUAL) {
+                plugin.getLogger().warning("TrainCarts station counting requested in configuration, but TrainCarts was not detected. Falling back to manual station counts.");
+            }
+            stationCountingMode = StationCountingMode.MANUAL;
+        } else {
+            stationCountingMode = configuredMode;
+        }
+        if (stationCountingMode != StationCountingMode.TRAIN_CARTS) {
+            stationCountingWarningLogged = false;
+        }
 
         long configuredInterval = c.getLong("updates.stats_interval_ticks", DEFAULT_STATS_INTERVAL_TICKS);
         if (configuredInterval < MIN_STATS_INTERVAL_TICKS || configuredInterval > MAX_STATS_INTERVAL_TICKS) {

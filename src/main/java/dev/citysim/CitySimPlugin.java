@@ -3,10 +3,12 @@ package dev.citysim;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CityCommand;
 import dev.citysim.cmd.CityTab;
+import dev.citysim.integration.traincarts.TrainCartsStationService;
 import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
+import dev.citysim.stats.StationCounter;
 import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
@@ -34,7 +36,21 @@ public class CitySimPlugin extends JavaPlugin {
         int loadedCities = this.cityManager.all().size();
         getLogger().info("Loaded " + loadedCities + " " + (loadedCities == 1 ? "city" : "cities") + " from storage");
 
-        this.statsService = new StatsService(this, cityManager);
+        StationCounter stationCounter = null;
+        if (getServer().getPluginManager().getPlugin("TrainCarts") != null) {
+            try {
+                stationCounter = new TrainCartsStationService(this);
+                getLogger().info("TrainCarts detected: station counts can be synchronized automatically when enabled.");
+            } catch (Exception ex) {
+                getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + ex.getMessage());
+            } catch (LinkageError err) {
+                getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + err.getMessage());
+            }
+        } else {
+            getLogger().info("TrainCarts plugin not detected; station counts will remain manual unless another mode is selected.");
+        }
+
+        this.statsService = new StatsService(this, cityManager, stationCounter);
         getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
         getLogger().info("StatsService started");
