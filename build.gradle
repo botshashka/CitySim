@@ -19,6 +19,7 @@ dependencies {
   compileOnly 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
   implementation 'net.kyori:adventure-text-minimessage:4.17.0'
   implementation 'com.google.code.gson:gson:2.11.0'
+  testImplementation 'me.clip:placeholderapi:2.11.6'
   testImplementation 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
   testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
   testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
