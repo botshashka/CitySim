@@ -21,6 +21,13 @@ public class SelectionListener implements Listener {
         return selections.computeIfAbsent(p.getUniqueId(), k -> new SelectionState());
     }
 
+    public static void clear(Player player) {
+        SelectionState state = selections.remove(player.getUniqueId());
+        if (state != null) {
+            state.reset();
+        }
+    }
+
     @EventHandler
     public void onInteract(PlayerInteractEvent e) {
         if (e.getItem() == null || e.getItem().getType() != WAND) return;
