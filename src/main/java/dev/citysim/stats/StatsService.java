@@ -42,7 +42,7 @@ public class StatsService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
-    private StationCounter stationCounter;
+    private volatile StationCounter stationCounter;
     private int taskId = -1;
     private long statsInitialDelayTicks = DEFAULT_STATS_INITIAL_DELAY_TICKS;
     private long statsIntervalTicks = DEFAULT_STATS_INTERVAL_TICKS;
@@ -80,6 +80,14 @@ public class StatsService {
     public StatsService(Plugin plugin, CityManager cm, StationCounter stationCounter) {
         this.plugin = plugin;
         this.cityManager = cm;
+        this.stationCounter = stationCounter;
+        updateConfig();
+    }
+
+    public void setStationCounter(StationCounter stationCounter) {
+        if (this.stationCounter == stationCounter) {
+            return;
+        }
         this.stationCounter = stationCounter;
         updateConfig();
     }
@@ -1011,7 +1019,8 @@ public class StatsService {
         switch (stationCountingMode) {
             case DISABLED -> city.stations = 0;
             case TRAIN_CARTS -> {
-                if (stationCounter == null) {
+                StationCounter counter = stationCounter;
+                if (counter == null) {
                     if (!stationCountingWarningLogged) {
                         plugin.getLogger().warning("TrainCarts station counting requested but integration is unavailable; using manual station totals.");
                         stationCountingWarningLogged = true;
@@ -1019,7 +1028,7 @@ public class StatsService {
                     return;
                 }
                 try {
-                    OptionalInt counted = stationCounter.countStations(city);
+                    OptionalInt counted = counter.countStations(city);
                     if (counted.isPresent()) {
                         city.stations = Math.max(0, counted.getAsInt());
                         stationCountingWarningLogged = false;

@@ -1,5 +1,6 @@
 package dev.citysim;
 
+import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CityCommand;
 import dev.citysim.cmd.CityTab;
@@ -8,6 +9,7 @@ import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
+import dev.citysim.stats.StationCountingMode;
 import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
@@ -17,6 +19,10 @@ import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.event.server.PluginEnableEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
 
 import java.util.Objects;
 
@@ -41,18 +47,17 @@ public class CitySimPlugin extends JavaPlugin {
         int loadedCities = this.cityManager.all().size();
         getLogger().info("Loaded " + loadedCities + " " + (loadedCities == 1 ? "city" : "cities") + " from storage");
 
-        this.statsService = new StatsService(this, cityManager, null);
-
-        getServer().getPluginManager().registerEvents(new TrainCartsIntegrationListener(), this);
-
-        if (tryInitializeTrainCartsIntegration()) {
-            getLogger().info("TrainCarts detected: station counts can be synchronized automatically when enabled.");
-        } else {
-            getLogger().info("TrainCarts plugin not detected; station counts will remain manual unless another mode is selected.");
+        this.trainCartsStationService = attemptTrainCartsBootstrap();
+        if (this.trainCartsStationService == null) {
+            getLogger().info("TrainCarts plugin not detected yet; station counts will remain manual unless another mode is selected.");
         }
+
+        this.statsService = new StatsService(this, cityManager, trainCartsStationService);
         getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
         getLogger().info("StatsService started");
+
+        getServer().getPluginManager().registerEvents(new DependencyListener(), this);
 
         this.displayPreferencesStore = new DisplayPreferencesStore(this);
         this.displayPreferencesStore.load();
@@ -140,50 +145,57 @@ public class CitySimPlugin extends JavaPlugin {
         return displayPreferencesStore;
     }
 
-    private boolean tryInitializeTrainCartsIntegration() {
-        if (trainCartsStationService != null) {
-            return true;
-        }
-        if (statsService == null) {
-            return false;
-        }
-
-        Plugin plugin = getServer().getPluginManager().getPlugin("TrainCarts");
+    private TrainCartsStationService attemptTrainCartsBootstrap() {
+        var plugin = getServer().getPluginManager().getPlugin("TrainCarts");
         if (plugin == null || !plugin.isEnabled()) {
-            return false;
+            return null;
         }
-
         try {
             TrainCartsStationService service = new TrainCartsStationService(this);
-            trainCartsStationService = service;
-            statsService.setStationCounter(service);
-            return true;
+            getLogger().info("TrainCarts detected: station counts can be synchronized automatically when enabled.");
+            return service;
         } catch (Exception ex) {
             getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + ex.getMessage());
         } catch (LinkageError err) {
             getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + err.getMessage());
         }
-        return false;
+        return null;
     }
 
-    private void disableTrainCartsIntegration() {
-        if (trainCartsStationService != null) {
-            trainCartsStationService = null;
-            if (statsService != null) {
-                statsService.setStationCounter(null);
+    private void refreshStationsForAllCities(String reason) {
+        if (statsService == null || cityManager == null) {
+            return;
+        }
+        for (City city : cityManager.all()) {
+            if (city == null) {
+                continue;
             }
-            getLogger().info("TrainCarts integration disabled; station counts reverting to manual mode.");
+            statsService.requestCityUpdate(city, true, reason);
         }
     }
 
-    private final class TrainCartsIntegrationListener implements Listener {
+    private final class DependencyListener implements Listener {
         @EventHandler
         public void onPluginEnable(PluginEnableEvent event) {
             if (!"TrainCarts".equalsIgnoreCase(event.getPlugin().getName())) {
                 return;
             }
-            if (tryInitializeTrainCartsIntegration()) {
-                getLogger().info("TrainCarts detected after enable: station counts can be synchronized automatically when configured.");
+            if (trainCartsStationService != null) {
+                return;
+            }
+            if (!event.getPlugin().isEnabled()) {
+                return;
+            }
+            TrainCartsStationService service = attemptTrainCartsBootstrap();
+            if (service == null) {
+                return;
+            }
+            trainCartsStationService = service;
+            if (statsService != null) {
+                statsService.setStationCounter(trainCartsStationService);
+                if (statsService.getStationCountingMode() == StationCountingMode.TRAIN_CARTS) {
+                    refreshStationsForAllCities("TrainCarts integration initialized");
+                }
             }
         }
 
@@ -192,7 +204,17 @@ public class CitySimPlugin extends JavaPlugin {
             if (!"TrainCarts".equalsIgnoreCase(event.getPlugin().getName())) {
                 return;
             }
-            disableTrainCartsIntegration();
+            if (trainCartsStationService == null || statsService == null) {
+                trainCartsStationService = null;
+                return;
+            }
+            StationCountingMode previousMode = statsService.getStationCountingMode();
+            statsService.setStationCounter(null);
+            trainCartsStationService = null;
+            CitySimPlugin.this.getLogger().info("TrainCarts disabled: station counts will remain manual until it is re-enabled.");
+            if (previousMode == StationCountingMode.TRAIN_CARTS) {
+                refreshStationsForAllCities("TrainCarts integration disabled");
+            }
         }
     }
 }
