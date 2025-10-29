@@ -114,7 +114,7 @@ public class CityCommand implements CommandExecutor {
         try {
             City created = cityManager.create(name);
             cityManager.save();
-            statsService.requestCityUpdate(created, true, "city create");
+            statsService.requestCityUpdate(created, true);
             sender.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + "). Use /city wand and /city edit " + created.id + " addcuboid to define its area.");
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(ChatColor.RED + ex.getMessage());
@@ -200,7 +200,7 @@ public class CityCommand implements CommandExecutor {
         try {
             City renamed = cityManager.rename(cityId, newName);
             cityManager.save();
-            statsService.requestCityUpdate(renamed, true, "city rename");
+        statsService.requestCityUpdate(renamed, true);
             sender.sendMessage(ChatColor.GREEN + "City renamed to " + renamed.name + " (ID: " + renamed.id + ").");
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(ChatColor.RED + ex.getMessage());
@@ -240,7 +240,7 @@ public class CityCommand implements CommandExecutor {
         try {
             int index = cityManager.addCuboid(city.id, cuboid);
             cityManager.save();
-            statsService.requestCityUpdate(city, true, "add cuboid");
+        statsService.requestCityUpdate(city, true);
 
             int width = cuboid.maxX - cuboid.minX + 1;
             int length = cuboid.maxZ - cuboid.minZ + 1;
@@ -279,7 +279,7 @@ public class CityCommand implements CommandExecutor {
         }
 
         cityManager.save();
-        statsService.requestCityUpdate(city, true, "remove cuboid", player.getLocation());
+        statsService.requestCityUpdate(city, true);
         player.sendMessage(ChatColor.GREEN + "Removed " + removed + " cuboid" + (removed == 1 ? "" : "s") + " from " + city.name + ".");
         return true;
     }
@@ -310,7 +310,7 @@ public class CityCommand implements CommandExecutor {
         try {
             cityManager.setHighrise(city.id, enable);
             cityManager.save();
-            statsService.requestCityUpdate(city, true, "highrise toggle");
+        statsService.requestCityUpdate(city, true);
             sender.sendMessage(ChatColor.GREEN + "City '" + city.name + "' highrise set to " + enable + ".");
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(ChatColor.RED + ex.getMessage());
@@ -354,7 +354,7 @@ public class CityCommand implements CommandExecutor {
 
         city.stations = updated;
         cityManager.save();
-        statsService.requestCityUpdate(city, true, "station " + stationAction);
+        statsService.requestCityUpdate(city, true);
 
         if (updated == previousStations) {
             String word = updated == 1 ? " station" : " stations";
@@ -618,7 +618,7 @@ public class CityCommand implements CommandExecutor {
         }
         City city = cityManager.cityAt(player.getLocation());
         if (city != null) {
-            statsService.requestCityUpdate(city, false, "player city command", player.getLocation());
+            statsService.requestCityUpdate(city, false);
         }
     }
 

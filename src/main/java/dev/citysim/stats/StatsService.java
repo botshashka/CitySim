@@ -389,7 +389,7 @@ public class StatsService {
         }
 
         void logJobStarted(CityScanJob job) {
-            String type = describeReason(job.reasonDescription());
+            String type = describeReason(job);
             String cityLabel = describeCity(job.city());
             String location = describeLocation(job.city(), job.context());
             String refreshMode = job.isForceRefresh() ? "force" : "incremental";
@@ -409,7 +409,7 @@ public class StatsService {
 
         void logJobCompleted(CityScanJob job) {
             long duration = Math.max(0L, System.currentTimeMillis() - job.startedAtMillis());
-            String type = describeReason(job.reasonDescription());
+            String type = describeReason(job);
             String cityLabel = describeCity(job.city());
             HappinessBreakdown breakdown = job.getResult();
             int happiness = breakdown != null ? breakdown.total : job.city().happiness;
@@ -452,11 +452,12 @@ public class StatsService {
             return name + " (" + id + ")";
         }
 
-        private String describeReason(String reason) {
-            if (reason == null || reason.isBlank()) {
-                return "unspecified";
+        private String describeReason(CityScanJob job) {
+            String reason = job.reasonDescription();
+            if (reason != null && !reason.isBlank()) {
+                return reason;
             }
-            return reason;
+            return job.isForceRefresh() ? "forced update" : "incremental update";
         }
 
         private String describeLocation(City city, ScanContext context) {
