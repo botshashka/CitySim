@@ -38,6 +38,7 @@ public class City {
     public static class BlockScanCache {
         public double light;
         public double nature;
+        public int natureSamples;
         public double pollution;
         public int pollutingBlocks;
         public double overcrowdingPenalty;
