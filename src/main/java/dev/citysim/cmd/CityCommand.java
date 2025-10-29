@@ -201,7 +201,7 @@ public class CityCommand implements CommandExecutor {
         try {
             City renamed = cityManager.rename(cityId, newName);
             cityManager.save();
-        statsService.requestCityUpdate(renamed, true);
+            statsService.updateCity(renamed, true);
             sender.sendMessage(ChatColor.GREEN + "City renamed to " + renamed.name + " (ID: " + renamed.id + ").");
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(ChatColor.RED + ex.getMessage());
@@ -241,7 +241,7 @@ public class CityCommand implements CommandExecutor {
         try {
             int index = cityManager.addCuboid(city.id, cuboid);
             cityManager.save();
-        statsService.requestCityUpdate(city, true);
+            statsService.updateCity(city, true);
 
             int width = cuboid.maxX - cuboid.minX + 1;
             int length = cuboid.maxZ - cuboid.minZ + 1;
@@ -280,7 +280,7 @@ public class CityCommand implements CommandExecutor {
         }
 
         cityManager.save();
-        statsService.requestCityUpdate(city, true);
+        statsService.updateCity(city, true);
         player.sendMessage(ChatColor.GREEN + "Removed " + removed + " cuboid" + (removed == 1 ? "" : "s") + " from " + city.name + ".");
         return true;
     }
@@ -311,7 +311,7 @@ public class CityCommand implements CommandExecutor {
         try {
             cityManager.setHighrise(city.id, enable);
             cityManager.save();
-        statsService.requestCityUpdate(city, true);
+            statsService.updateCity(city, true);
             sender.sendMessage(ChatColor.GREEN + "City '" + city.name + "' highrise set to " + enable + ".");
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(ChatColor.RED + ex.getMessage());
@@ -355,7 +355,7 @@ public class CityCommand implements CommandExecutor {
 
         city.stations = updated;
         cityManager.save();
-        statsService.requestCityUpdate(city, true);
+        statsService.updateCity(city, true);
 
         if (updated == previousStations) {
             String word = updated == 1 ? " station" : " stations";
