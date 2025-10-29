@@ -146,19 +146,23 @@ public class StatsService {
     }
 
     private void addPendingCity(String cityId, boolean forceRefresh) {
-        addPendingCity(cityId, forceRefresh, null, null);
+        addPendingCity(cityId, forceRefresh, false, null, null);
     }
 
     private void addPendingCity(String cityId, boolean forceRefresh, String reason, ScanContext context) {
+        addPendingCity(cityId, forceRefresh, false, reason, context);
+    }
+
+    private void addPendingCity(String cityId, boolean forceRefresh, boolean forceChunkLoad, String reason, ScanContext context) {
         if (cityId == null || cityId.isEmpty()) {
             return;
         }
         CityScanJob activeJob = activeCityJobs.get(cityId);
         if (activeJob != null) {
-            activeJob.requestRequeue(forceRefresh, reason, context);
+            activeJob.requestRequeue(forceRefresh, forceChunkLoad, reason, context);
             return;
         }
-        ScanRequest request = new ScanRequest(forceRefresh, reason, context);
+        ScanRequest request = new ScanRequest(forceRefresh, forceChunkLoad, reason, context);
         pendingCityUpdates.merge(cityId, request, ScanRequest::merge);
         scheduledCityQueue.remove(cityId);
     }
@@ -271,7 +275,7 @@ public class StatsService {
         for (CityScanJob job : completed) {
             RerunRequest rerun = job.consumeRerunRequest();
             if (rerun.requested()) {
-                addPendingCity(job.cityId(), rerun.forceRefresh(), rerun.reason(), rerun.context());
+                addPendingCity(job.cityId(), rerun.forceRefresh(), rerun.forceChunkLoad(), rerun.reason(), rerun.context());
             }
         }
     }
@@ -282,7 +286,7 @@ public class StatsService {
         }
         CityScanJob existing = activeCityJobs.get(city.id);
         if (existing != null) {
-            existing.requestRequeue(request.forceRefresh(), request.reason(), request.context());
+            existing.requestRequeue(request.forceRefresh(), request.forceChunkLoad(), request.reason(), request.context());
             return false;
         }
         CityScanJob job = new CityScanJob(city, request);
@@ -322,7 +326,7 @@ public class StatsService {
             if (city == null || city.id == null || city.id.isEmpty()) {
                 continue;
             }
-            CityScanJob job = new CityScanJob(city, new ScanRequest(true, "initial startup", null));
+            CityScanJob job = new CityScanJob(city, new ScanRequest(true, true, "initial startup", null));
             while (!job.process(Integer.MAX_VALUE, Integer.MAX_VALUE)) {
                 // Keep processing until the scan completes synchronously
             }
@@ -338,7 +342,7 @@ public class StatsService {
             return new HappinessBreakdown();
         }
         cancelActiveJob(city);
-        CityScanJob job = new CityScanJob(city, new ScanRequest(forceRefresh, "synchronous update", null));
+        CityScanJob job = new CityScanJob(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
         while (!job.process(Integer.MAX_VALUE, Integer.MAX_VALUE)) {
             // Keep processing until the scan completes synchronously
         }
@@ -361,15 +365,20 @@ public class StatsService {
         scheduledCityQueue.remove(city.id);
     }
 
-    private record ScanRequest(boolean forceRefresh, String reason, ScanContext context) {
+    private record ScanRequest(boolean forceRefresh, boolean forceChunkLoad, String reason, ScanContext context) {
+        ScanRequest(boolean forceRefresh, String reason, ScanContext context) {
+            this(forceRefresh, false, reason, context);
+        }
+
         ScanRequest merge(ScanRequest other) {
             if (other == null) {
                 return this;
             }
             boolean mergedForce = this.forceRefresh || other.forceRefresh;
+            boolean mergedForceChunk = this.forceChunkLoad || other.forceChunkLoad;
             String mergedReason = other.reason != null ? other.reason : this.reason;
             ScanContext mergedContext = other.context != null ? other.context : this.context;
-            return new ScanRequest(mergedForce, mergedReason, mergedContext);
+            return new ScanRequest(mergedForce, mergedForceChunk, mergedReason, mergedContext);
         }
     }
 
@@ -387,7 +396,7 @@ public class StatsService {
 
     private record ChunkCoord(String world, int x, int z) {}
 
-    private record RerunRequest(boolean requested, boolean forceRefresh, String reason, ScanContext context) {}
+    private record RerunRequest(boolean requested, boolean forceRefresh, boolean forceChunkLoad, String reason, ScanContext context) {}
 
     private final class ScanDebugManager {
         private final Set<UUID> watchers = new HashSet<>();
@@ -500,6 +509,7 @@ public class StatsService {
     private final class CityScanJob {
         private final City city;
         private boolean forceRefresh;
+        private boolean forceChunkLoad;
         private final String reason;
         private final ScanContext context;
         private final List<ChunkCoord> entityChunks;
@@ -522,16 +532,21 @@ public class StatsService {
 
         private boolean rerunRequested = false;
         private boolean rerunForceRefresh = false;
+        private boolean rerunForceChunkLoad = false;
         private String rerunReason = null;
         private ScanContext rerunContext = null;
 
         private final long startedAtMillis = System.currentTimeMillis();
         private boolean startLogged = false;
 
+        private final Set<ChunkCoord> chunksLoadedByJob = new LinkedHashSet<>();
+        private ChunkCoord activeBedChunk = null;
+
         CityScanJob(City city, ScanRequest request) {
             this.city = city;
             boolean refresh = request != null && request.forceRefresh();
             this.forceRefresh = refresh;
+            this.forceChunkLoad = request != null && request.forceChunkLoad();
             this.reason = request != null ? request.reason() : null;
             this.context = request != null ? request.context() : null;
             this.entityChunks = buildChunkList(city);
@@ -554,6 +569,7 @@ public class StatsService {
                     return false;
                 }
                 stage = Stage.BLOCK_CACHE;
+                releaseAllLoadedChunks();
             }
             if (stage == Stage.BLOCK_CACHE) {
                 finalizeCity();
@@ -585,7 +601,11 @@ public class StatsService {
                     processed++;
                     continue;
                 }
-                if (!world.isChunkLoaded(coord.x(), coord.z())) {
+                boolean available = world.isChunkLoaded(coord.x(), coord.z());
+                if (!available && forceChunkLoad) {
+                    available = ensureChunkAvailable(world, coord);
+                }
+                if (!available) {
                     processed++;
                     continue;
                 }
@@ -606,6 +626,7 @@ public class StatsService {
                     }
                 }
                 processed++;
+                unloadChunkIfLoadedByJob(coord);
             }
             return entityChunkIndex >= entityChunks.size();
         }
@@ -613,6 +634,8 @@ public class StatsService {
         private boolean processBedStage(int bedLimit) {
             if (bedCuboidIndex >= city.cuboids.size()) {
                 beds = bedHalfCount / 2;
+                releaseActiveBedChunk();
+                releaseAllLoadedChunks();
                 return true;
             }
             int limit = bedLimit <= 0 ? Integer.MAX_VALUE : bedLimit;
@@ -623,6 +646,7 @@ public class StatsService {
                 if (world == null) {
                     bedCuboidIndex++;
                     bedInitialized = false;
+                    releaseActiveBedChunk();
                     continue;
                 }
                 if (!bedInitialized) {
@@ -632,6 +656,21 @@ public class StatsService {
                     bedInitialized = true;
                 }
                 while (bedCuboidIndex < city.cuboids.size() && processed < limit) {
+                    ChunkCoord coord = chunkCoordFor(world, bedX, bedZ);
+                    if (!coord.equals(activeBedChunk)) {
+                        releaseActiveBedChunk();
+                        activeBedChunk = coord;
+                    }
+                    if (!ensureChunkAvailable(world, coord)) {
+                        processed++;
+                        if (!advanceBedCursor(cuboid)) {
+                            bedCuboidIndex++;
+                            bedInitialized = false;
+                            releaseActiveBedChunk();
+                            break;
+                        }
+                        continue;
+                    }
                     Material type = world.getBlockAt(bedX, bedY, bedZ).getType();
                     if (isBed(type)) {
                         bedHalfCount++;
@@ -640,12 +679,15 @@ public class StatsService {
                     if (!advanceBedCursor(cuboid)) {
                         bedCuboidIndex++;
                         bedInitialized = false;
+                        releaseActiveBedChunk();
                         break;
                     }
                 }
             }
             if (bedCuboidIndex >= city.cuboids.size()) {
                 beds = bedHalfCount / 2;
+                releaseActiveBedChunk();
+                releaseAllLoadedChunks();
                 return true;
             }
             return false;
@@ -733,13 +775,17 @@ public class StatsService {
         }
 
         void cancel() {
+            releaseActiveBedChunk();
+            releaseAllLoadedChunks();
             cancelled = true;
         }
 
-        void requestRequeue(boolean force, String newReason, ScanContext newContext) {
+        void requestRequeue(boolean force, boolean forceLoad, String newReason, ScanContext newContext) {
             rerunRequested = true;
             rerunForceRefresh = rerunForceRefresh || force;
+            rerunForceChunkLoad = rerunForceChunkLoad || forceLoad;
             forceRefresh = forceRefresh || force;
+            forceChunkLoad = forceChunkLoad || forceLoad;
             if (newReason != null && !newReason.isBlank()) {
                 rerunReason = newReason;
             } else if (rerunReason == null) {
@@ -752,15 +798,121 @@ public class StatsService {
 
         RerunRequest consumeRerunRequest() {
             if (!rerunRequested) {
-                return new RerunRequest(false, false, null, null);
+                return new RerunRequest(false, false, false, null, null);
             }
             String nextReason = rerunReason != null ? rerunReason : reason;
-            RerunRequest req = new RerunRequest(true, rerunForceRefresh, nextReason, rerunContext);
+            RerunRequest req = new RerunRequest(true, rerunForceRefresh, rerunForceChunkLoad, nextReason, rerunContext);
             rerunRequested = false;
             rerunForceRefresh = false;
+            rerunForceChunkLoad = false;
             rerunReason = null;
             rerunContext = null;
             return req;
+        }
+
+        private boolean ensureChunkAvailable(World world, ChunkCoord coord) {
+            if (world == null || coord == null) {
+                return false;
+            }
+            if (world.isChunkLoaded(coord.x(), coord.z())) {
+                return true;
+            }
+            if (!forceChunkLoad) {
+                return false;
+            }
+            if (chunksLoadedByJob.contains(coord)) {
+                return true;
+            }
+            if (tryLoadChunk(world, coord)) {
+                chunksLoadedByJob.add(coord);
+                return true;
+            }
+            return world.isChunkLoaded(coord.x(), coord.z());
+        }
+
+        private boolean tryLoadChunk(World world, ChunkCoord coord) {
+            boolean loaded = false;
+            try {
+                loaded = world.loadChunk(coord.x(), coord.z(), false);
+            } catch (NoSuchMethodError | UnsupportedOperationException e) {
+                loaded = loadChunkViaReflection(world, coord);
+            }
+            if (!loaded && !world.isChunkLoaded(coord.x(), coord.z())) {
+                loaded = loadChunkViaReflection(world, coord);
+            }
+            return loaded || world.isChunkLoaded(coord.x(), coord.z());
+        }
+
+        private boolean loadChunkViaReflection(World world, ChunkCoord coord) {
+            try {
+                var method = world.getClass().getMethod("getChunkAt", int.class, int.class, boolean.class);
+                Object chunk = method.invoke(world, coord.x(), coord.z(), Boolean.TRUE);
+                return chunk != null;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+            try {
+                Chunk chunk = world.getChunkAt(coord.x(), coord.z());
+                return chunk != null;
+            } catch (Throwable ignored) {
+            }
+            return false;
+        }
+
+        private void unloadChunkIfLoadedByJob(ChunkCoord coord) {
+            if (coord == null) {
+                return;
+            }
+            if (!chunksLoadedByJob.remove(coord)) {
+                return;
+            }
+            World world = Bukkit.getWorld(coord.world());
+            if (world == null) {
+                return;
+            }
+            requestChunkUnload(world, coord.x(), coord.z());
+        }
+
+        private void requestChunkUnload(World world, int x, int z) {
+            try {
+                world.unloadChunkRequest(x, z);
+                return;
+            } catch (NoSuchMethodError | UnsupportedOperationException ignored) {
+            }
+            try {
+                world.setChunkForceLoaded(x, z, false);
+                return;
+            } catch (NoSuchMethodError | UnsupportedOperationException ignored) {
+            }
+            try {
+                world.unloadChunk(x, z);
+            } catch (Throwable ignored) {
+            }
+        }
+
+        private void releaseAllLoadedChunks() {
+            if (chunksLoadedByJob.isEmpty()) {
+                return;
+            }
+            List<ChunkCoord> coords = new ArrayList<>(chunksLoadedByJob);
+            for (ChunkCoord coord : coords) {
+                unloadChunkIfLoadedByJob(coord);
+            }
+            activeBedChunk = null;
+        }
+
+        private void releaseActiveBedChunk() {
+            if (activeBedChunk == null) {
+                return;
+            }
+            unloadChunkIfLoadedByJob(activeBedChunk);
+            activeBedChunk = null;
+        }
+
+        private ChunkCoord chunkCoordFor(World world, int blockX, int blockZ) {
+            String worldName = world != null ? world.getName() : null;
+            int chunkX = blockX >> 4;
+            int chunkZ = blockZ >> 4;
+            return new ChunkCoord(worldName, chunkX, chunkZ);
         }
 
         private List<ChunkCoord> buildChunkList(City city) {
