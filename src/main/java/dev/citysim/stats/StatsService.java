@@ -10,7 +10,6 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.IronGolem;
 import org.bukkit.entity.Villager;
 import org.bukkit.plugin.Plugin;
 
@@ -310,7 +309,6 @@ public class StatsService {
 
         private int population = 0;
         private int employed = 0;
-        private int golems = 0;
 
         private int bedHalfCount = 0;
         private int beds = 0;
@@ -468,7 +466,6 @@ public class StatsService {
             city.employed = employed;
             city.unemployed = unemployed;
             city.beds = beds;
-            city.golems = golems;
 
             City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
             result = calculateHappinessBreakdown(city, metrics);
