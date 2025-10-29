@@ -13,6 +13,7 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -134,22 +135,35 @@ public class ScoreboardService {
                 raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
                 raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
                 raw.add(ChatColor.DARK_GRAY + " ");
-                raw.add(ChatColor.YELLOW + "Light: " + ChatColor.WHITE + formatPoints(breakdown.lightPoints));
-                raw.add(ChatColor.AQUA + "Employment: " + ChatColor.WHITE + formatPoints(breakdown.employmentPoints));
-                raw.add(ChatColor.DARK_GREEN + "Nature: " + ChatColor.WHITE + formatPoints(breakdown.naturePoints));
-                raw.add(ChatColor.BLUE + "Housing: " + ChatColor.WHITE + formatPoints(breakdown.housingPoints));
 
-                List<String> extras = new ArrayList<>(3);
-                extras.add(ChatColor.LIGHT_PURPLE + "Transit: " + ChatColor.WHITE + formatPoints(breakdown.transitPoints));
+                List<ContributionLine> positiveLines = new ArrayList<>();
+                List<ContributionLine> negativeLines = new ArrayList<>();
+
+                addContributionLine(positiveLines, negativeLines, ChatColor.YELLOW, "Light: ", breakdown.lightPoints);
+                addContributionLine(positiveLines, negativeLines, ChatColor.AQUA, "Employment: ", breakdown.employmentPoints);
+                addContributionLine(positiveLines, negativeLines, ChatColor.DARK_GREEN, "Nature: ", breakdown.naturePoints);
+                addContributionLine(positiveLines, negativeLines, ChatColor.BLUE, "Housing: ", breakdown.housingPoints);
+                addContributionLine(positiveLines, negativeLines, ChatColor.LIGHT_PURPLE, "Transit: ", breakdown.transitPoints);
+
                 if (breakdown.overcrowdingPenalty > 0) {
-                    extras.add(ChatColor.RED + "Crowding: " + ChatColor.WHITE + formatPoints(-breakdown.overcrowdingPenalty));
+                    addContributionLine(positiveLines, negativeLines, ChatColor.RED, "Crowding: ", -breakdown.overcrowdingPenalty);
                 }
                 if (breakdown.pollutionPenalty > 0) {
-                    extras.add(ChatColor.DARK_RED + "Pollution: " + ChatColor.WHITE + formatPoints(-breakdown.pollutionPenalty));
+                    addContributionLine(positiveLines, negativeLines, ChatColor.DARK_RED, "Pollution: ", -breakdown.pollutionPenalty);
                 }
-                if (!extras.isEmpty()) {
+
+                positiveLines.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
+                negativeLines.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
+
+                for (ContributionLine line : positiveLines) {
+                    raw.add(line.color() + line.label() + ChatColor.WHITE + formatPoints(line.value()));
+                }
+
+                if (!negativeLines.isEmpty()) {
                     raw.add(ChatColor.DARK_GRAY + " ");
-                    raw.addAll(extras);
+                    for (ContributionLine line : negativeLines) {
+                        raw.add(line.color() + line.label() + ChatColor.WHITE + formatPoints(line.value()));
+                    }
                 }
             }
             case COMPACT -> {
@@ -175,6 +189,18 @@ public class ScoreboardService {
     private String formatPoints(double value) {
         return (value >= 0 ? "+" : "") + String.format(Locale.US, "%.1f", value);
     }
+
+    private void addContributionLine(List<ContributionLine> positives, List<ContributionLine> negatives,
+                                     ChatColor color, String label, double value) {
+        ContributionLine line = new ContributionLine(color, label, value);
+        if (value >= 0.0) {
+            positives.add(line);
+        } else {
+            negatives.add(line);
+        }
+    }
+
+    private record ContributionLine(ChatColor color, String label, double value) {}
 
     private void applyLines(Objective objective, Scoreboard board, List<String> lines) {
         int score = lines.size();

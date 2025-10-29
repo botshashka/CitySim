@@ -21,7 +21,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -491,20 +494,30 @@ public class CityCommand implements CommandExecutor {
 
         var hb = statsService.updateCity(city, true);
         var mm = MiniMessage.miniMessage();
-        var extraParts = new java.util.ArrayList<String>(3);
-        extraParts.add("<light_purple>Transit:</light_purple> %s"
-                .formatted(String.format(Locale.US, "%+.1f", hb.transitPoints)));
+        List<ContributionLine> positiveLines = new ArrayList<>();
+        List<ContributionLine> negativeLines = new ArrayList<>();
+
+        addContributionLine(positiveLines, negativeLines, "<yellow>Light:</yellow>", hb.lightPoints, false);
+        addContributionLine(positiveLines, negativeLines, "<aqua>Employment:</aqua>", hb.employmentPoints, false);
+        addContributionLine(positiveLines, negativeLines, "<green>Nature:</green>", hb.naturePoints, false);
+        addContributionLine(positiveLines, negativeLines, "<blue>Housing:</blue>", hb.housingPoints, false);
+        addContributionLine(positiveLines, negativeLines, "<light_purple>Transit:</light_purple>", hb.transitPoints, true);
         if (hb.overcrowdingPenalty > 0) {
-            extraParts.add("<red>Overcrowding:</red> -%.1f".formatted(hb.overcrowdingPenalty));
+            addContributionLine(positiveLines, negativeLines, "<red>Overcrowding:</red>", -hb.overcrowdingPenalty, false);
         }
         if (hb.pollutionPenalty > 0) {
-            extraParts.add("<red>Pollution:</red> -%.1f".formatted(hb.pollutionPenalty));
+            addContributionLine(positiveLines, negativeLines, "<red>Pollution:</red>", -hb.pollutionPenalty, false);
         }
 
-        String breakdownLines = "<yellow>Light:</yellow> %.1f  <aqua>Employment:</aqua> %.1f  <green>Nature:</green> %.1f  <blue>Housing:</blue> %.1f"
-                .formatted(hb.lightPoints, hb.employmentPoints, hb.naturePoints, hb.housingPoints);
-        if (!extraParts.isEmpty()) {
-            breakdownLines += "\n" + String.join("  ", extraParts);
+        positiveLines.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
+        negativeLines.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
+
+        String breakdownLines = joinContributionLines(positiveLines);
+        if (!negativeLines.isEmpty()) {
+            if (!breakdownLines.isEmpty()) {
+                breakdownLines += "\n";
+            }
+            breakdownLines += joinContributionLines(negativeLines);
         }
 
         String msg = """
@@ -522,6 +535,35 @@ public class CityCommand implements CommandExecutor {
         player.sendMessage(mm.deserialize(msg));
         return true;
     }
+
+    private void addContributionLine(List<ContributionLine> positives, List<ContributionLine> negatives,
+                                     String label, double value, boolean alwaysShowSign) {
+        ContributionLine line = new ContributionLine(label, value, alwaysShowSign);
+        if (value >= 0.0) {
+            positives.add(line);
+        } else {
+            negatives.add(line);
+        }
+    }
+
+    private String joinContributionLines(List<ContributionLine> lines) {
+        if (lines.isEmpty()) {
+            return "";
+        }
+
+        List<String> parts = new ArrayList<>(lines.size());
+        for (ContributionLine line : lines) {
+            parts.add(formatContributionLine(line));
+        }
+        return String.join("  ", parts);
+    }
+
+    private String formatContributionLine(ContributionLine line) {
+        String pattern = line.alwaysShowSign() ? "%+.1f" : "%.1f";
+        return "%s %s".formatted(line.label(), String.format(Locale.US, pattern, line.value()));
+    }
+
+    private record ContributionLine(String label, double value, boolean alwaysShowSign) {}
 
     private boolean handleDisplay(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
