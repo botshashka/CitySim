@@ -1190,14 +1190,15 @@ public class StatsService {
     }
 
     private SampledRatio ratioHighriseColumns(City city, int step, BlockTest test) {
-        Map<String, ColumnSample> columns = new HashMap<>();
+        Map<String, Map<Long, ColumnSample>> columns = new HashMap<>();
         for (Cuboid c : city.cuboids) {
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    String key = c.world + "|" + x + "|" + z;
-                    ColumnSample column = columns.computeIfAbsent(key, k -> new ColumnSample());
+                    Map<Long, ColumnSample> worldColumns = columns.computeIfAbsent(c.world, k -> new HashMap<>());
+                    long columnKey = (((long) x) << 32) ^ (z & 0xffffffffL);
+                    ColumnSample column = worldColumns.computeIfAbsent(columnKey, k -> new ColumnSample());
                     if (column.matched) {
                         column.sampled = true;
                         continue;
@@ -1226,11 +1227,13 @@ public class StatsService {
         }
         int totalColumns = 0;
         int columnsWithMatch = 0;
-        for (ColumnSample column : columns.values()) {
-            if (!column.sampled) continue;
-            totalColumns++;
-            if (column.matched) {
-                columnsWithMatch++;
+        for (Map<Long, ColumnSample> worldColumns : columns.values()) {
+            for (ColumnSample column : worldColumns.values()) {
+                if (!column.sampled) continue;
+                totalColumns++;
+                if (column.matched) {
+                    columnsWithMatch++;
+                }
             }
         }
         double ratio = totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
