@@ -36,7 +36,9 @@ public class CitySimExpansion extends PlaceholderExpansion {
             if (p != null) city = cityManager.cityAt(p.getLocation());
         }
 
-        if ("city".equals(key)) return city != null ? city.name : "";
+        if ("city".equals(key) || "cityname".equals(key)) {
+            return city != null ? city.name : "";
+        }
         if (city == null) return "0";
 
         switch (key) {
