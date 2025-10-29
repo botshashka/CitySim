@@ -65,7 +65,7 @@ java -version  # should report a Java 21 runtime
 - Start the server.
 - `/version CitySim` should show `0.4.8`.
 
-### Commands
+## Commands
 ```text
 /city wand [clear]                               # get the golden axe for marking corners (use clear to reset the selection)
 /city create <name>                              # make a new city, using your current selection if one is ready
