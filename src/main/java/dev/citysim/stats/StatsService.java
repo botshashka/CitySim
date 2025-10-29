@@ -987,13 +987,17 @@ public class StatsService {
         double lightScoreNormalized = (lightScore - lightNeutral) / lightNeutral;
         hb.lightPoints = clamp(lightScoreNormalized * lightMaxPts, -lightMaxPts, lightMaxPts);
 
-        double employmentRate = pop <= 0 ? 0.0 : (double) employed / (double) pop;
-        double employmentNeutral = 0.75; // 75% employment is neutral
+        double employmentNeutral = 0.75; // 75% employment is neutral for populated cities; empty cities stay neutral
         double employmentScore;
-        if (employmentRate >= employmentNeutral) {
-            employmentScore = (employmentRate - employmentNeutral) / (1.0 - employmentNeutral);
+        if (pop <= 0) {
+            employmentScore = 0.0; // Neutral employment contribution for cities without residents
         } else {
-            employmentScore = (employmentRate - employmentNeutral) / employmentNeutral;
+            double employmentRate = (double) employed / (double) pop;
+            if (employmentRate >= employmentNeutral) {
+                employmentScore = (employmentRate - employmentNeutral) / (1.0 - employmentNeutral);
+            } else {
+                employmentScore = (employmentRate - employmentNeutral) / employmentNeutral;
+            }
         }
         hb.employmentPoints = clamp(employmentScore * employmentMaxPts, -employmentMaxPts, employmentMaxPts);
 
