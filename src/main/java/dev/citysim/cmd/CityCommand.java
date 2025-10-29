@@ -6,6 +6,7 @@ import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.selection.SelectionState;
+import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
 import dev.citysim.ui.ScoreboardService;
 import net.kyori.adventure.text.Component;
@@ -66,9 +67,31 @@ public class CityCommand implements CommandExecutor {
                 return handleYMode(s, args);
             case "top":
                 return handleTop(s, args);
+            case "reload":
+                return handleReload(s);
             default:
                 return help(s);
         }
+    }
+
+    private boolean handleReload(CommandSender sender) {
+        if (!checkAdmin(sender)) {
+            return true;
+        }
+
+        plugin.reloadConfig();
+        StatsService stats = plugin.getStatsService();
+        if (stats != null) {
+            stats.restartTask();
+        }
+
+        BossBarService bossBars = plugin.getBossBarService();
+        if (bossBars != null) {
+            bossBars.restart();
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "CitySim configuration reloaded.");
+        return true;
     }
 
     private boolean handleCreate(CommandSender sender, String[] args) {
@@ -633,6 +656,7 @@ public class CityCommand implements CommandExecutor {
         s.sendMessage(ChatColor.GRAY + "/city display scoreboard on|off");
         s.sendMessage(ChatColor.GRAY + "/city display scoreboard mode compact|full");
         s.sendMessage(ChatColor.GRAY + "/city top [happy|pop]");
+        s.sendMessage(ChatColor.GRAY + "/city reload");
         return true;
     }
 }
