@@ -26,7 +26,24 @@ public class City {
     public boolean highrise = false;
 
     public boolean contains(org.bukkit.Location loc) {
-        for (Cuboid c : cuboids) if (c.contains(loc)) return true;
+        if (loc == null) {
+            return false;
+        }
+
+        org.bukkit.World locationWorld = loc.getWorld();
+        if (locationWorld == null) {
+            return false;
+        }
+
+        String worldName = locationWorld.getName();
+        for (Cuboid c : cuboids) {
+            if (c == null || c.world == null || !worldName.equals(c.world)) {
+                continue;
+            }
+            if (c.contains(loc)) {
+                return true;
+            }
+        }
         return false;
     }
 
