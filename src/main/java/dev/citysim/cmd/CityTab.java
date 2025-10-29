@@ -36,7 +36,8 @@ public class CityTab implements TabCompleter {
                     "stats",
                     "display",
                     "ymode",
-                    "top"
+                    "top",
+                    "reload"
             ), args[0]);
         }
 
@@ -129,6 +130,9 @@ public class CityTab implements TabCompleter {
                 if (args.length == 2) {
                     return filter(Arrays.asList("happy", "pop"), args[1]);
                 }
+                return List.of();
+
+            case "reload":
                 return List.of();
 
             default:
