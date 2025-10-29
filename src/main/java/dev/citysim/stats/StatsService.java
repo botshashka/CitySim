@@ -520,6 +520,9 @@ public class StatsService {
         private boolean cancelled = false;
         private HappinessBreakdown result = null;
 
+        private boolean entityScanSkipped = false;
+        private boolean bedScanSkipped = false;
+
         private boolean rerunRequested = false;
         private boolean rerunForceRefresh = false;
         private String rerunReason = null;
@@ -582,10 +585,12 @@ public class StatsService {
                 ChunkCoord coord = entityChunks.get(entityChunkIndex++);
                 World world = Bukkit.getWorld(coord.world());
                 if (world == null) {
+                    entityScanSkipped = true;
                     processed++;
                     continue;
                 }
                 if (!world.isChunkLoaded(coord.x(), coord.z())) {
+                    entityScanSkipped = true;
                     processed++;
                     continue;
                 }
@@ -621,6 +626,7 @@ public class StatsService {
                 Cuboid cuboid = city.cuboids.get(bedCuboidIndex);
                 World world = Bukkit.getWorld(cuboid.world);
                 if (world == null) {
+                    bedScanSkipped = true;
                     bedCuboidIndex++;
                     bedInitialized = false;
                     continue;
@@ -668,6 +674,11 @@ public class StatsService {
         }
 
         private void finalizeCity() {
+            if (entityScanSkipped || bedScanSkipped) {
+                // Preserve existing stats until we can scan all required chunks/worlds.
+                result = city.happinessBreakdown;
+                return;
+            }
             int unemployed = Math.max(0, population - employed);
             city.population = population;
             city.employed = employed;
