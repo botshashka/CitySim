@@ -617,19 +617,21 @@ public class StatsService {
                     continue;
                 }
                 Chunk chunk = world.getChunkAt(coord.x(), coord.z());
+                Location reusable = new Location(null, 0, 0, 0);
                 for (Entity entity : chunk.getEntities()) {
-                    Location loc = entity.getLocation();
-                    if (!city.contains(loc)) {
+                    if (!(entity instanceof Villager villager)) {
                         continue;
                     }
-                    if (entity instanceof Villager villager) {
-                        population++;
-                        Villager.Profession prof = villager.getProfession();
-                        boolean isNitwit = prof == Villager.Profession.NITWIT;
-                        boolean hasProf = prof != Villager.Profession.NONE && !isNitwit;
-                        if (hasProf) {
-                            employed++;
-                        }
+                    villager.getLocation(reusable);
+                    if (!city.contains(reusable)) {
+                        continue;
+                    }
+                    population++;
+                    Villager.Profession prof = villager.getProfession();
+                    boolean isNitwit = prof == Villager.Profession.NITWIT;
+                    boolean hasProf = prof != Villager.Profession.NONE && !isNitwit;
+                    if (hasProf) {
+                        employed++;
                     }
                 }
                 processed++;
