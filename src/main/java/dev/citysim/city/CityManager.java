@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 
 import java.io.*;
@@ -107,7 +108,9 @@ public class CityManager {
         if (c.world != null && !c.world.equals(cuboid.world)) {
             throw new IllegalArgumentException("City '" + c.name + "' is bound to world " + c.world + ".");
         }
-        if (c.highrise && cuboid.fullHeight) {
+        World world = Bukkit.getWorld(cuboid.world);
+        boolean fullHeight = cuboid.fullHeight || cuboid.isFullHeight(world);
+        if (c.highrise && fullHeight) {
             throw new IllegalArgumentException("Highrise cities cannot contain cuboids with full Y mode.");
         }
 
