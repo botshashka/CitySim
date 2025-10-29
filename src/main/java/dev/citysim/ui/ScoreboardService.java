@@ -7,6 +7,7 @@ import dev.citysim.stats.HappinessBreakdownFormatter;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLine;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionType;
+import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -165,6 +166,9 @@ public class ScoreboardService {
     }
 
     private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
+        StationCountingMode stationMode = statsService.getStationCountingMode();
+        boolean showStations = stationMode != StationCountingMode.DISABLED;
+
         List<String> raw = new ArrayList<>();
         switch (mode) {
             case FULL -> {
@@ -172,10 +176,12 @@ public class ScoreboardService {
                 raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness + "%");
                 raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
                 raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
-                raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+                if (showStations) {
+                    raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+                }
                 raw.add(ChatColor.DARK_GRAY + " ");
 
-                ContributionLists contributionLists = HappinessBreakdownFormatter.buildContributionLists(breakdown);
+                ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
 
                 for (ContributionLine line : contributionLists.positives()) {
                     raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
@@ -193,7 +199,9 @@ public class ScoreboardService {
                 raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness + "%");
                 raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
                 raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
-                raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+                if (showStations) {
+                    raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+                }
             }
         }
         return decorateLines(raw);
@@ -234,6 +242,25 @@ public class ScoreboardService {
             case OVERCROWDING -> "Crowding: ";
             case POLLUTION -> "Pollution: ";
         };
+    }
+
+    private ContributionLists filterTransitIfHidden(ContributionLists lists) {
+        if (statsService.getStationCountingMode() != StationCountingMode.DISABLED) {
+            return lists;
+        }
+        List<ContributionLine> positives = new ArrayList<>();
+        for (ContributionLine line : lists.positives()) {
+            if (line.type() != ContributionType.TRANSIT) {
+                positives.add(line);
+            }
+        }
+        List<ContributionLine> negatives = new ArrayList<>();
+        for (ContributionLine line : lists.negatives()) {
+            if (line.type() != ContributionType.TRANSIT) {
+                negatives.add(line);
+            }
+        }
+        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives));
     }
 
     private void applyLines(Objective objective, Scoreboard board, List<String> lines) {

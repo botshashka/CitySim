@@ -8,6 +8,9 @@ updates:
   max_entity_chunks_per_tick: 2 # Loaded chunks checked per active city scan each tick
   max_bed_blocks_per_tick: 2048 # Block lookups for bed counting per tick
 
+stations:
+  counting_mode: manual # manual, traincarts, or disabled
+
 happiness_weights:
   nature_max_points: 10
   pollution_max_penalty: 15

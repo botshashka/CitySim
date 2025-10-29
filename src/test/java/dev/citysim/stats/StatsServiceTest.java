@@ -56,7 +56,7 @@ class StatsServiceTest {
 
     private static final class TestStatsService extends StatsService {
         TestStatsService(Plugin plugin, CityManager cityManager) {
-            super(plugin, cityManager);
+            super(plugin, cityManager, null);
         }
 
         @Override
