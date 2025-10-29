@@ -46,9 +46,8 @@ public class StatsService {
     // Weights
     private static final int HIGHRISE_VERTICAL_STEP = 4;
     private static final double OVERCROWDING_BASELINE = 3.0;
-    private static final double TRANSIT_BLOCKS_PER_STATION = 125.0;
-    private static final double TRANSIT_SHORTAGE_BUFFER = 0.75;
-    private static final double TRANSIT_SURPLUS_BUFFER = 0.5;
+    private static final double TRANSIT_IDEAL_SPACING_BLOCKS = 75.0;
+    private static final double TRANSIT_EASING_EXPONENT = 0.5;
 
     private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
@@ -1268,25 +1267,15 @@ public class StatsService {
             return 0.0;
         }
 
-        double requiredStations = area / TRANSIT_BLOCKS_PER_STATION;
-        if (requiredStations <= 0.0) {
-            return 0.0;
-        }
-
         double actualStations = Math.max(0, city.stations);
         if (actualStations <= 0.0) {
             return -transitMaxPts;
         }
 
-        double densityRatio = actualStations / requiredStations;
-        double score;
-        if (densityRatio >= 1.0) {
-            double surplus = densityRatio - 1.0;
-            score = transitMaxPts * (surplus / (surplus + TRANSIT_SURPLUS_BUFFER));
-        } else {
-            double shortage = 1.0 - densityRatio;
-            score = -transitMaxPts * (shortage / (shortage + TRANSIT_SHORTAGE_BUFFER));
-        }
+        double idealStations = Math.max(1.0, area / (TRANSIT_IDEAL_SPACING_BLOCKS * TRANSIT_IDEAL_SPACING_BLOCKS));
+        double coverageRatio = actualStations / idealStations;
+        double easedCoverage = Math.pow(coverageRatio, TRANSIT_EASING_EXPONENT);
+        double score = transitMaxPts * clamp(easedCoverage, 0.0, 1.0);
         return clamp(score, -transitMaxPts, transitMaxPts);
     }
 
