@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+
+import org.bukkit.configuration.Configuration;
+import org.bukkit.plugin.java.JavaPlugin;
 
 public class HappinessBreakdown {
 
@@ -125,135 +129,34 @@ public class HappinessBreakdown {
     }
 
     public static String defaultMessageFor(String key) {
-        String[] options;
-        switch (key) {
-            case "bright":
-                options = new String[]{
-                        "Bright, well-lit streets",
-                        "Lanterns chase away the night",
-                        "No shadows left for trouble to hide"
-                };
-                break;
-            case "dark":
-                options = new String[]{
-                        "Dark streets feel unsafe",
-                        "Too many corners lost to darkness",
-                        "Citizens whisper about unlit alleys"
-                };
-                break;
-            case "employment_good":
-                options = new String[]{
-                        "High employment keeps spirits up",
-                        "Every villager has meaningful work",
-                        "Jobs are plentiful and morale is high"
-                };
-                break;
-            case "employment_bad":
-                options = new String[]{
-                        "Rampant unemployment angers citizens",
-                        "Idle hands are stirring frustration",
-                        "Too many villagers are out of work"
-                };
-                break;
-            case "crowding_good":
-                options = new String[]{
-                        "Comfortable spacing",
-                        "Plenty of room to breathe",
-                        "Homes feel cozy without feeling cramped"
-                };
-                break;
-            case "crowding_bad":
-                options = new String[]{
-                        "Overcrowded — expand the city",
-                        "Cramped housing sparks complaints",
-                        "Citizens are stacked on top of each other"
-                };
-                break;
-            case "nature_good":
-                options = new String[]{
-                        "Green, lively parks",
-                        "Trees and flowers lift everyone's mood",
-                        "Nature weaves through every street"
-                };
-                break;
-            case "nature_bad":
-                options = new String[]{
-                        "Concrete jungle — residents miss nature",
-                        "Citizens crave trees and gardens",
-                        "A barren city leaves spirits low"
-                };
-                break;
-            case "pollution_good":
-                options = new String[]{
-                        "Clean air and skies",
-                        "Fresh breezes sweep the city",
-                        "Clear skies keep lungs happy"
-                };
-                break;
-            case "pollution_bad":
-                options = new String[]{
-                        "Polluted air is choking the city",
-                        "Smog clouds every sunrise",
-                        "Sooty air keeps citizens indoors"
-                };
-                break;
-            case "housing_good":
-                options = new String[]{
-                        "Everyone has a place to sleep",
-                        "Every villager rests easy at night",
-                        "Comfortable housing keeps morale high"
-                };
-                break;
-            case "housing_bad":
-                options = new String[]{
-                        "Homelessness is spreading",
-                        "Villagers curl up on floors without shelter",
-                        "Citizens are desperate for housing"
-                };
-                break;
-            case "transit_good":
-                options = new String[]{
-                        "Transit lines keep the city connected",
-                        "Stations hum with satisfied commuters",
-                        "Citizens praise the fast transit network"
-                };
-                break;
-            case "transit_bad":
-                options = new String[]{
-                        "Too few stations leave districts isolated",
-                        "Citizens grumble about missing transit stops",
-                        "Transit shortages slow everyone down"
-                };
-                break;
-            case "default_good":
-                options = new String[]{
-                        "Citizens are content",
-                        "Life is peaceful in the city",
-                        "Villagers seem pleased overall"
-                };
-                break;
-            case "default_bad":
-                options = new String[]{
-                        "Citizens feel uneasy",
-                        "Whispers of discontent spread",
-                        "Morale is slipping across the city"
-                };
-                break;
-            default:
-                options = new String[]{
-                        "Citizens are content",
-                        "Life is peaceful in the city"
-                };
-                break;
+        String path = "titles.messages." + key;
+        JavaPlugin plugin = JavaPlugin.getProvidingPlugin(HappinessBreakdown.class);
+        Configuration defaults = plugin.getConfig().getDefaults();
+        if (defaults != null) {
+            List<String> defaultsList = defaults.getStringList(path);
+            List<String> filteredDefaults = defaultsList.stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            if (!filteredDefaults.isEmpty()) {
+                return pickRandom(filteredDefaults);
+            }
+
+            String fallback = defaults.getString(path);
+            if (fallback != null && !fallback.isBlank()) {
+                return fallback.trim();
+            }
         }
-        return pickRandom(options);
+
+        boolean negativeMood = key.endsWith("_bad") || "dark".equals(key);
+        return negativeMood ? "Citizens feel uneasy" : "Citizens are content";
     }
 
-    private static String pickRandom(String[] options) {
-        if (options.length == 0) {
+    private static String pickRandom(List<String> options) {
+        if (options.isEmpty()) {
             return "Citizens are content";
         }
-        int idx = ThreadLocalRandom.current().nextInt(options.length);
-        return options[idx];
+        int idx = ThreadLocalRandom.current().nextInt(options.size());
+        return options.get(idx);
     }
 }
