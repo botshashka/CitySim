@@ -211,7 +211,4 @@ public class ScoreboardService {
         displayPreferencesStore.setScoreboardMode(uuid, mode);
     }
 
-    public Mode getMode(UUID uuid) {
-        return displayPreferencesStore.getScoreboardMode(uuid);
-    }
 }
