@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class StatsService {
-    public enum EmploymentMode { PROFESSION_ONLY, PROFESSION_AND_WORKSTATION, WORKSTATION_PROXIMITY }
 
     private static final long DEFAULT_STATS_INITIAL_DELAY_TICKS = 40L;
     private static final long DEFAULT_STATS_INTERVAL_TICKS = 100L;
@@ -38,9 +37,6 @@ public class StatsService {
     private long statsInitialDelayTicks = DEFAULT_STATS_INITIAL_DELAY_TICKS;
     private long statsIntervalTicks = DEFAULT_STATS_INTERVAL_TICKS;
 
-    private EmploymentMode employmentMode = EmploymentMode.PROFESSION_ONLY;
-    private int wsRadius = 16;
-    private int wsYRadius = 8;
     private long blockScanRefreshIntervalMillis = 60000L;
 
     // Weights
@@ -383,15 +379,7 @@ public class StatsService {
                         Villager.Profession prof = villager.getProfession();
                         boolean isNitwit = prof == Villager.Profession.NITWIT;
                         boolean hasProf = prof != Villager.Profession.NONE && !isNitwit;
-                        boolean nearWork = hasNearbyWorkstation(loc, wsRadius, wsYRadius);
-                        boolean employedNow;
-                        switch (employmentMode) {
-                            case PROFESSION_ONLY -> employedNow = hasProf;
-                            case WORKSTATION_PROXIMITY -> employedNow = nearWork;
-                            case PROFESSION_AND_WORKSTATION -> employedNow = hasProf && nearWork;
-                            default -> employedNow = hasProf;
-                        }
-                        if (employedNow) {
+                        if (hasProf) {
                             employed++;
                         }
                     }
@@ -523,22 +511,6 @@ public class StatsService {
         }
 
         private enum Stage { ENTITY_SCAN, BEDS, BLOCK_CACHE, COMPLETE }
-    }
-
-    private boolean hasNearbyWorkstation(Location loc, int radius, int yRadius) {
-        World w = loc.getWorld();
-        int r = radius;
-        for (int x = -r; x <= r; x++) {
-            for (int y = -yRadius; y <= yRadius; y++) {
-                for (int z = -r; z <= r; z++) {
-                    if (Workstations.JOB_BLOCKS.contains(w.getBlockAt(
-                            loc.getBlockX()+x, loc.getBlockY()+y, loc.getBlockZ()+z).getType())) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
     }
 
     public HappinessBreakdown computeHappinessBreakdown(City city) {
@@ -890,16 +862,6 @@ public class StatsService {
 
     public void updateConfig() {
         var c = plugin.getConfig();
-        String mode = c.getString("employment.mode", "profession_only").toLowerCase();
-        if ("profession_and_workstation".equals(mode)) {
-            employmentMode = EmploymentMode.PROFESSION_AND_WORKSTATION;
-        } else if ("workstation_proximity".equals(mode)) {
-            employmentMode = EmploymentMode.WORKSTATION_PROXIMITY;
-        } else {
-            employmentMode = EmploymentMode.PROFESSION_ONLY;
-        }
-        wsRadius = Math.max(1, c.getInt("employment.workstation_radius", 16));
-        wsYRadius = Math.max(1, c.getInt("employment.workstation_y_radius", 8));
         blockScanRefreshIntervalMillis = Math.max(0L, c.getLong("happiness.block_scan_refresh_interval_millis", 60000L));
 
         long configuredInterval = c.getLong("updates.stats_interval_ticks", DEFAULT_STATS_INTERVAL_TICKS);

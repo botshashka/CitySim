@@ -16,13 +16,6 @@ happiness_weights:
   employment_max_points: 15
   overcrowding_max_penalty: 10
 
-
-employment:
-  mode: profession_only  # profession_only | profession_and_workstation | workstation_proximity
-  workstation_radius: 16
-  workstation_y_radius: 8
-
-
 titles:
   enabled: true
   cooldown_ticks: 80
