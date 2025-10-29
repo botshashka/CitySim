@@ -112,11 +112,47 @@ public class CityCommand implements CommandExecutor {
             return true;
         }
 
+        Cuboid pendingCuboid = null;
+        int pendingWidth = 0;
+        int pendingLength = 0;
+        int pendingHeight = 0;
+        String pendingMode = null;
+
+        if (sender instanceof Player player) {
+            SelectionState sel = SelectionListener.get(player);
+            if (sel.ready()) {
+                if (sel.world != sel.pos1.getWorld() || sel.world != sel.pos2.getWorld()) {
+                    player.sendMessage(ChatColor.RED + "Your selection must be in a single world. Use /city wand clear and try again.");
+                    return true;
+                }
+                if (sel.world != player.getWorld()) {
+                    player.sendMessage(ChatColor.RED + "You are in a different world than your selection. Switch worlds or clear it with /city wand clear before creating a city.");
+                    return true;
+                }
+
+                boolean fullHeight = sel.yMode == SelectionState.YMode.FULL;
+                pendingCuboid = new Cuboid(sel.world, sel.pos1, sel.pos2, fullHeight);
+                pendingWidth = pendingCuboid.maxX - pendingCuboid.minX + 1;
+                pendingLength = pendingCuboid.maxZ - pendingCuboid.minZ + 1;
+                pendingHeight = pendingCuboid.maxY - pendingCuboid.minY + 1;
+                pendingMode = fullHeight ? "full" : "span";
+            }
+        }
+
         try {
             City created = cityManager.create(name);
+            if (pendingCuboid != null) {
+                cityManager.addCuboid(created.id, pendingCuboid);
+            }
             cityManager.save();
-            statsService.requestCityUpdate(created, true);
-            sender.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + "). Use /city wand and /city edit " + created.id + " addcuboid to define its area.");
+            statsService.updateCity(created, true);
+
+            if (pendingCuboid != null) {
+                sender.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + ") with an initial cuboid ("
+                        + pendingWidth + "×" + pendingLength + "×" + pendingHeight + ", mode: " + pendingMode + "). Use /city edit " + created.id + " addcuboid to add more areas.");
+            } else {
+                sender.sendMessage(ChatColor.GREEN + "Created new empty city " + created.name + " (ID: " + created.id + "). Use /city wand and /city edit " + created.id + " addcuboid to define its area.");
+            }
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(ChatColor.RED + ex.getMessage());
         }
