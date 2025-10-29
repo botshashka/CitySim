@@ -11,6 +11,7 @@ import dev.citysim.stats.HappinessBreakdownFormatter;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLine;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionType;
+import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.util.AdventureMessages;
@@ -439,6 +440,16 @@ public class CityCommand implements CommandExecutor {
             return true;
         }
 
+        StationCountingMode mode = statsService.getStationCountingMode();
+        if (mode == StationCountingMode.TRAIN_CARTS) {
+            sendError(sender, "Station counts are managed automatically by TrainCarts; manual edits are disabled.");
+            return true;
+        }
+        if (mode == StationCountingMode.DISABLED) {
+            sendError(sender, "Station tracking is disabled in the configuration.");
+            return true;
+        }
+
         String stationAction = args[3].toLowerCase(Locale.ROOT);
         int previousStations = Math.max(0, city.stations);
 
@@ -585,7 +596,7 @@ public class CityCommand implements CommandExecutor {
         }
 
         var hb = statsService.updateCity(city, true);
-        ContributionLists contributionLists = HappinessBreakdownFormatter.buildContributionLists(hb);
+        ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(hb));
 
         String breakdownLines = joinContributionLines(contributionLists.positives(), this::miniMessageLabelFor);
         String negativeLines = joinContributionLines(contributionLists.negatives(), this::miniMessageLabelFor);
@@ -596,15 +607,21 @@ public class CityCommand implements CommandExecutor {
             breakdownLines += negativeLines;
         }
 
+        boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
+        String homesLine = "<blue>Homes:</blue> %d/%d".formatted(city.beds, city.population);
+        if (showStations) {
+            homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
+        }
+
         String msg = """
         <gray><b>%s — City stats</b></gray>
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
-        <blue>Homes:</blue> %d/%d  <light_purple>Stations:</light_purple> %d
+        %s
         <gold>Happiness:</gold> %d%%  <gray>(base 50)</gray>
         %s
         """.formatted(
                 city.name, city.population, city.employed, city.unemployed,
-                city.beds, city.population, city.stations,
+                homesLine,
                 hb.total,
                 breakdownLines
         );
@@ -639,6 +656,25 @@ public class CityCommand implements CommandExecutor {
             case OVERCROWDING -> "<red>Overcrowding:</red>";
             case POLLUTION -> "<red>Pollution:</red>";
         };
+    }
+
+    private ContributionLists filterTransitIfHidden(ContributionLists lists) {
+        if (statsService.getStationCountingMode() != StationCountingMode.DISABLED) {
+            return lists;
+        }
+        List<ContributionLine> positives = new ArrayList<>();
+        for (ContributionLine line : lists.positives()) {
+            if (line.type() != ContributionType.TRANSIT) {
+                positives.add(line);
+            }
+        }
+        List<ContributionLine> negatives = new ArrayList<>();
+        for (ContributionLine line : lists.negatives()) {
+            if (line.type() != ContributionType.TRANSIT) {
+                negatives.add(line);
+            }
+        }
+        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives));
     }
 
     private boolean handleDisplay(CommandSender sender, String[] args) {
