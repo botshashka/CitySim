@@ -991,7 +991,9 @@ public class StatsService {
 
         int beds = city.beds;
         double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
-        hb.housingPoints = clamp((housingRatio - 1.0) * housingMaxPts, -housingMaxPts, housingMaxPts);
+        double housingNeutral = 1.0 / 0.95; // 95% occupancy (population / beds) is neutral
+        double housingScore = (housingRatio / housingNeutral) - 1.0;
+        hb.housingPoints = clamp(housingScore * housingMaxPts, -housingMaxPts, housingMaxPts);
 
         hb.transitPoints = computeTransitPoints(city);
 
