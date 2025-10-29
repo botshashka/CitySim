@@ -32,8 +32,8 @@ java -version  # should report a Java 21 runtime
 /city create MyTown
 /city wand
 # Left click Pos1, right click Pos2
-/city ymode HEIGHTS
+/city wand ymode full
 /city edit mytown addcuboid
 /city stats
-/city scoreboard on
+/city display scoreboard full
 ```
