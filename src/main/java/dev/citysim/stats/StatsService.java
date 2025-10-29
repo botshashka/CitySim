@@ -13,6 +13,14 @@ import org.bukkit.entity.IronGolem;
 import org.bukkit.entity.Villager;
 import org.bukkit.plugin.Plugin;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 public class StatsService {
     public enum EmploymentMode { PROFESSION_ONLY, PROFESSION_AND_WORKSTATION, WORKSTATION_PROXIMITY }
 
@@ -49,6 +57,10 @@ public class StatsService {
     private double housingMaxPts = 10;
     private double transitMaxPts = 5;
 
+    private final Map<String, Boolean> pendingCityUpdates = new LinkedHashMap<>();
+    private final Deque<String> scheduledCityQueue = new ArrayDeque<>();
+    private int maxCitiesPerTick = 1;
+
     public StatsService(Plugin plugin, CityManager cm) {
         this.plugin = plugin;
         this.cityManager = cm;
@@ -58,6 +70,9 @@ public class StatsService {
     public void start() {
         updateConfig();
         if (taskId != -1) return;
+        pendingCityUpdates.clear();
+        scheduledCityQueue.clear();
+        queueAllCitiesForInitialScan();
         scheduleTask();
     }
 
@@ -66,17 +81,125 @@ public class StatsService {
             Bukkit.getScheduler().cancelTask(taskId);
             taskId = -1;
         }
+        pendingCityUpdates.clear();
+        scheduledCityQueue.clear();
     }
 
     public void restartTask() {
         updateConfig();
         stop();
+        queueAllCitiesForInitialScan();
         scheduleTask();
     }
 
+    public void requestCityUpdate(City city) {
+        requestCityUpdate(city, false);
+    }
+
+    public void requestCityUpdate(City city, boolean forceRefresh) {
+        if (city == null || city.id == null) {
+            return;
+        }
+        addPendingCity(city.id, forceRefresh);
+    }
+
+    public void requestCityUpdate(Location location) {
+        requestCityUpdate(location, false);
+    }
+
+    public void requestCityUpdate(Location location, boolean forceRefresh) {
+        if (location == null) {
+            return;
+        }
+        City city = cityManager.cityAt(location);
+        if (city != null) {
+            requestCityUpdate(city, forceRefresh);
+        }
+    }
+
+    private void addPendingCity(String cityId, boolean forceRefresh) {
+        if (cityId == null || cityId.isEmpty()) {
+            return;
+        }
+        pendingCityUpdates.merge(cityId, forceRefresh, (existing, incoming) -> existing || incoming);
+        scheduledCityQueue.remove(cityId);
+    }
+
     private void tick() {
+        int processed = 0;
+        int target = Math.max(1, maxCitiesPerTick);
+        while (processed < target) {
+            boolean handled = processNextPendingCity();
+            if (!handled) {
+                handled = processNextScheduledCity();
+            }
+            if (!handled) {
+                break;
+            }
+            processed++;
+        }
+    }
+
+    private boolean processNextPendingCity() {
+        if (pendingCityUpdates.isEmpty()) {
+            return false;
+        }
+        var iterator = pendingCityUpdates.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            iterator.remove();
+            City city = cityManager.get(entry.getKey());
+            if (city == null) {
+                continue;
+            }
+            updateCity(city, entry.getValue());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean processNextScheduledCity() {
+        while (true) {
+            if (scheduledCityQueue.isEmpty()) {
+                refillScheduledQueue();
+                if (scheduledCityQueue.isEmpty()) {
+                    return false;
+                }
+            }
+            String cityId = scheduledCityQueue.pollFirst();
+            if (cityId == null) {
+                continue;
+            }
+            if (pendingCityUpdates.containsKey(cityId)) {
+                continue;
+            }
+            City city = cityManager.get(cityId);
+            if (city == null) {
+                continue;
+            }
+            updateCity(city, false);
+            return true;
+        }
+    }
+
+    private void refillScheduledQueue() {
+        scheduledCityQueue.clear();
+        List<City> cities = new ArrayList<>(cityManager.all());
+        cities.sort(Comparator.comparingInt(c -> c.priority));
+        for (City city : cities) {
+            if (city == null || city.id == null) {
+                continue;
+            }
+            if (pendingCityUpdates.containsKey(city.id)) {
+                continue;
+            }
+            scheduledCityQueue.addLast(city.id);
+        }
+    }
+
+    private void queueAllCitiesForInitialScan() {
         for (City city : cityManager.all()) {
-            updateCity(city);
+            requestCityUpdate(city, true);
         }
     }
 
@@ -158,6 +281,9 @@ public class StatsService {
     }
 
     public HappinessBreakdown computeHappinessBreakdown(City city) {
+        if (city == null) {
+            return new HappinessBreakdown();
+        }
         if (city.happinessBreakdown != null && city.blockScanCache != null) {
             return city.happinessBreakdown;
         }
@@ -168,7 +294,8 @@ public class StatsService {
             city.happiness = hb.total;
             return hb;
         }
-        return updateCity(city, true);
+        requestCityUpdate(city, true);
+        return city.happinessBreakdown != null ? city.happinessBreakdown : new HappinessBreakdown();
     }
 
     private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
@@ -539,6 +666,8 @@ public class StatsService {
             configuredDelay = DEFAULT_STATS_INITIAL_DELAY_TICKS;
         }
         statsInitialDelayTicks = configuredDelay;
+
+        maxCitiesPerTick = Math.max(1, c.getInt("updates.max_cities_per_tick", 1));
 
         lightNeutral = Math.max(0.1, c.getDouble("happiness_weights.light_neutral_level", 2.0));
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
