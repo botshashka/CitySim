@@ -4,6 +4,8 @@ package dev.citysim.stats;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -455,7 +457,11 @@ public class StatsService {
             if (watchers.isEmpty()) {
                 return;
             }
-            String timestamped = "[" + LocalDateTime.now().format(timestampFormat) + "] " + message;
+            String timestamp = LocalDateTime.now().format(timestampFormat);
+            Component component = Component.text()
+                    .append(Component.text("[" + timestamp + "] ", NamedTextColor.DARK_GRAY))
+                    .append(Component.text(message, NamedTextColor.GRAY))
+                    .build();
             var iterator = watchers.iterator();
             while (iterator.hasNext()) {
                 UUID id = iterator.next();
@@ -464,7 +470,7 @@ public class StatsService {
                     iterator.remove();
                     continue;
                 }
-                player.sendMessage(timestamped);
+                player.sendMessage(component);
             }
         }
 

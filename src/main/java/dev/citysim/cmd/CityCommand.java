@@ -13,11 +13,10 @@ import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionType;
 import dev.citysim.stats.StatsService;
 import dev.citysim.ui.ScoreboardService;
+import dev.citysim.util.AdventureMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -98,7 +97,7 @@ public class CityCommand implements CommandExecutor {
             bossBars.restart();
         }
 
-        sender.sendMessage(ChatColor.GREEN + "CitySim configuration reloaded.");
+        sendSuccess(sender, "CitySim configuration reloaded.");
         return true;
     }
 
@@ -107,13 +106,13 @@ public class CityCommand implements CommandExecutor {
             return true;
         }
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.YELLOW + "Usage: /city create <name>");
+            sendWarning(sender, "Usage: /city create <name>");
             return true;
         }
 
         String name = joinArgs(args, 1);
         if (name.isEmpty()) {
-            sender.sendMessage(ChatColor.RED + "City name cannot be empty.");
+            sendError(sender, "City name cannot be empty.");
             return true;
         }
 
@@ -127,11 +126,11 @@ public class CityCommand implements CommandExecutor {
             SelectionState sel = SelectionListener.get(player);
             if (sel.ready()) {
                 if (sel.world != sel.pos1.getWorld() || sel.world != sel.pos2.getWorld()) {
-                    player.sendMessage(ChatColor.RED + "Your selection must be in a single world. Use /city wand clear and try again.");
+                    player.sendMessage(Component.text("Your selection must be in a single world. Use /city wand clear and try again.", NamedTextColor.RED));
                     return true;
                 }
                 if (sel.world != player.getWorld()) {
-                    player.sendMessage(ChatColor.RED + "You are in a different world than your selection. Switch worlds or clear it with /city wand clear before creating a city.");
+                    player.sendMessage(Component.text("You are in a different world than your selection. Switch worlds or clear it with /city wand clear before creating a city.", NamedTextColor.RED));
                     return true;
                 }
 
@@ -152,27 +151,42 @@ public class CityCommand implements CommandExecutor {
             cityManager.save();
             statsService.updateCity(created, true);
 
+            Component base = Component.text()
+                    .append(Component.text("Created new ", NamedTextColor.GREEN))
+                    .append(Component.text(pendingCuboid != null ? "city " : "empty city ", NamedTextColor.GREEN))
+                    .append(Component.text(created.name, NamedTextColor.GREEN))
+                    .append(Component.text(" (ID: " + created.id + ")", NamedTextColor.GREEN))
+                    .build();
             if (pendingCuboid != null) {
-                sender.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + ") with an initial cuboid ("
-                        + pendingWidth + "×" + pendingLength + "×" + pendingHeight + ", mode: " + pendingMode + "). Use /city edit " + created.id + " addcuboid to add more areas.");
+                Component details = Component.text()
+                        .append(Component.text(" with an initial cuboid (", NamedTextColor.GREEN))
+                        .append(Component.text(pendingWidth + "×" + pendingLength + "×" + pendingHeight, NamedTextColor.GREEN))
+                        .append(Component.text(", mode: " + pendingMode + "). Use /city edit " + created.id + " addcuboid to add more areas.", NamedTextColor.GREEN))
+                        .build();
+                sender.sendMessage(base.append(details));
             } else {
-                sender.sendMessage(ChatColor.GREEN + "Created new empty city " + created.name + " (ID: " + created.id + "). Use /city wand and /city edit " + created.id + " addcuboid to define its area.");
+                Component details = Component.text(". Use /city wand and /city edit " + created.id + " addcuboid to define its area.", NamedTextColor.GREEN);
+                sender.sendMessage(base.append(details));
             }
         } catch (IllegalArgumentException ex) {
-            sender.sendMessage(ChatColor.RED + ex.getMessage());
+            sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
         return true;
     }
 
     private boolean handleList(CommandSender sender) {
         if (cityManager.all().isEmpty()) {
-            sender.sendMessage(ChatColor.YELLOW + "No cities have been created yet.");
+            sendWarning(sender, "No cities have been created yet.");
             return true;
         }
 
-        sender.sendMessage(ChatColor.GRAY + "Cities:");
+        sendGray(sender, "Cities:");
         for (City city : cityManager.all()) {
-            sender.sendMessage(ChatColor.GOLD + city.id + ChatColor.GRAY + " — " + ChatColor.WHITE + city.name);
+            sender.sendMessage(Component.text()
+                    .append(Component.text(city.id, NamedTextColor.GOLD))
+                    .append(Component.text(" — ", NamedTextColor.GRAY))
+                    .append(Component.text(city.name, NamedTextColor.WHITE))
+                    .build());
         }
         return true;
     }
@@ -182,19 +196,27 @@ public class CityCommand implements CommandExecutor {
             return true;
         }
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.YELLOW + "Usage: /city remove <cityId>");
+            sendWarning(sender, "Usage: /city remove <cityId>");
             return true;
         }
 
         String id = args[1];
         City removed = cityManager.remove(id);
         if (removed == null) {
-            sender.sendMessage(ChatColor.RED + "City with id '" + id + "' does not exist.");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(id, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
             return true;
         }
 
         cityManager.save();
-        sender.sendMessage(ChatColor.GREEN + "City '" + removed.name + "' (ID: " + removed.id + ") removed.");
+        sender.sendMessage(Component.text()
+                .append(Component.text("City '", NamedTextColor.GREEN))
+                .append(Component.text(removed.name, NamedTextColor.GREEN))
+                .append(Component.text("' (ID: " + removed.id + ") removed.", NamedTextColor.GREEN))
+                .build());
         return true;
     }
 
@@ -222,7 +244,7 @@ public class CityCommand implements CommandExecutor {
             case "station":
                 return handleStation(sender, id, args);
             default:
-                sender.sendMessage(ChatColor.RED + "Unknown edit action. Use name, addcuboid, removecuboid, highrise, or station.");
+                sendError(sender, "Unknown edit action. Use name, addcuboid, removecuboid, highrise, or station.");
                 return true;
         }
     }
@@ -235,7 +257,7 @@ public class CityCommand implements CommandExecutor {
 
         String newName = joinArgs(args, 3);
         if (newName.isEmpty()) {
-            sender.sendMessage(ChatColor.RED + "New name cannot be empty.");
+            sendError(sender, "New name cannot be empty.");
             return true;
         }
 
@@ -243,36 +265,44 @@ public class CityCommand implements CommandExecutor {
             City renamed = cityManager.rename(cityId, newName);
             cityManager.save();
             statsService.updateCity(renamed, true);
-            sender.sendMessage(ChatColor.GREEN + "City renamed to " + renamed.name + " (ID: " + renamed.id + ").");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City renamed to ", NamedTextColor.GREEN))
+                    .append(Component.text(renamed.name, NamedTextColor.GREEN))
+                    .append(Component.text(" (ID: " + renamed.id + ").", NamedTextColor.GREEN))
+                    .build());
         } catch (IllegalArgumentException ex) {
-            sender.sendMessage(ChatColor.RED + ex.getMessage());
+            sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
         return true;
     }
 
     private boolean handleAddCuboid(CommandSender sender, String cityId) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
 
         SelectionState sel = SelectionListener.get(player);
         if (!sel.ready()) {
-            player.sendMessage(ChatColor.RED + "You must select two corners with the CitySim wand first!");
+            player.sendMessage(Component.text("You must select two corners with the CitySim wand first!", NamedTextColor.RED));
             return true;
         }
         if (sel.world != sel.pos1.getWorld() || sel.world != sel.pos2.getWorld()) {
-            player.sendMessage(ChatColor.RED + "Your selection must be in a single world.");
+            player.sendMessage(Component.text("Your selection must be in a single world.", NamedTextColor.RED));
             return true;
         }
         if (sel.world != player.getWorld()) {
-            player.sendMessage(ChatColor.RED + "You are in a different world than your selection.");
+            player.sendMessage(Component.text("You are in a different world than your selection.", NamedTextColor.RED));
             return true;
         }
 
         City city = cityManager.get(cityId);
         if (city == null) {
-            player.sendMessage(ChatColor.RED + "City with id '" + cityId + "' does not exist.");
+            player.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
             return true;
         }
 
@@ -288,22 +318,33 @@ public class CityCommand implements CommandExecutor {
             int length = cuboid.maxZ - cuboid.minZ + 1;
             int height = cuboid.maxY - cuboid.minY + 1;
             String mode = fullHeight ? "full" : "span";
-            player.sendMessage(ChatColor.GREEN + "Added cuboid #" + index + " to " + city.name + " (" + width + "×" + length + "×" + height + ", mode: " + mode + ").");
+            Component message = Component.text()
+                    .append(Component.text("Added cuboid #", NamedTextColor.GREEN))
+                    .append(Component.text(Integer.toString(index), NamedTextColor.GREEN))
+                    .append(Component.text(" to ", NamedTextColor.GREEN))
+                    .append(Component.text(city.name, NamedTextColor.GREEN))
+                    .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + mode + ").", NamedTextColor.GREEN))
+                    .build();
+            player.sendMessage(message);
         } catch (IllegalArgumentException ex) {
-            player.sendMessage(ChatColor.RED + ex.getMessage());
+            player.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
         return true;
     }
 
     private boolean handleRemoveCuboid(CommandSender sender, String cityId) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
 
         City city = cityManager.get(cityId);
         if (city == null) {
-            player.sendMessage(ChatColor.RED + "City with id '" + cityId + "' does not exist.");
+            player.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
             return true;
         }
 
@@ -311,18 +352,30 @@ public class CityCommand implements CommandExecutor {
         try {
             removed = cityManager.removeCuboidsContaining(city.id, player.getLocation());
         } catch (IllegalArgumentException ex) {
-            player.sendMessage(ChatColor.RED + ex.getMessage());
+            player.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
             return true;
         }
 
         if (removed == 0) {
-            player.sendMessage(ChatColor.YELLOW + "You are not standing inside any cuboids for " + city.name + ".");
+            player.sendMessage(Component.text()
+                    .append(Component.text("You are not standing inside any cuboids for ", NamedTextColor.YELLOW))
+                    .append(Component.text(city.name, NamedTextColor.YELLOW))
+                    .append(Component.text(".", NamedTextColor.YELLOW))
+                    .build());
             return true;
         }
 
         cityManager.save();
         statsService.updateCity(city, true);
-        player.sendMessage(ChatColor.GREEN + "Removed " + removed + " cuboid" + (removed == 1 ? "" : "s") + " from " + city.name + ".");
+        String suffix = removed == 1 ? " cuboid" : " cuboids";
+        player.sendMessage(Component.text()
+                .append(Component.text("Removed ", NamedTextColor.GREEN))
+                .append(Component.text(Integer.toString(removed), NamedTextColor.GREEN))
+                .append(Component.text(suffix, NamedTextColor.GREEN))
+                .append(Component.text(" from ", NamedTextColor.GREEN))
+                .append(Component.text(city.name, NamedTextColor.GREEN))
+                .append(Component.text(".", NamedTextColor.GREEN))
+                .build());
         return true;
     }
 
@@ -339,13 +392,17 @@ public class CityCommand implements CommandExecutor {
         } else if (value.equalsIgnoreCase("false") || value.equalsIgnoreCase("off")) {
             enable = false;
         } else {
-            sender.sendMessage(ChatColor.RED + "Highrise value must be true/false.");
+            sendError(sender, "Highrise value must be true/false.");
             return true;
         }
 
         City city = cityManager.get(cityId);
         if (city == null) {
-            sender.sendMessage(ChatColor.RED + "City with id '" + cityId + "' does not exist.");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
             return true;
         }
 
@@ -353,9 +410,15 @@ public class CityCommand implements CommandExecutor {
             cityManager.setHighrise(city.id, enable);
             cityManager.save();
             statsService.updateCity(city, true);
-            sender.sendMessage(ChatColor.GREEN + "City '" + city.name + "' highrise set to " + enable + ".");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City '", NamedTextColor.GREEN))
+                    .append(Component.text(city.name, NamedTextColor.GREEN))
+                    .append(Component.text("' highrise set to ", NamedTextColor.GREEN))
+                    .append(Component.text(Boolean.toString(enable), NamedTextColor.GREEN))
+                    .append(Component.text(".", NamedTextColor.GREEN))
+                    .build());
         } catch (IllegalArgumentException ex) {
-            sender.sendMessage(ChatColor.RED + ex.getMessage());
+            sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
         return true;
     }
@@ -368,7 +431,11 @@ public class CityCommand implements CommandExecutor {
 
         City city = cityManager.get(cityId);
         if (city == null) {
-            sender.sendMessage(ChatColor.RED + "City with id '" + cityId + "' does not exist.");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
             return true;
         }
 
@@ -400,11 +467,28 @@ public class CityCommand implements CommandExecutor {
 
         if (updated == previousStations) {
             String word = updated == 1 ? " station" : " stations";
-            sender.sendMessage(ChatColor.YELLOW + "City '" + city.name + "' remains at " + updated + word + ".");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City '", NamedTextColor.YELLOW))
+                    .append(Component.text(city.name, NamedTextColor.YELLOW))
+                    .append(Component.text("' remains at ", NamedTextColor.YELLOW))
+                    .append(Component.text(Integer.toString(updated), NamedTextColor.YELLOW))
+                    .append(Component.text(word, NamedTextColor.YELLOW))
+                    .append(Component.text(".", NamedTextColor.YELLOW))
+                    .build());
         } else {
             String newWord = updated == 1 ? " station" : " stations";
             String oldWord = previousStations == 1 ? " station" : " stations";
-            sender.sendMessage(ChatColor.GREEN + "City '" + city.name + "' now has " + updated + newWord + " (was " + previousStations + oldWord + ").");
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City '", NamedTextColor.GREEN))
+                    .append(Component.text(city.name, NamedTextColor.GREEN))
+                    .append(Component.text("' now has ", NamedTextColor.GREEN))
+                    .append(Component.text(Integer.toString(updated), NamedTextColor.GREEN))
+                    .append(Component.text(newWord, NamedTextColor.GREEN))
+                    .append(Component.text(" (was ", NamedTextColor.GREEN))
+                    .append(Component.text(Integer.toString(previousStations), NamedTextColor.GREEN))
+                    .append(Component.text(oldWord, NamedTextColor.GREEN))
+                    .append(Component.text(").", NamedTextColor.GREEN))
+                    .build());
         }
         return true;
     }
@@ -414,7 +498,7 @@ public class CityCommand implements CommandExecutor {
             return true;
         }
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
         if (args.length < 2) {
@@ -425,9 +509,9 @@ public class CityCommand implements CommandExecutor {
         if ("scans".equals(target)) {
             boolean enabled = statsService.toggleScanDebug(player);
             if (enabled) {
-                player.sendMessage(ChatColor.GREEN + "City scan debug enabled. Scan activity will appear in this chat.");
+                player.sendMessage(Component.text("City scan debug enabled. Scan activity will appear in this chat.", NamedTextColor.GREEN));
             } else {
-                player.sendMessage(ChatColor.YELLOW + "City scan debug disabled.");
+                player.sendMessage(Component.text("City scan debug disabled.", NamedTextColor.YELLOW));
             }
             return true;
         }
@@ -449,7 +533,7 @@ public class CityCommand implements CommandExecutor {
 
     private boolean handleWand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
         if (!checkAdmin(sender)) {
@@ -460,7 +544,7 @@ public class CityCommand implements CommandExecutor {
             String option = args[1].toLowerCase(Locale.ROOT);
             if (option.equals("clear")) {
                 SelectionListener.clear(player);
-                player.sendMessage(ChatColor.GREEN + "Selection cleared.");
+                player.sendMessage(Component.text("Selection cleared.", NamedTextColor.GREEN));
                 return true;
             }
             if (option.equals("ymode")) {
@@ -478,13 +562,13 @@ public class CityCommand implements CommandExecutor {
         wand.setItemMeta(meta);
 
         player.getInventory().addItem(wand);
-        player.sendMessage(ChatColor.GREEN + "CitySim wand given. Left/right click blocks to set the selection.");
+        player.sendMessage(Component.text("CitySim wand given. Left/right click blocks to set the selection.", NamedTextColor.GREEN));
         return true;
     }
 
     private boolean handleStats(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
 
@@ -496,12 +580,11 @@ public class CityCommand implements CommandExecutor {
             city = cityManager.cityAt(player.getLocation());
         }
         if (city == null) {
-            player.sendMessage(ChatColor.RED + "Stand in a city or pass /city stats <cityId>");
+            player.sendMessage(Component.text("Stand in a city or pass /city stats <cityId>", NamedTextColor.RED));
             return true;
         }
 
         var hb = statsService.updateCity(city, true);
-        var mm = MiniMessage.miniMessage();
         ContributionLists contributionLists = HappinessBreakdownFormatter.buildContributionLists(hb);
 
         String breakdownLines = joinContributionLines(contributionLists.positives(), this::miniMessageLabelFor);
@@ -525,7 +608,7 @@ public class CityCommand implements CommandExecutor {
                 hb.total,
                 breakdownLines
         );
-        player.sendMessage(mm.deserialize(msg));
+        player.sendMessage(AdventureMessages.mini(msg));
         return true;
     }
 
@@ -560,7 +643,7 @@ public class CityCommand implements CommandExecutor {
 
     private boolean handleDisplay(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
         if (args.length < 2) {
@@ -574,13 +657,17 @@ public class CityCommand implements CommandExecutor {
                 return handleDisplayToggle(player, args, "Usage: /city display titles on|off",
                         on -> {
                             plugin.getTitleService().setEnabled(player.getUniqueId(), on);
-                            player.sendMessage(on ? ChatColor.GREEN + "Enter titles enabled" : ChatColor.RED + "Enter titles disabled");
+                            player.sendMessage(on
+                                    ? Component.text("Enter titles enabled", NamedTextColor.GREEN)
+                                    : Component.text("Enter titles disabled", NamedTextColor.RED));
                         });
             case "bossbar":
                 return handleDisplayToggle(player, args, "Usage: /city display bossbar on|off",
                         on -> {
                             plugin.getBossBarService().setEnabled(player, on);
-                            player.sendMessage(on ? ChatColor.GREEN + "City bossbar enabled" : ChatColor.RED + "City bossbar disabled");
+                            player.sendMessage(on
+                                    ? Component.text("City bossbar enabled", NamedTextColor.GREEN)
+                                    : Component.text("City bossbar disabled", NamedTextColor.RED));
                         });
             case "scoreboard":
                 return handleScoreboardDisplay(player, args);
@@ -592,7 +679,7 @@ public class CityCommand implements CommandExecutor {
 
     private boolean handleDisplayToggle(Player player, String[] args, String usage, Consumer<Boolean> toggler) {
         if (args.length < 3) {
-            player.sendMessage(ChatColor.YELLOW + usage);
+            player.sendMessage(Component.text(usage, NamedTextColor.YELLOW));
             return true;
         }
         String option = args[2].toLowerCase(Locale.ROOT);
@@ -604,7 +691,7 @@ public class CityCommand implements CommandExecutor {
                 toggler.accept(false);
                 break;
             default:
-                player.sendMessage(ChatColor.YELLOW + usage);
+                player.sendMessage(Component.text(usage, NamedTextColor.YELLOW));
                 return true;
         }
         return true;
@@ -612,7 +699,7 @@ public class CityCommand implements CommandExecutor {
 
     private boolean handleScoreboardDisplay(Player player, String[] args) {
         if (args.length < 3) {
-            player.sendMessage(ChatColor.YELLOW + "Usage: /city display scoreboard <off|compact|full>");
+            player.sendMessage(Component.text("Usage: /city display scoreboard <off|compact|full>", NamedTextColor.YELLOW));
             return true;
         }
 
@@ -620,24 +707,28 @@ public class CityCommand implements CommandExecutor {
         switch (option) {
             case "off":
                 plugin.getScoreboardService().setEnabled(player, false);
-                player.sendMessage(ChatColor.RED + "Scoreboard disabled");
+                player.sendMessage(Component.text("Scoreboard disabled", NamedTextColor.RED));
                 return true;
             case "compact":
             case "full":
                 ScoreboardService.Mode mode = option.equals("full") ? ScoreboardService.Mode.FULL : ScoreboardService.Mode.COMPACT;
                 plugin.getScoreboardService().setMode(player.getUniqueId(), mode);
                 plugin.getScoreboardService().setEnabled(player, true);
-                player.sendMessage(ChatColor.GREEN + "Scoreboard enabled (" + option + " mode)");
+                player.sendMessage(Component.text()
+                        .append(Component.text("Scoreboard enabled (", NamedTextColor.GREEN))
+                        .append(Component.text(option, NamedTextColor.GREEN))
+                        .append(Component.text(" mode)", NamedTextColor.GREEN))
+                        .build());
                 return true;
             default:
-                player.sendMessage(ChatColor.YELLOW + "Usage: /city display scoreboard <off|compact|full>");
+                player.sendMessage(Component.text("Usage: /city display scoreboard <off|compact|full>", NamedTextColor.YELLOW));
                 return true;
         }
     }
 
     private boolean handleWandYMode(Player player, String[] args) {
         if (args.length < 3) {
-            player.sendMessage(ChatColor.YELLOW + "Usage: /city wand ymode <full|span>");
+            player.sendMessage(Component.text("Usage: /city wand ymode <full|span>", NamedTextColor.YELLOW));
             return true;
         }
 
@@ -646,14 +737,14 @@ public class CityCommand implements CommandExecutor {
         switch (modeArg) {
             case "full":
                 sel.yMode = SelectionState.YMode.FULL;
-                player.sendMessage(ChatColor.GRAY + "Y-mode set to full.");
+                player.sendMessage(Component.text("Y-mode set to full.", NamedTextColor.GRAY));
                 break;
             case "span":
                 sel.yMode = SelectionState.YMode.SPAN;
-                player.sendMessage(ChatColor.GRAY + "Y-mode set to span.");
+                player.sendMessage(Component.text("Y-mode set to span.", NamedTextColor.GRAY));
                 break;
             default:
-                player.sendMessage(ChatColor.RED + "Unknown mode. Use full or span.");
+                player.sendMessage(Component.text("Unknown mode. Use full or span.", NamedTextColor.RED));
                 break;
         }
         return true;
@@ -661,7 +752,7 @@ public class CityCommand implements CommandExecutor {
 
     private boolean handleTop(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(Component.text("Players only."));
             return true;
         }
 
@@ -680,7 +771,7 @@ public class CityCommand implements CommandExecutor {
             City city = list.get(i);
             sb.append(String.format("%2d. %s  —  pop %d, happy %d\n", i + 1, city.name, city.population, city.happiness));
         }
-        player.sendMessage(sb.toString());
+        player.sendMessage(Component.text(sb.toString(), NamedTextColor.GRAY));
         return true;
     }
 
@@ -709,7 +800,7 @@ public class CityCommand implements CommandExecutor {
         if (sender.hasPermission("citysim.admin")) {
             return true;
         }
-        sender.sendMessage(ChatColor.RED + "You do not have permission to do that.");
+        sendError(sender, "You do not have permission to do that.");
         return false;
     }
 
@@ -718,60 +809,89 @@ public class CityCommand implements CommandExecutor {
         try {
             amount = Integer.parseInt(value);
         } catch (NumberFormatException ex) {
-            sender.sendMessage(ChatColor.RED + "Invalid number for " + context + ": " + value);
+            sender.sendMessage(Component.text()
+                    .append(Component.text("Invalid number for ", NamedTextColor.RED))
+                    .append(Component.text(context, NamedTextColor.RED))
+                    .append(Component.text(": ", NamedTextColor.RED))
+                    .append(Component.text(value, NamedTextColor.RED))
+                    .build());
             return null;
         }
         if (amount < 0) {
-            sender.sendMessage(ChatColor.RED + "Amount must be zero or positive.");
+            sendError(sender, "Amount must be zero or positive.");
             return null;
         }
         return amount;
     }
 
     private void sendStationUsage(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "Usage: /city edit <cityId> station <add|remove|set|clear> [amount]");
+        sendWarning(sender, "Usage: /city edit <cityId> station <add|remove|set|clear> [amount]");
     }
 
     private void sendEditUsage(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "Usage:");
-        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> name <new name>");
-        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> addcuboid");
-        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> removecuboid");
-        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> highrise <true|false>");
-        sender.sendMessage(ChatColor.YELLOW + "/city edit <cityId> station <add|remove|set|clear> [amount]");
+        sender.sendMessage(AdventureMessages.joinLines(
+                AdventureMessages.colored("Usage:", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city edit <cityId> name <new name>", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city edit <cityId> addcuboid", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city edit <cityId> removecuboid", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city edit <cityId> highrise <true|false>", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city edit <cityId> station <add|remove|set|clear> [amount]", NamedTextColor.YELLOW)
+        ));
     }
 
     private void sendDisplayUsage(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "Usage:");
-        sender.sendMessage(ChatColor.YELLOW + "/city display titles on|off");
-        sender.sendMessage(ChatColor.YELLOW + "/city display bossbar on|off");
-        sender.sendMessage(ChatColor.YELLOW + "/city display scoreboard <off|compact|full>");
+        sender.sendMessage(AdventureMessages.joinLines(
+                AdventureMessages.colored("Usage:", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city display titles on|off", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city display bossbar on|off", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city display scoreboard <off|compact|full>", NamedTextColor.YELLOW)
+        ));
     }
 
     private void sendDebugUsage(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "Usage:");
-        sender.sendMessage(ChatColor.YELLOW + "/city debug scans");
+        sender.sendMessage(AdventureMessages.joinLines(
+                AdventureMessages.colored("Usage:", NamedTextColor.YELLOW),
+                AdventureMessages.colored("/city debug scans", NamedTextColor.YELLOW)
+        ));
     }
 
     private boolean help(CommandSender s) {
-        s.sendMessage(ChatColor.GRAY + "/city wand [clear]");
-        s.sendMessage(ChatColor.GRAY + "/city create <name>");
-        s.sendMessage(ChatColor.GRAY + "/city add <name>");
-        s.sendMessage(ChatColor.GRAY + "/city list");
-        s.sendMessage(ChatColor.GRAY + "/city remove <cityId>");
-        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> name <new name>");
-        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> addcuboid");
-        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> removecuboid");
-        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> highrise <true|false>");
-        s.sendMessage(ChatColor.GRAY + "/city edit <cityId> station <add|remove|set|clear> [amount]");
-        s.sendMessage(ChatColor.GRAY + "/city wand ymode <full|span>");
-        s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
-        s.sendMessage(ChatColor.GRAY + "/city display titles on|off");
-        s.sendMessage(ChatColor.GRAY + "/city display bossbar on|off");
-        s.sendMessage(ChatColor.GRAY + "/city display scoreboard <off|compact|full>");
-        s.sendMessage(ChatColor.GRAY + "/city top [happy|pop]");
-        s.sendMessage(ChatColor.GRAY + "/city reload");
-        s.sendMessage(ChatColor.GRAY + "/city debug scans");
+        s.sendMessage(AdventureMessages.joinLines(
+                AdventureMessages.colored("/city wand [clear]", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city create <name>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city add <name>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city list", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city remove <cityId>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city edit <cityId> name <new name>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city edit <cityId> addcuboid", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city edit <cityId> removecuboid", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city edit <cityId> highrise <true|false>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city edit <cityId> station <add|remove|set|clear> [amount]", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city wand ymode <full|span>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city stats [cityId]", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city display titles on|off", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city display bossbar on|off", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city display scoreboard <off|compact|full>", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city top [happy|pop]", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city reload", NamedTextColor.GRAY),
+                AdventureMessages.colored("/city debug scans", NamedTextColor.GRAY)
+        ));
         return true;
+    }
+
+    private void sendSuccess(CommandSender sender, String message) {
+        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.GREEN));
+    }
+
+    private void sendWarning(CommandSender sender, String message) {
+        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.YELLOW));
+    }
+
+    private void sendError(CommandSender sender, String message) {
+        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.RED));
+    }
+
+    private void sendGray(CommandSender sender, String message) {
+        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.GRAY));
     }
 }
