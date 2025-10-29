@@ -4,12 +4,12 @@ import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
 import dev.citysim.stats.StationCounter;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -36,10 +37,8 @@ public class TrainCartsStationService implements StationCounter {
     private final Method entryHasSignActionEventsMethod;
     private final Method entryCreateFrontTrackedSignMethod;
     private final Method entryCreateBackTrackedSignMethod;
-    private final Constructor<?> signActionEventConstructor;
-    private final Method signActionGetSignActionMethod;
     private final Object railPieceNone;
-    private final String signActionStationClassName;
+    private final Method trackedSignGetLineMethod;
 
     private boolean failureLogged;
 
@@ -80,13 +79,7 @@ public class TrainCartsStationService implements StationCounter {
         this.railPieceNone = noneField.get(null);
 
         Class<?> trackedSignClass = Class.forName("com.bergerkiller.bukkit.tc.rails.RailLookup$TrackedSign", true, loader);
-        Class<?> signActionEventClass = Class.forName("com.bergerkiller.bukkit.tc.events.SignActionEvent", true, loader);
-        this.signActionEventConstructor = signActionEventClass.getConstructor(trackedSignClass);
-
-        Class<?> signActionClass = Class.forName("com.bergerkiller.bukkit.tc.signactions.SignAction", true, loader);
-        this.signActionGetSignActionMethod = signActionClass.getMethod("getSignAction", signActionEventClass);
-
-        this.signActionStationClassName = "com.bergerkiller.bukkit.tc.signactions.SignActionStation";
+        this.trackedSignGetLineMethod = trackedSignClass.getMethod("getLine", int.class);
     }
 
     private Plugin findTrainCartsPlugin(JavaPlugin plugin) {
@@ -240,12 +233,90 @@ public class TrainCartsStationService implements StationCounter {
         if (trackedSign == null) {
             return false;
         }
-        Object event = signActionEventConstructor.newInstance(trackedSign);
-        Object handler = signActionGetSignActionMethod.invoke(null, event);
-        if (handler == null) {
+        String header = readSignLine(trackedSign, 0);
+        String action = readSignLine(trackedSign, 1);
+        if (header == null || action == null) {
             return false;
         }
-        return handler.getClass().getName().equals(signActionStationClassName);
+        if (!isTrainOrCartHeader(header)) {
+            return false;
+        }
+        return isStationActionLine(action);
+    }
+
+    private String readSignLine(Object trackedSign, int index) throws ReflectiveOperationException {
+        try {
+            Object value = trackedSignGetLineMethod.invoke(trackedSign, index);
+            if (value instanceof String str) {
+                return str;
+            }
+            return value != null ? value.toString() : null;
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            throw new ReflectiveOperationException(cause != null ? cause : ex);
+        }
+    }
+
+    private boolean isTrainOrCartHeader(String line) {
+        String cleaned = stripFormatting(line);
+        if (cleaned.isEmpty()) {
+            return false;
+        }
+        if (cleaned.charAt(0) == '[' && cleaned.length() > 1) {
+            cleaned = cleaned.substring(1);
+        }
+        if (!cleaned.isEmpty() && cleaned.charAt(cleaned.length() - 1) == ']') {
+            cleaned = cleaned.substring(0, cleaned.length() - 1);
+        }
+        cleaned = trimLeadingPunctuation(cleaned);
+        if (cleaned.isEmpty()) {
+            return false;
+        }
+        int colon = cleaned.indexOf(':');
+        if (colon >= 0) {
+            cleaned = cleaned.substring(0, colon);
+        }
+        cleaned = cleaned.replace(" ", "").replace("\t", "");
+        if (cleaned.isEmpty()) {
+            return false;
+        }
+        String lower = cleaned.toLowerCase(Locale.ROOT);
+        return lower.equals("train") || lower.equals("cart");
+    }
+
+    private boolean isStationActionLine(String line) {
+        String cleaned = trimLeadingPunctuation(stripFormatting(line));
+        if (cleaned.isEmpty()) {
+            return false;
+        }
+        int space = cleaned.indexOf(' ');
+        if (space >= 0) {
+            cleaned = cleaned.substring(0, space);
+        }
+        int colon = cleaned.indexOf(':');
+        if (colon >= 0) {
+            cleaned = cleaned.substring(0, colon);
+        }
+        return cleaned.equalsIgnoreCase("station");
+    }
+
+    private String stripFormatting(String line) {
+        if (line == null) {
+            return "";
+        }
+        String stripped = ChatColor.stripColor(line);
+        if (stripped == null) {
+            stripped = line;
+        }
+        return stripped.trim();
+    }
+
+    private String trimLeadingPunctuation(String input) {
+        int index = 0;
+        while (index < input.length() && !Character.isLetterOrDigit(input.charAt(index))) {
+            index++;
+        }
+        return index >= input.length() ? "" : input.substring(index);
     }
 
     private boolean isInsideAny(List<Cuboid> cuboids, int x, int y, int z) {
