@@ -2,6 +2,7 @@ package dev.citysim.city;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -232,6 +233,10 @@ public class CityManager {
                 }
             }
             verifyWorldIndexState("load");
+        } catch (JsonParseException e) {
+            byId.clear();
+            citiesByWorld.clear();
+            plugin.getLogger().warning("Failed parsing cities data '" + dataFile.getName() + "': " + e.getMessage() + ". Starting with an empty city list.");
         } catch (IOException e) {
             plugin.getLogger().severe("Failed loading cities: " + e.getMessage());
         }

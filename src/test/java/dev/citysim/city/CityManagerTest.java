@@ -6,8 +6,10 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginDescriptionFile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -15,11 +17,17 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import java.util.logging.Level;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CityManagerTest {
 
@@ -53,6 +61,40 @@ class CityManagerTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> manager.addCuboid(city.id, cuboid));
         assertEquals("Highrise cities cannot contain cuboids with full Y mode.", ex.getMessage());
+    }
+
+    @Test
+    void loadHandlesInvalidJsonGracefully(@TempDir Path tempDir) throws IOException {
+        File dataFolder = tempDir.toFile();
+        if (!dataFolder.exists() && !dataFolder.mkdirs()) {
+            throw new IOException("Failed to create data folder for test");
+        }
+        File dataFile = new File(dataFolder, "cities.json");
+        Files.writeString(dataFile.toPath(), "{ not valid json");
+
+        TestLogHandler handler = new TestLogHandler();
+        Logger logger = Logger.getLogger("CityManagerTest-" + UUID.randomUUID());
+        logger.setUseParentHandlers(false);
+        logger.addHandler(handler);
+
+        Plugin plugin = (Plugin) Proxy.newProxyInstance(
+                Plugin.class.getClassLoader(),
+                new Class[]{Plugin.class},
+                new InvalidDataPluginHandler(dataFolder, logger)
+        );
+
+        CityManager manager = new CityManager(plugin);
+
+        manager.load();
+
+        logger.removeHandler(handler);
+
+        assertTrue(manager.all().isEmpty(), "City list should be empty when data file is invalid");
+
+        boolean sawWarning = handler.getRecords().stream()
+                .anyMatch(record -> record.getLevel().equals(Level.WARNING)
+                        && record.getMessage().contains("Failed parsing cities data"));
+        assertTrue(sawWarning, "Expected warning about invalid cities data");
     }
 
     private static Plugin createPluginStub() throws Exception {
@@ -221,6 +263,59 @@ class CityManagerTest {
             return '\0';
         }
         return null;
+    }
+
+    private static final class InvalidDataPluginHandler implements InvocationHandler {
+        private final File dataFolder;
+        private final Logger logger;
+
+        private InvalidDataPluginHandler(File dataFolder, Logger logger) {
+            this.dataFolder = dataFolder;
+            this.logger = logger;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            String name = method.getName();
+            switch (name) {
+                case "getDataFolder":
+                    return dataFolder;
+                case "getLogger":
+                    return logger;
+                case "isEnabled":
+                    return true;
+                case "getName":
+                    return "CityManagerTestPlugin";
+                default:
+                    if (method.getDeclaringClass().equals(Object.class)) {
+                        return method.invoke(this, args);
+                    }
+                    return defaultValue(method.getReturnType());
+            }
+        }
+    }
+
+    private static final class TestLogHandler extends Handler {
+        private final List<LogRecord> records = new ArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            records.add(record);
+        }
+
+        @Override
+        public void flush() {
+            // nothing to flush
+        }
+
+        @Override
+        public void close() {
+            // nothing to close
+        }
+
+        List<LogRecord> getRecords() {
+            return records;
+        }
     }
 }
 
