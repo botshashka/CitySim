@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -1146,42 +1147,57 @@ public class StatsService {
         }
     }
 
+    private static class ColumnSample {
+        boolean sampled;
+        boolean matched;
+    }
+
     private double ratioSurface(City city, int step, BlockTest test) {
         return sampleSurface(city, step, test).ratio();
     }
 
     private double ratioHighriseColumns(City city, int step, BlockTest test) {
-        int columnsWithMatch = 0;
-        int totalColumns = 0;
+        Map<String, ColumnSample> columns = new HashMap<>();
         for (Cuboid c : city.cuboids) {
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
+                    String key = c.world + "|" + x + "|" + z;
+                    ColumnSample column = columns.computeIfAbsent(key, k -> new ColumnSample());
+                    if (column.matched) {
+                        column.sampled = true;
+                        continue;
+                    }
                     boolean sampled = false;
-                    boolean columnMatched = false;
                     for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
                         org.bukkit.block.Block b = w.getBlockAt(x, y, z);
                         sampled = true;
                         if (test.test(b)) {
-                            columnMatched = true;
+                            column.matched = true;
                             break;
                         }
                     }
-                    if (!columnMatched && (c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
+                    if (!column.matched && (c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
                         org.bukkit.block.Block b = w.getBlockAt(x, c.maxY, z);
                         sampled = true;
                         if (test.test(b)) {
-                            columnMatched = true;
+                            column.matched = true;
                         }
                     }
                     if (sampled) {
-                        totalColumns++;
-                        if (columnMatched) {
-                            columnsWithMatch++;
-                        }
+                        column.sampled = true;
                     }
                 }
+            }
+        }
+        int totalColumns = 0;
+        int columnsWithMatch = 0;
+        for (ColumnSample column : columns.values()) {
+            if (!column.sampled) continue;
+            totalColumns++;
+            if (column.matched) {
+                columnsWithMatch++;
             }
         }
         return totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
