@@ -1,6 +1,5 @@
 package dev.citysim.selection;
 
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
@@ -8,6 +7,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.util.Map;
 import java.util.UUID;
@@ -41,16 +42,19 @@ public class SelectionListener implements Listener {
         SelectionState sel = get(p);
         if (sel.world == null) sel.world = block.getWorld();
         if (sel.world != block.getWorld()) {
-            p.sendMessage(ChatColor.RED + "Selection is per-world. Clear or continue in " + sel.world.getName());
+            p.sendMessage(Component.text()
+                    .append(Component.text("Selection is per-world. Clear or continue in ", NamedTextColor.RED))
+                    .append(Component.text(sel.world.getName(), NamedTextColor.RED))
+                    .build());
             return;
         }
 
         if (e.getAction() == Action.LEFT_CLICK_BLOCK) {
             sel.pos1 = block.getLocation();
-            p.sendActionBar(ChatColor.YELLOW + "Pos1 " + fmt(sel.pos1));
+            p.sendActionBar(Component.text("Pos1 " + fmt(sel.pos1), NamedTextColor.YELLOW));
         } else {
             sel.pos2 = block.getLocation();
-            p.sendActionBar(ChatColor.YELLOW + "Pos2 " + fmt(sel.pos2));
+            p.sendActionBar(Component.text("Pos2 " + fmt(sel.pos2), NamedTextColor.YELLOW));
             block.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, block.getLocation().add(0.5,1,0.5), 20, 0.4,0.4,0.4, 0.01);
         }
     }
