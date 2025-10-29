@@ -12,6 +12,8 @@ import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.Objects;
+
 public class CitySimPlugin extends JavaPlugin {
     private CityManager cityManager;
     private StatsService statsService;
@@ -24,22 +26,25 @@ public class CitySimPlugin extends JavaPlugin {
     public void onEnable() {
         getLogger().info("CitySim onEnable starting...");
         saveDefaultConfig();
+        getLogger().info("Default configuration ensured at " + getDataFolder().getAbsolutePath());
 
         this.cityManager = new CityManager(this);
-        getLogger().info("CityManager created");
+        getLogger().info("CityManager created (data folder: " + getDataFolder().getAbsolutePath() + ")");
         this.cityManager.load();
-        getLogger().info("Cities loaded");
+        int loadedCities = this.cityManager.all().size();
+        getLogger().info("Loaded " + loadedCities + " " + (loadedCities == 1 ? "city" : "cities") + " from storage");
 
         this.statsService = new StatsService(this, cityManager);
-        getLogger().info("StatsService created");
+        getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
         getLogger().info("StatsService started");
 
         this.displayPreferencesStore = new DisplayPreferencesStore(this);
         this.displayPreferencesStore.load();
+        getLogger().info("Display preferences loaded");
 
         this.bossBarService = new BossBarService(this, cityManager, statsService, displayPreferencesStore);
-        getLogger().info("BossBarService created");
+        getLogger().info("BossBarService created (enabled worlds: " + cityManager.all().stream().map(city -> city.world).filter(Objects::nonNull).distinct().count() + ")");
         this.bossBarService.start();
         getLogger().info("BossBarService started");
 
