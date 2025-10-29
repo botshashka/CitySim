@@ -2,17 +2,26 @@ package dev.citysim.stats;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import io.papermc.paper.plugin.configuration.PluginMeta;
+import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
+import org.bukkit.Server;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.generator.BiomeProvider;
+import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginDescriptionFile;
+import org.bukkit.plugin.PluginLoader;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
+import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
-import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -24,114 +33,25 @@ class StatsServiceTest {
 
     @Test
     void processNextScheduledCityReturnsFalseWhenAllCitiesActive() throws Exception {
-        File dataFolder = Files.createTempDirectory("dummy-plugin").toFile();
-        dataFolder.deleteOnExit();
-        Plugin plugin = createPluginStub(dataFolder);
+        DummyPlugin plugin = new DummyPlugin();
+        CityManager cityManager = new CityManager(plugin);
+        City cityOne = cityManager.create("Alpha");
+        City cityTwo = cityManager.create("Beta");
 
-        City alpha = city("alpha");
-        City beta = city("beta");
-        StubCityManager cityManager = new StubCityManager(plugin, List.of(alpha, beta));
         TestStatsService statsService = new TestStatsService(plugin, cityManager);
 
-        Map<String, Object> activeJobs = activeJobs(statsService);
-        activeJobs.put(alpha.id, null);
-        activeJobs.put(beta.id, null);
+        Field activeJobsField = StatsService.class.getDeclaredField("activeCityJobs");
+        activeJobsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> activeJobs = (Map<String, Object>) activeJobsField.get(statsService);
+        activeJobs.put(cityOne.id, null);
+        activeJobs.put(cityTwo.id, null);
 
         Method method = StatsService.class.getDeclaredMethod("processNextScheduledCity");
         method.setAccessible(true);
 
-        boolean result = assertTimeoutPreemptively(
-                Duration.ofSeconds(1), () -> (boolean) method.invoke(statsService));
+        boolean result = assertTimeoutPreemptively(Duration.ofSeconds(1), () -> (boolean) method.invoke(statsService));
         assertFalse(result);
-    }
-
-    private static City city(String id) {
-        City city = new City();
-        city.id = id;
-        city.name = id;
-        return city;
-    }
-
-    private static Map<String, Object> activeJobs(StatsService statsService) throws Exception {
-        Field field = StatsService.class.getDeclaredField("activeCityJobs");
-        field.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> activeJobs = (Map<String, Object>) field.get(statsService);
-        return activeJobs;
-    }
-
-    private static Plugin createPluginStub(File dataFolder) {
-        Logger logger = Logger.getLogger("DummyPlugin");
-        InvocationHandler handler = (proxy, method, args) -> {
-            String name = method.getName();
-            return switch (name) {
-                case "getDataFolder" -> dataFolder;
-                case "getDataPath" -> dataFolder.toPath();
-                case "getLogger" -> logger;
-                case "getName" -> "DummyPlugin";
-                case "isEnabled" -> true;
-                default -> defaultValue(method.getReturnType());
-            };
-        };
-        return (Plugin) Proxy.newProxyInstance(
-                Plugin.class.getClassLoader(), new Class<?>[]{Plugin.class}, handler);
-    }
-
-    private static Object defaultValue(Class<?> returnType) {
-        if (!returnType.isPrimitive()) {
-            return null;
-        }
-        if (returnType == boolean.class) {
-            return false;
-        }
-        if (returnType == void.class) {
-            return null;
-        }
-        if (returnType == float.class) {
-            return 0f;
-        }
-        if (returnType == double.class) {
-            return 0d;
-        }
-        if (returnType == long.class) {
-            return 0L;
-        }
-        if (returnType == char.class) {
-            return '\0';
-        }
-        if (returnType == byte.class) {
-            return (byte) 0;
-        }
-        if (returnType == short.class) {
-            return (short) 0;
-        }
-        return 0;
-    }
-
-    private static final class StubCityManager extends CityManager {
-        private final Map<String, City> cities = new LinkedHashMap<>();
-
-        StubCityManager(Plugin plugin, List<City> initialCities) {
-            super(plugin);
-            for (City city : initialCities) {
-                if (city != null && city.id != null) {
-                    cities.put(city.id, city);
-                }
-            }
-        }
-
-        @Override
-        public java.util.Collection<City> all() {
-            return cities.values();
-        }
-
-        @Override
-        public City get(String id) {
-            if (id == null) {
-                return null;
-            }
-            return cities.get(id);
-        }
     }
 
     private static final class TestStatsService extends StatsService {
@@ -142,6 +62,134 @@ class StatsServiceTest {
         @Override
         public void updateConfig() {
             // Avoid touching Bukkit configuration during tests.
+        }
+    }
+
+    private static final class DummyPlugin implements Plugin {
+        private final File dataFolder = new File("build/tmp/dummy-plugin");
+        private final Logger logger = Logger.getLogger("DummyPlugin");
+        private boolean naggable;
+
+        DummyPlugin() {
+            dataFolder.mkdirs();
+        }
+
+        @Override
+        public File getDataFolder() {
+            return dataFolder;
+        }
+
+        @Override
+        public Path getDataPath() {
+            return dataFolder.toPath();
+        }
+
+        @Override
+        public PluginDescriptionFile getDescription() {
+            return null;
+        }
+
+        @Override
+        public PluginMeta getPluginMeta() {
+            return null;
+        }
+
+        @Override
+        public FileConfiguration getConfig() {
+            return null;
+        }
+
+        @Override
+        public InputStream getResource(String s) {
+            return null;
+        }
+
+        @Override
+        public void saveConfig() {
+        }
+
+        @Override
+        public void saveDefaultConfig() {
+        }
+
+        @Override
+        public void saveResource(String s, boolean b) {
+        }
+
+        @Override
+        public void reloadConfig() {
+        }
+
+        @Override
+        public PluginLoader getPluginLoader() {
+            return null;
+        }
+
+        @Override
+        public Server getServer() {
+            return null;
+        }
+
+        @Override
+        public boolean isEnabled() {
+            return true;
+        }
+
+        @Override
+        public void onDisable() {
+        }
+
+        @Override
+        public void onLoad() {
+        }
+
+        @Override
+        public void onEnable() {
+        }
+
+        @Override
+        public boolean isNaggable() {
+            return naggable;
+        }
+
+        @Override
+        public void setNaggable(boolean naggable) {
+            this.naggable = naggable;
+        }
+
+        @Override
+        public ChunkGenerator getDefaultWorldGenerator(String s, String s1) {
+            return null;
+        }
+
+        @Override
+        public BiomeProvider getDefaultBiomeProvider(String s, String s1) {
+            return null;
+        }
+
+        @Override
+        public Logger getLogger() {
+            return logger;
+        }
+
+        @Override
+        public String getName() {
+            return "DummyPlugin";
+        }
+
+        @Override
+        public LifecycleEventManager<Plugin> getLifecycleManager() {
+            return null;
+        }
+
+        @Override
+        public boolean onCommand(CommandSender commandSender, Command command, String label, String[] args) {
+            return false;
+        }
+
+        @Override
+        public List<String> onTabComplete(CommandSender commandSender, Command command, String alias, String[] args) {
+            return Collections.emptyList();
         }
     }
 }
