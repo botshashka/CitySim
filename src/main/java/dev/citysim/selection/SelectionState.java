@@ -11,4 +11,11 @@ public class SelectionState {
     public YMode yMode = YMode.FULL;
 
     public boolean ready() { return world != null && pos1 != null && pos2 != null; }
+
+    public void reset() {
+        world = null;
+        pos1 = null;
+        pos2 = null;
+        yMode = YMode.FULL;
+    }
 }

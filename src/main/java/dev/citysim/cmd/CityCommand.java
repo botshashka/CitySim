@@ -57,7 +57,7 @@ public class CityCommand implements CommandExecutor {
             case "edit":
                 return handleEdit(s, args);
             case "wand":
-                return handleWand(s);
+                return handleWand(s, args);
             case "stats":
                 return handleStats(s, args);
             case "display":
@@ -354,12 +354,18 @@ public class CityCommand implements CommandExecutor {
         return operation.apply(base, amount);
     }
 
-    private boolean handleWand(CommandSender sender) {
+    private boolean handleWand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage("Players only.");
             return true;
         }
         if (!checkAdmin(sender)) {
+            return true;
+        }
+
+        if (args.length >= 2 && args[1].equalsIgnoreCase("clear")) {
+            SelectionListener.clear(player);
+            player.sendMessage(ChatColor.GREEN + "Selection cleared.");
             return true;
         }
 
@@ -610,7 +616,7 @@ public class CityCommand implements CommandExecutor {
     }
 
     private boolean help(CommandSender s) {
-        s.sendMessage(ChatColor.GRAY + "/city wand");
+        s.sendMessage(ChatColor.GRAY + "/city wand [clear]");
         s.sendMessage(ChatColor.GRAY + "/city create <name>");
         s.sendMessage(ChatColor.GRAY + "/city add <name>");
         s.sendMessage(ChatColor.GRAY + "/city list");

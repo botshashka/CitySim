@@ -87,6 +87,9 @@ public class CityTab implements TabCompleter {
                 return List.of();
 
             case "wand":
+                if (args.length == 2) {
+                    return filter(Arrays.asList("clear"), args[1]);
+                }
                 return List.of();
 
             case "stats":
