@@ -49,6 +49,8 @@ public class StatsService {
     private static final double OVERCROWDING_BASELINE = 3.0;
     private static final double TRANSIT_IDEAL_SPACING_BLOCKS = 75.0;
     private static final double TRANSIT_EASING_EXPONENT = 0.5;
+    private static final double NATURE_TARGET_RATIO = 0.10;
+    private static final int NATURE_MIN_EFFECTIVE_SAMPLES = 36;
 
     private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
@@ -976,9 +978,8 @@ public class StatsService {
 
         hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
 
-        double nature = metrics.nature;
-        double natureTarget = 0.10;
-        double natureScore = (nature - natureTarget) / natureTarget;
+        double adjustedNature = adjustedNatureRatio(metrics.nature, metrics.natureSamples);
+        double natureScore = (adjustedNature - NATURE_TARGET_RATIO) / NATURE_TARGET_RATIO;
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
         double pollution = metrics.pollution;
@@ -1013,6 +1014,14 @@ public class StatsService {
         return hb;
     }
 
+    private double adjustedNatureRatio(double rawRatio, int sampleCount) {
+        double clampedRatio = clamp(rawRatio, 0.0, 1.0);
+        int samples = Math.max(0, sampleCount);
+        double sampleWeight = Math.min(1.0, samples / (double) NATURE_MIN_EFFECTIVE_SAMPLES);
+        double adjusted = NATURE_TARGET_RATIO + sampleWeight * (clampedRatio - NATURE_TARGET_RATIO);
+        return clamp(adjusted, 0.0, 1.0);
+    }
+
     private City.BlockScanCache ensureBlockScanCache(City city, boolean forceRefresh) {
         long now = System.currentTimeMillis();
         City.BlockScanCache cache = city.blockScanCache;
@@ -1027,7 +1036,9 @@ public class StatsService {
     private City.BlockScanCache recomputeBlockScanCache(City city, long now) {
         City.BlockScanCache cache = new City.BlockScanCache();
         cache.light = averageSurfaceLight(city);
-        cache.nature = natureRatio(city);
+        SampledRatio nature = natureRatio(city);
+        cache.nature = nature.ratio();
+        cache.natureSamples = nature.samples();
         PollutionStats pollutionStats = pollutionStats(city);
         cache.pollution = pollutionStats.ratio();
         cache.pollutingBlocks = pollutionStats.blockCount();
@@ -1152,11 +1163,14 @@ public class StatsService {
         boolean matched;
     }
 
-    private double ratioSurface(City city, int step, BlockTest test) {
-        return sampleSurface(city, step, test).ratio();
+    private record SampledRatio(double ratio, int samples) {}
+
+    private SampledRatio ratioSurface(City city, int step, BlockTest test) {
+        SurfaceSampleResult result = sampleSurface(city, step, test);
+        return new SampledRatio(result.ratio(), result.probes);
     }
 
-    private double ratioHighriseColumns(City city, int step, BlockTest test) {
+    private SampledRatio ratioHighriseColumns(City city, int step, BlockTest test) {
         Map<String, ColumnSample> columns = new HashMap<>();
         for (Cuboid c : city.cuboids) {
             World w = Bukkit.getWorld(c.world);
@@ -1200,7 +1214,8 @@ public class StatsService {
                 columnsWithMatch++;
             }
         }
-        return totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
+        double ratio = totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
+        return new SampledRatio(ratio, totalColumns);
     }
 
     private SurfaceSampleResult sampleSurface(City city, int step, BlockTest test) {
@@ -1233,7 +1248,7 @@ public class StatsService {
         return new SurfaceSampleResult(found, probes);
     }
 
-    private double natureRatio(City city) {
+    private SampledRatio natureRatio(City city) {
         BlockTest natureTest = b -> {
             org.bukkit.Material type = b.getType();
             if (org.bukkit.Tag.LOGS.isTagged(type) || org.bukkit.Tag.LEAVES.isTagged(type)) {
