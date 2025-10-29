@@ -903,9 +903,6 @@ public class StatsService {
     }
 
     private void scheduleTask() {
-        if (!plugin.isEnabled()) {
-            return;
-        }
         taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, statsInitialDelayTicks, statsIntervalTicks);
     }
 }
