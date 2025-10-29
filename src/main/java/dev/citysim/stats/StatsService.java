@@ -166,18 +166,27 @@ public class StatsService {
     }
 
     private boolean processNextScheduledCity() {
+        int attemptsRemaining = 0;
         while (true) {
             if (scheduledCityQueue.isEmpty()) {
                 refillScheduledQueue();
                 if (scheduledCityQueue.isEmpty()) {
                     return false;
                 }
+                attemptsRemaining = scheduledCityQueue.size();
             }
+            if (attemptsRemaining <= 0) {
+                attemptsRemaining = scheduledCityQueue.size();
+                if (attemptsRemaining <= 0) {
+                    return false;
+                }
+            }
+            attemptsRemaining--;
             String cityId = scheduledCityQueue.pollFirst();
             if (cityId == null) {
                 continue;
             }
-            if (pendingCityUpdates.containsKey(cityId)) {
+            if (pendingCityUpdates.containsKey(cityId) || activeCityJobs.containsKey(cityId)) {
                 continue;
             }
             City city = cityManager.get(cityId);
@@ -249,7 +258,7 @@ public class StatsService {
             if (city == null || city.id == null) {
                 continue;
             }
-            if (pendingCityUpdates.containsKey(city.id)) {
+            if (pendingCityUpdates.containsKey(city.id) || activeCityJobs.containsKey(city.id)) {
                 continue;
             }
             scheduledCityQueue.addLast(city.id);
