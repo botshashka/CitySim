@@ -965,7 +965,13 @@ public class StatsService {
         hb.lightPoints = clamp(lightScoreNormalized * lightMaxPts, -lightMaxPts, lightMaxPts);
 
         double employmentRate = pop <= 0 ? 0.0 : (double) employed / (double) pop;
-        double employmentScore = (employmentRate - 0.5) / 0.5; // 50% employment is neutral
+        double employmentNeutral = 0.75; // 75% employment is neutral
+        double employmentScore;
+        if (employmentRate >= employmentNeutral) {
+            employmentScore = (employmentRate - employmentNeutral) / (1.0 - employmentNeutral);
+        } else {
+            employmentScore = (employmentRate - employmentNeutral) / employmentNeutral;
+        }
         hb.employmentPoints = clamp(employmentScore * employmentMaxPts, -employmentMaxPts, employmentMaxPts);
 
         hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
