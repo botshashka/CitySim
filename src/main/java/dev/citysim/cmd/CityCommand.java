@@ -40,12 +40,13 @@ public class CityCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender s, Command cmd, String label, String[] args) {
-        requestPlayerCityScan(s);
         if (args.length == 0) {
+            requestPlayerCityScan(s, false);
             return help(s);
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
+        requestPlayerCityScan(s, shouldForcePlayerScan(sub));
         switch (sub) {
             case "create":
             case "add":
@@ -612,13 +613,20 @@ public class CityCommand implements CommandExecutor {
         return String.join(" ", Arrays.copyOfRange(args, startIndex, args.length)).trim();
     }
 
-    private void requestPlayerCityScan(CommandSender sender) {
+    private boolean shouldForcePlayerScan(String subcommand) {
+        return switch (subcommand) {
+            case "create", "add", "remove", "delete", "edit" -> true;
+            default -> false;
+        };
+    }
+
+    private void requestPlayerCityScan(CommandSender sender, boolean force) {
         if (!(sender instanceof Player player)) {
             return;
         }
         City city = cityManager.cityAt(player.getLocation());
         if (city != null) {
-            statsService.requestCityUpdate(city, false);
+            statsService.requestCityUpdate(city, force);
         }
     }
 
