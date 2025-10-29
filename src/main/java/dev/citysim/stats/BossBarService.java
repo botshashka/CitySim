@@ -92,9 +92,7 @@ public class BossBarService {
                 bar.name(comp);
                 bar.progress(progress);
                 bar.color(BossBar.Color.WHITE);
-                if (!bar.viewers().contains(p)) {
-                    p.showBossBar(bar);
-                }
+                p.showBossBar(bar);
             }
         }
 
