@@ -79,7 +79,7 @@ public class StatsService {
         if (taskId != -1) return;
         pendingCityUpdates.clear();
         scheduledCityQueue.clear();
-        queueAllCitiesForInitialScan();
+        scheduleInitialStartupScans();
         scheduleTask();
     }
 
@@ -95,7 +95,9 @@ public class StatsService {
     public void restartTask() {
         updateConfig();
         stop();
-        queueAllCitiesForInitialScan();
+        pendingCityUpdates.clear();
+        scheduledCityQueue.clear();
+        scheduleInitialStartupScans();
         scheduleTask();
     }
 
@@ -305,9 +307,25 @@ public class StatsService {
         }
     }
 
-    private void queueAllCitiesForInitialScan() {
+    private void scheduleInitialStartupScans() {
+        Bukkit.getScheduler().runTask(plugin, this::runInitialStartupScans);
+    }
+
+    private void runInitialStartupScans() {
+        if (!activeCityJobs.isEmpty()) {
+            for (CityScanJob job : activeCityJobs.values()) {
+                job.cancel();
+            }
+            activeCityJobs.clear();
+        }
         for (City city : cityManager.all()) {
-            requestCityUpdate(city, true, "initial startup");
+            if (city == null || city.id == null || city.id.isEmpty()) {
+                continue;
+            }
+            CityScanJob job = new CityScanJob(city, new ScanRequest(true, "initial startup", null));
+            while (!job.process(Integer.MAX_VALUE, Integer.MAX_VALUE)) {
+                // Keep processing until the scan completes synchronously
+            }
         }
     }
 
