@@ -42,7 +42,7 @@ public class StatsService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
-    private final StationCounter stationCounter;
+    private StationCounter stationCounter;
     private int taskId = -1;
     private long statsInitialDelayTicks = DEFAULT_STATS_INITIAL_DELAY_TICKS;
     private long statsIntervalTicks = DEFAULT_STATS_INTERVAL_TICKS;
@@ -82,6 +82,20 @@ public class StatsService {
         this.cityManager = cm;
         this.stationCounter = stationCounter;
         updateConfig();
+    }
+
+    public synchronized void setStationCounter(StationCounter stationCounter) {
+        if (this.stationCounter == stationCounter) {
+            return;
+        }
+        this.stationCounter = stationCounter;
+        stationCountingWarningLogged = false;
+        updateConfig();
+        if (stationCountingMode == StationCountingMode.TRAIN_CARTS && stationCounter != null) {
+            for (City city : cityManager.all()) {
+                requestCityUpdate(city, true, "TrainCarts integration ready");
+            }
+        }
     }
 
     public void start() {

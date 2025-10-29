@@ -8,10 +8,14 @@ import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
-import dev.citysim.stats.StationCounter;
 import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Objects;
@@ -23,6 +27,7 @@ public class CitySimPlugin extends JavaPlugin {
     private ScoreboardService scoreboardService;
     private TitleService titleService;
     private DisplayPreferencesStore displayPreferencesStore;
+    private TrainCartsStationService trainCartsStationService;
 
     @Override
     public void onEnable() {
@@ -36,21 +41,15 @@ public class CitySimPlugin extends JavaPlugin {
         int loadedCities = this.cityManager.all().size();
         getLogger().info("Loaded " + loadedCities + " " + (loadedCities == 1 ? "city" : "cities") + " from storage");
 
-        StationCounter stationCounter = null;
-        if (getServer().getPluginManager().getPlugin("TrainCarts") != null) {
-            try {
-                stationCounter = new TrainCartsStationService(this);
-                getLogger().info("TrainCarts detected: station counts can be synchronized automatically when enabled.");
-            } catch (Exception ex) {
-                getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + ex.getMessage());
-            } catch (LinkageError err) {
-                getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + err.getMessage());
-            }
+        this.statsService = new StatsService(this, cityManager, null);
+
+        getServer().getPluginManager().registerEvents(new TrainCartsIntegrationListener(), this);
+
+        if (tryInitializeTrainCartsIntegration()) {
+            getLogger().info("TrainCarts detected: station counts can be synchronized automatically when enabled.");
         } else {
             getLogger().info("TrainCarts plugin not detected; station counts will remain manual unless another mode is selected.");
         }
-
-        this.statsService = new StatsService(this, cityManager, stationCounter);
         getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
         getLogger().info("StatsService started");
@@ -95,6 +94,7 @@ public class CitySimPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        disableTrainCartsIntegration();
         if (bossBarService != null) {
             bossBarService.stop();
         }
@@ -138,6 +138,62 @@ public class CitySimPlugin extends JavaPlugin {
 
     public DisplayPreferencesStore getDisplayPreferencesStore() {
         return displayPreferencesStore;
+    }
+
+    private boolean tryInitializeTrainCartsIntegration() {
+        if (trainCartsStationService != null) {
+            return true;
+        }
+        if (statsService == null) {
+            return false;
+        }
+
+        Plugin plugin = getServer().getPluginManager().getPlugin("TrainCarts");
+        if (plugin == null || !plugin.isEnabled()) {
+            return false;
+        }
+
+        try {
+            TrainCartsStationService service = new TrainCartsStationService(this);
+            trainCartsStationService = service;
+            statsService.setStationCounter(service);
+            return true;
+        } catch (Exception ex) {
+            getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + ex.getMessage());
+        } catch (LinkageError err) {
+            getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + err.getMessage());
+        }
+        return false;
+    }
+
+    private void disableTrainCartsIntegration() {
+        if (trainCartsStationService != null) {
+            trainCartsStationService = null;
+            if (statsService != null) {
+                statsService.setStationCounter(null);
+            }
+            getLogger().info("TrainCarts integration disabled; station counts reverting to manual mode.");
+        }
+    }
+
+    private final class TrainCartsIntegrationListener implements Listener {
+        @EventHandler
+        public void onPluginEnable(PluginEnableEvent event) {
+            if (!"TrainCarts".equalsIgnoreCase(event.getPlugin().getName())) {
+                return;
+            }
+            if (tryInitializeTrainCartsIntegration()) {
+                getLogger().info("TrainCarts detected after enable: station counts can be synchronized automatically when configured.");
+            }
+        }
+
+        @EventHandler
+        public void onPluginDisable(PluginDisableEvent event) {
+            if (!"TrainCarts".equalsIgnoreCase(event.getPlugin().getName())) {
+                return;
+            }
+            disableTrainCartsIntegration();
+        }
     }
 }
 
