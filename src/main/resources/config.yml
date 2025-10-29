@@ -69,6 +69,14 @@ titles:
       - "Homelessness is spreading"
       - "Villagers curl up on floors without shelter"
       - "Citizens are desperate for housing"
+    transit_good:
+      - "Transit runs like clockwork across the city"
+      - "Fast rails and roads keep everyone connected"
+      - "Citizens praise the rapid transit network"
+    transit_bad:
+      - "Transit delays leave commuters stranded"
+      - "Missing stops spark frustration at city hall"
+      - "Transit breakdowns grind daily life to a halt"
     default_good:
       - "Citizens are content"
       - "Life is peaceful in the city"
