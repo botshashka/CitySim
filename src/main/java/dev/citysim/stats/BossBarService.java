@@ -82,17 +82,23 @@ public class BossBarService {
             String text = "<white>" + c.name + "</white><white> — </white>" +
                     "<gold>" + c.happiness + "%</gold>";
             Component comp = mm.deserialize(text);
+            float progress = Math.max(0f, Math.min(1f, c.happiness / 100f));
 
             if (bar == null) {
-                bar = BossBar.bossBar(comp, c.happiness / 100f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
+                bar = BossBar.bossBar(comp, progress, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
                 p.showBossBar(bar);
                 bars.put(p.getUniqueId(), bar);
             } else {
                 bar.name(comp);
-                bar.progress(Math.max(0f, Math.min(1f, c.happiness / 100f)));
+                bar.progress(progress);
                 bar.color(BossBar.Color.WHITE);
+                if (!bar.viewers().contains(p)) {
+                    p.showBossBar(bar);
+                }
             }
         }
+
+        bars.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
     }
 
 
