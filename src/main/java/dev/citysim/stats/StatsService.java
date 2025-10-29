@@ -15,7 +15,6 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -243,7 +242,9 @@ public class StatsService {
     private void refillScheduledQueue() {
         scheduledCityQueue.clear();
         List<City> cities = new ArrayList<>(cityManager.all());
-        cities.sort(Comparator.comparingInt(c -> c.priority));
+        // Cities are stored in insertion/priority order inside CityManager's LinkedHashMap,
+        // so iterating over the snapshot preserves the intended ordering without requiring
+        // an expensive sort for every refill.
         for (City city : cities) {
             if (city == null || city.id == null) {
                 continue;
