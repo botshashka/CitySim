@@ -35,7 +35,6 @@ public class CityTab implements TabCompleter {
                     "wand",
                     "stats",
                     "display",
-                    "ymode",
                     "top",
                     "reload",
                     "debug"
@@ -90,7 +89,10 @@ public class CityTab implements TabCompleter {
 
             case "wand":
                 if (args.length == 2) {
-                    return filter(Arrays.asList("clear"), args[1]);
+                    return filter(Arrays.asList("clear", "ymode"), args[1]);
+                }
+                if (args.length == 3 && "ymode".equalsIgnoreCase(args[1])) {
+                    return filter(Arrays.asList("full", "span"), args[2]);
                 }
                 return List.of();
 
@@ -112,17 +114,8 @@ public class CityTab implements TabCompleter {
                         return filter(Arrays.asList("on", "off"), args[2]);
                     }
                     if ("scoreboard".equals(target)) {
-                        return filter(Arrays.asList("on", "off", "mode"), args[2]);
+                        return filter(Arrays.asList("off", "compact", "full"), args[2]);
                     }
-                }
-                if (args.length == 4 && "scoreboard".equalsIgnoreCase(args[1]) && "mode".equalsIgnoreCase(args[2])) {
-                    return filter(Arrays.asList("compact", "full"), args[3]);
-                }
-                return List.of();
-
-            case "ymode":
-                if (args.length == 2) {
-                    return filter(Arrays.asList("full", "span"), args[1]);
                 }
                 return List.of();
 

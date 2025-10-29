@@ -67,8 +67,6 @@ public class CityCommand implements CommandExecutor {
                 return handleStats(s, args);
             case "display":
                 return handleDisplay(s, args);
-            case "ymode":
-                return handleYMode(s, args);
             case "top":
                 return handleTop(s, args);
             case "reload":
@@ -454,10 +452,16 @@ public class CityCommand implements CommandExecutor {
             return true;
         }
 
-        if (args.length >= 2 && args[1].equalsIgnoreCase("clear")) {
-            SelectionListener.clear(player);
-            player.sendMessage(ChatColor.GREEN + "Selection cleared.");
-            return true;
+        if (args.length >= 2) {
+            String option = args[1].toLowerCase(Locale.ROOT);
+            if (option.equals("clear")) {
+                SelectionListener.clear(player);
+                player.sendMessage(ChatColor.GREEN + "Selection cleared.");
+                return true;
+            }
+            if (option.equals("ymode")) {
+                return handleWandYMode(player, args);
+            }
         }
 
         ItemStack wand = new ItemStack(SelectionListener.WAND);
@@ -608,43 +612,37 @@ public class CityCommand implements CommandExecutor {
     }
 
     private boolean handleScoreboardDisplay(Player player, String[] args) {
-        if (args.length >= 3 && args[2].equalsIgnoreCase("mode")) {
-            if (args.length < 4) {
-                player.sendMessage(ChatColor.YELLOW + "Usage: /city display scoreboard mode compact|full");
+        if (args.length < 3) {
+            player.sendMessage(ChatColor.YELLOW + "Usage: /city display scoreboard <off|compact|full>");
+            return true;
+        }
+
+        String option = args[2].toLowerCase(Locale.ROOT);
+        switch (option) {
+            case "off":
+                plugin.getScoreboardService().setEnabled(player, false);
+                player.sendMessage(ChatColor.RED + "Scoreboard disabled");
                 return true;
-            }
-            ScoreboardService.Mode mode = args[3].equalsIgnoreCase("full") ? ScoreboardService.Mode.FULL : ScoreboardService.Mode.COMPACT;
-            plugin.getScoreboardService().setMode(player.getUniqueId(), mode);
-            player.sendMessage(ChatColor.GRAY + "Scoreboard mode set to " + mode.name().toLowerCase(Locale.ROOT));
-            return true;
+            case "compact":
+            case "full":
+                ScoreboardService.Mode mode = option.equals("full") ? ScoreboardService.Mode.FULL : ScoreboardService.Mode.COMPACT;
+                plugin.getScoreboardService().setMode(player.getUniqueId(), mode);
+                plugin.getScoreboardService().setEnabled(player, true);
+                player.sendMessage(ChatColor.GREEN + "Scoreboard enabled (" + option + " mode)");
+                return true;
+            default:
+                player.sendMessage(ChatColor.YELLOW + "Usage: /city display scoreboard <off|compact|full>");
+                return true;
         }
-
-        if (args.length >= 3) {
-            boolean on = args[2].equalsIgnoreCase("on");
-            plugin.getScoreboardService().setEnabled(player, on);
-            player.sendMessage(on ? ChatColor.GREEN + "Scoreboard enabled" : ChatColor.RED + "Scoreboard disabled");
-            return true;
-        }
-
-        player.sendMessage(ChatColor.GRAY + "/city display scoreboard on|off");
-        player.sendMessage(ChatColor.GRAY + "/city display scoreboard mode compact|full");
-        return true;
     }
 
-    private boolean handleYMode(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
-            return true;
-        }
-        if (!checkAdmin(sender)) {
-            return true;
-        }
-        if (args.length < 2) {
-            player.sendMessage(ChatColor.YELLOW + "Usage: /city ymode <full|span>");
+    private boolean handleWandYMode(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(ChatColor.YELLOW + "Usage: /city wand ymode <full|span>");
             return true;
         }
 
-        String modeArg = args[1].toLowerCase(Locale.ROOT);
+        String modeArg = args[2].toLowerCase(Locale.ROOT);
         SelectionState sel = SelectionListener.get(player);
         switch (modeArg) {
             case "full":
@@ -748,8 +746,7 @@ public class CityCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "Usage:");
         sender.sendMessage(ChatColor.YELLOW + "/city display titles on|off");
         sender.sendMessage(ChatColor.YELLOW + "/city display bossbar on|off");
-        sender.sendMessage(ChatColor.YELLOW + "/city display scoreboard on|off");
-        sender.sendMessage(ChatColor.YELLOW + "/city display scoreboard mode compact|full");
+        sender.sendMessage(ChatColor.YELLOW + "/city display scoreboard <off|compact|full>");
     }
 
     private void sendDebugUsage(CommandSender sender) {
@@ -768,12 +765,11 @@ public class CityCommand implements CommandExecutor {
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> removecuboid");
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> highrise <true|false>");
         s.sendMessage(ChatColor.GRAY + "/city edit <cityId> station <add|remove|set|clear> [amount]");
-        s.sendMessage(ChatColor.GRAY + "/city ymode <full|span>");
+        s.sendMessage(ChatColor.GRAY + "/city wand ymode <full|span>");
         s.sendMessage(ChatColor.GRAY + "/city stats [cityId]");
         s.sendMessage(ChatColor.GRAY + "/city display titles on|off");
         s.sendMessage(ChatColor.GRAY + "/city display bossbar on|off");
-        s.sendMessage(ChatColor.GRAY + "/city display scoreboard on|off");
-        s.sendMessage(ChatColor.GRAY + "/city display scoreboard mode compact|full");
+        s.sendMessage(ChatColor.GRAY + "/city display scoreboard <off|compact|full>");
         s.sendMessage(ChatColor.GRAY + "/city top [happy|pop]");
         s.sendMessage(ChatColor.GRAY + "/city reload");
         s.sendMessage(ChatColor.GRAY + "/city debug scans");
