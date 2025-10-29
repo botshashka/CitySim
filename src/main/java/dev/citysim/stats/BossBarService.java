@@ -14,10 +14,13 @@ import java.util.Map;
 import java.util.UUID;
 
 public class BossBarService {
+    private static final long DEFAULT_INTERVAL_TICKS = 40L;
+
     private final Plugin plugin;
     private final CityManager cityManager;
     private final StatsService statsService;
     private int taskId = -1;
+    private long updateIntervalTicks;
 
     private final Map<UUID, BossBar> bars = new HashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
@@ -25,19 +28,42 @@ public class BossBarService {
 
     public BossBarService(Plugin plugin, CityManager cm, StatsService ss, dev.citysim.ui.DisplayPreferencesStore displayPreferencesStore) {
         this.plugin = plugin; this.cityManager = cm; this.statsService = ss; this.displayPreferencesStore = displayPreferencesStore;
+        loadUpdateInterval();
     }
 
     public void start() {
-        taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, 20L, 40L);
+        cancelScheduledTask();
+        taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::tick, updateIntervalTicks, updateIntervalTicks);
     }
     public void stop() {
-        if (taskId != -1) Bukkit.getScheduler().cancelTask(taskId);
-        taskId = -1;
+        cancelScheduledTask();
         for (var entry : bars.entrySet()) {
             Player p = Bukkit.getPlayer(entry.getKey());
             if (p != null) p.hideBossBar(entry.getValue());
         }
         bars.clear();
+    }
+
+    public void restart() {
+        cancelScheduledTask();
+        loadUpdateInterval();
+        start();
+    }
+
+    private void cancelScheduledTask() {
+        if (taskId != -1) {
+            Bukkit.getScheduler().cancelTask(taskId);
+            taskId = -1;
+        }
+    }
+
+    private void loadUpdateInterval() {
+        long configured = plugin.getConfig().getLong("updates.bossbar_interval_ticks", DEFAULT_INTERVAL_TICKS);
+        if (configured < 1L) {
+            plugin.getLogger().warning("Configured boss bar interval (" + configured + ") is not positive; using default of " + DEFAULT_INTERVAL_TICKS + " ticks.");
+            configured = DEFAULT_INTERVAL_TICKS;
+        }
+        this.updateIntervalTicks = Math.max(1L, configured);
     }
 
     private void tick() {
