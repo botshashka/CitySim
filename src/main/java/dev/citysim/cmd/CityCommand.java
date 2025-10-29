@@ -528,7 +528,7 @@ public class CityCommand implements CommandExecutor {
         <gray><b>%s — City stats</b></gray>
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
         <blue>Homes:</blue> %d/%d  <light_purple>Stations:</light_purple> %d
-        <gold>Happiness:</gold> %d  <gray>(base 50)</gray>
+        <gold>Happiness:</gold> %d%%  <gray>(base 50)</gray>
         %s
         """.formatted(
                 city.name, city.population, city.employed, city.unemployed,
