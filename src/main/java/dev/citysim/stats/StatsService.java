@@ -92,6 +92,20 @@ public class StatsService {
         updateConfig();
     }
 
+    public synchronized void setStationCounter(StationCounter stationCounter) {
+        if (this.stationCounter == stationCounter) {
+            return;
+        }
+        this.stationCounter = stationCounter;
+        stationCountingWarningLogged = false;
+        updateConfig();
+        if (stationCountingMode == StationCountingMode.TRAIN_CARTS && stationCounter != null) {
+            for (City city : cityManager.all()) {
+                requestCityUpdate(city, true, "TrainCarts integration ready");
+            }
+        }
+    }
+
     public void start() {
         updateConfig();
         if (taskId != -1) return;

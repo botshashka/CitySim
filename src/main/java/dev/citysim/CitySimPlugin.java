@@ -13,6 +13,11 @@ import dev.citysim.stats.StationCountingMode;
 import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -94,6 +99,7 @@ public class CitySimPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        disableTrainCartsIntegration();
         if (bossBarService != null) {
             bossBarService.stop();
         }
