@@ -545,6 +545,9 @@ public class StatsService {
 
         private final Set<ChunkCoord> chunksLoadedByJob = new LinkedHashSet<>();
         private ChunkCoord activeBedChunk = null;
+        private String activeBedWorldName = null;
+        private int activeBedChunkX = 0;
+        private int activeBedChunkZ = 0;
 
         CityScanJob(City city, ScanRequest request) {
             this.city = city;
@@ -660,12 +663,17 @@ public class StatsService {
                     bedInitialized = true;
                 }
                 while (bedCuboidIndex < city.cuboids.size() && processed < limit) {
-                    ChunkCoord coord = chunkCoordFor(world, bedX, bedZ);
-                    if (!coord.equals(activeBedChunk)) {
+                    String worldName = world != null ? world.getName() : null;
+                    int chunkX = bedX >> 4;
+                    int chunkZ = bedZ >> 4;
+                    if (!isActiveBedChunk(worldName, chunkX, chunkZ)) {
                         releaseActiveBedChunk();
-                        activeBedChunk = coord;
+                        activeBedChunk = new ChunkCoord(worldName, chunkX, chunkZ);
+                        activeBedWorldName = worldName;
+                        activeBedChunkX = chunkX;
+                        activeBedChunkZ = chunkZ;
                     }
-                    if (!ensureChunkAvailable(world, coord)) {
+                    if (!ensureChunkAvailable(world, activeBedChunk)) {
                         processed++;
                         if (!advanceBedCursor(cuboid)) {
                             bedCuboidIndex++;
@@ -902,6 +910,9 @@ public class StatsService {
                 unloadChunkIfLoadedByJob(coord);
             }
             activeBedChunk = null;
+            activeBedWorldName = null;
+            activeBedChunkX = 0;
+            activeBedChunkZ = 0;
         }
 
         private void releaseActiveBedChunk() {
@@ -910,13 +921,19 @@ public class StatsService {
             }
             unloadChunkIfLoadedByJob(activeBedChunk);
             activeBedChunk = null;
+            activeBedWorldName = null;
+            activeBedChunkX = 0;
+            activeBedChunkZ = 0;
         }
 
-        private ChunkCoord chunkCoordFor(World world, int blockX, int blockZ) {
-            String worldName = world != null ? world.getName() : null;
-            int chunkX = blockX >> 4;
-            int chunkZ = blockZ >> 4;
-            return new ChunkCoord(worldName, chunkX, chunkZ);
+        private boolean isActiveBedChunk(String worldName, int chunkX, int chunkZ) {
+            if (activeBedChunk == null) {
+                return false;
+            }
+            if (activeBedWorldName == null ? worldName != null : !activeBedWorldName.equals(worldName)) {
+                return false;
+            }
+            return activeBedChunkX == chunkX && activeBedChunkZ == chunkZ;
         }
 
         private List<ChunkCoord> buildChunkList(City city) {
