@@ -73,6 +73,9 @@ public class TitleService implements Listener {
         Player player = event.getPlayer();
         City current = cityManager.cityAt(player.getLocation());
         lastCity.put(player.getUniqueId(), current != null ? current.id : null);
+        if (current != null) {
+            statsService.requestCityUpdate(current, true);
+        }
     }
 
     @EventHandler
@@ -102,6 +105,10 @@ public class TitleService implements Listener {
 
             lastCity.put(player.getUniqueId(), currentId);
 
+            if (current != null) {
+                statsService.requestCityUpdate(current, true);
+            }
+
             if (!configEnabled || current == null) {
                 continue;
             }
@@ -112,7 +119,7 @@ public class TitleService implements Listener {
             }
             lastShownTick.put(player.getUniqueId(), serverTick);
 
-            HappinessBreakdown breakdown = statsService.updateCity(current);
+            HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(current);
             String key = breakdown.pickWeightedMessageKey();
 
             Component title = Component.text(current.name)

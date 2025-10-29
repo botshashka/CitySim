@@ -37,6 +37,7 @@ public class CityCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender s, Command cmd, String label, String[] args) {
+        requestPlayerCityScan(s);
         if (args.length == 0) return help(s);
         String sub = args[0].toLowerCase();
 
@@ -58,7 +59,7 @@ public class CityCommand implements CommandExecutor {
                 try {
                     City created = cityManager.create(name);
                     cityManager.save();
-                    statsService.updateCity(created, true);
+                    statsService.requestCityUpdate(created, true);
                     s.sendMessage(ChatColor.GREEN + "Created new city " + created.name + " (ID: " + created.id + "). Use /city wand and /city edit " + created.id + " addcuboid to define its area.");
                 } catch (IllegalArgumentException ex) {
                     s.sendMessage(ChatColor.RED + ex.getMessage());
@@ -125,7 +126,7 @@ public class CityCommand implements CommandExecutor {
                         try {
                             City renamed = cityManager.rename(id, newName);
                             cityManager.save();
-                            statsService.updateCity(renamed, true);
+                            statsService.requestCityUpdate(renamed, true);
                             s.sendMessage(ChatColor.GREEN + "City renamed to " + renamed.name + " (ID: " + renamed.id + ").");
                         } catch (IllegalArgumentException ex) {
                             s.sendMessage(ChatColor.RED + ex.getMessage());
@@ -162,7 +163,7 @@ public class CityCommand implements CommandExecutor {
                         try {
                             int index = cityManager.addCuboid(city.id, cuboid);
                             cityManager.save();
-                            statsService.updateCity(city, true);
+                            statsService.requestCityUpdate(city, true);
 
                             int width = cuboid.maxX - cuboid.minX + 1;
                             int length = cuboid.maxZ - cuboid.minZ + 1;
@@ -201,7 +202,7 @@ public class CityCommand implements CommandExecutor {
                         try {
                             cityManager.setHighrise(city.id, enable);
                             cityManager.save();
-                            statsService.updateCity(city, true);
+                            statsService.requestCityUpdate(city, true);
                             s.sendMessage(ChatColor.GREEN + "City '" + city.name + "' highrise set to " + enable + ".");
                         } catch (IllegalArgumentException ex) {
                             s.sendMessage(ChatColor.RED + ex.getMessage());
@@ -277,7 +278,7 @@ public class CityCommand implements CommandExecutor {
 
                         city.stations = updated;
                         cityManager.save();
-                        statsService.updateCity(city, true);
+                        statsService.requestCityUpdate(city, true);
 
                         if (updated == previous) {
                             String word = updated == 1 ? " station" : " stations";
@@ -313,7 +314,7 @@ public class CityCommand implements CommandExecutor {
                         }
 
                         cityManager.save();
-                        statsService.updateCity(city, true);
+                        statsService.requestCityUpdate(city, true);
                         p.sendMessage(ChatColor.GREEN + "Removed " + removed + " cuboid" + (removed == 1 ? "" : "s") + " from " + city.name + ".");
                         return true;
                     }
@@ -478,6 +479,16 @@ public class CityCommand implements CommandExecutor {
 
             default:
                 return help(s);
+        }
+    }
+
+    private void requestPlayerCityScan(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            return;
+        }
+        City city = cityManager.cityAt(player.getLocation());
+        if (city != null) {
+            statsService.requestCityUpdate(city);
         }
     }
 
