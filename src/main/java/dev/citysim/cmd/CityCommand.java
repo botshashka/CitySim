@@ -606,8 +606,18 @@ public class CityCommand implements CommandExecutor {
             player.sendMessage(ChatColor.YELLOW + usage);
             return true;
         }
-        boolean on = args[2].equalsIgnoreCase("on");
-        toggler.accept(on);
+        String option = args[2].toLowerCase(Locale.ROOT);
+        switch (option) {
+            case "on":
+                toggler.accept(true);
+                break;
+            case "off":
+                toggler.accept(false);
+                break;
+            default:
+                player.sendMessage(ChatColor.YELLOW + usage);
+                return true;
+        }
         return true;
     }
 
