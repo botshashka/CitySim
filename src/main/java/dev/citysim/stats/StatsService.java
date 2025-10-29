@@ -147,10 +147,6 @@ public class StatsService {
         return scanDebugManager.toggle(player);
     }
 
-    private void addPendingCity(String cityId, boolean forceRefresh) {
-        addPendingCity(cityId, forceRefresh, false, null, null);
-    }
-
     private void addPendingCity(String cityId, boolean forceRefresh, String reason, ScanContext context) {
         addPendingCity(cityId, forceRefresh, false, reason, context);
     }
