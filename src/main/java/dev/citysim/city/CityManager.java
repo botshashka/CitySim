@@ -181,7 +181,6 @@ public class CityManager {
 
         org.bukkit.World world = loc.getWorld();
         if (world == null) {
-            for (City c : byId.values()) if (c.contains(loc)) return c;
             return null;
         }
 

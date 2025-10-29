@@ -36,7 +36,10 @@ public class Cuboid {
     }
 
     public boolean contains(Location loc) {
-        if (!loc.getWorld().getName().equals(world)) return false;
+        if (loc == null) return false;
+        org.bukkit.World locWorld = loc.getWorld();
+        if (locWorld == null) return false;
+        if (!locWorld.getName().equals(world)) return false;
         int x = loc.getBlockX(), y = loc.getBlockY(), z = loc.getBlockZ();
         return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
     }
