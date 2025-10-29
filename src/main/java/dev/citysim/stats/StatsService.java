@@ -394,8 +394,6 @@ public class StatsService {
                         if (employedNow) {
                             employed++;
                         }
-                    } else if (entity instanceof IronGolem) {
-                        golems++;
                     }
                 }
                 processed++;
