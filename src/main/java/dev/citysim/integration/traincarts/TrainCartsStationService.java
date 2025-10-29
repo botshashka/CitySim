@@ -45,7 +45,7 @@ public class TrainCartsStationService implements StationCounter {
 
     public TrainCartsStationService(JavaPlugin plugin) throws ReflectiveOperationException {
         this.plugin = plugin;
-        Plugin found = plugin.getServer().getPluginManager().getPlugin("TrainCarts");
+        Plugin found = findTrainCartsPlugin(plugin);
         if (found == null) {
             throw new IllegalStateException("TrainCarts plugin not found");
         }
@@ -87,6 +87,39 @@ public class TrainCartsStationService implements StationCounter {
         this.signActionGetSignActionMethod = signActionClass.getMethod("getSignAction", signActionEventClass);
 
         this.signActionStationClass = Class.forName("com.bergerkiller.bukkit.tc.signactions.SignActionStation", true, loader);
+    }
+
+    private Plugin findTrainCartsPlugin(JavaPlugin plugin) {
+        var pluginManager = plugin.getServer().getPluginManager();
+        var direct = pluginManager.getPlugin("TrainCarts");
+        if (isTrainCartsPlugin(direct)) {
+            return direct;
+        }
+        var underscored = pluginManager.getPlugin("Train_Carts");
+        if (isTrainCartsPlugin(underscored)) {
+            return underscored;
+        }
+        for (var candidate : pluginManager.getPlugins()) {
+            if (isTrainCartsPlugin(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private boolean isTrainCartsPlugin(Plugin plugin) {
+        if (plugin == null) {
+            return false;
+        }
+        return isTrainCartsName(plugin.getName());
+    }
+
+    private boolean isTrainCartsName(String name) {
+        if (name == null) {
+            return false;
+        }
+        String normalized = name.replace("_", "").replace("-", "").toLowerCase();
+        return "traincarts".equals(normalized);
     }
 
     @Override

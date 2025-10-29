@@ -140,7 +140,7 @@ public class CitySimPlugin extends JavaPlugin {
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {
-        var plugin = getServer().getPluginManager().getPlugin("TrainCarts");
+        var plugin = findTrainCartsPlugin();
         if (plugin == null || !plugin.isEnabled()) {
             return null;
         }
@@ -154,6 +154,39 @@ public class CitySimPlugin extends JavaPlugin {
             getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + err.getMessage());
         }
         return null;
+    }
+
+    private org.bukkit.plugin.Plugin findTrainCartsPlugin() {
+        var pluginManager = getServer().getPluginManager();
+        var direct = pluginManager.getPlugin("TrainCarts");
+        if (isTrainCartsPlugin(direct)) {
+            return direct;
+        }
+        var underscored = pluginManager.getPlugin("Train_Carts");
+        if (isTrainCartsPlugin(underscored)) {
+            return underscored;
+        }
+        for (var plugin : pluginManager.getPlugins()) {
+            if (isTrainCartsPlugin(plugin)) {
+                return plugin;
+            }
+        }
+        return null;
+    }
+
+    private boolean isTrainCartsPlugin(org.bukkit.plugin.Plugin plugin) {
+        if (plugin == null) {
+            return false;
+        }
+        return isTrainCartsName(plugin.getName());
+    }
+
+    private boolean isTrainCartsName(String name) {
+        if (name == null) {
+            return false;
+        }
+        String normalized = name.replace("_", "").replace("-", "").toLowerCase();
+        return "traincarts".equals(normalized);
     }
 
     private void refreshStationsForAllCities(String reason) {
@@ -171,7 +204,7 @@ public class CitySimPlugin extends JavaPlugin {
     private final class DependencyListener implements Listener {
         @EventHandler
         public void onPluginEnable(PluginEnableEvent event) {
-            if (!"TrainCarts".equalsIgnoreCase(event.getPlugin().getName())) {
+            if (!isTrainCartsName(event.getPlugin().getName())) {
                 return;
             }
             if (trainCartsStationService != null) {
@@ -195,7 +228,7 @@ public class CitySimPlugin extends JavaPlugin {
 
         @EventHandler
         public void onPluginDisable(PluginDisableEvent event) {
-            if (!"TrainCarts".equalsIgnoreCase(event.getPlugin().getName())) {
+            if (!isTrainCartsName(event.getPlugin().getName())) {
                 return;
             }
             if (trainCartsStationService == null || statsService == null) {
