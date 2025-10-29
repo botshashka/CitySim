@@ -1,6 +1,7 @@
 package dev.citysim.city;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginDescriptionFile;
@@ -26,6 +27,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -95,6 +97,16 @@ class CityManagerTest {
                 .anyMatch(record -> record.getLevel().equals(Level.WARNING)
                         && record.getMessage().contains("Failed parsing cities data"));
         assertTrue(sawWarning, "Expected warning about invalid cities data");
+    }
+
+    @Test
+    void cityAtReturnsNullWhenLocationWorldMissing() throws Exception {
+        Plugin plugin = createPluginStub();
+        CityManager manager = new CityManager(plugin);
+
+        Location location = new Location(null, 5, 64, 5);
+
+        assertNull(manager.cityAt(location));
     }
 
     private static Plugin createPluginStub() throws Exception {
