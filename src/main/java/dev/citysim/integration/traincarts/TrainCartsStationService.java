@@ -54,31 +54,31 @@ public class TrainCartsStationService implements StationCounter {
         Class<?> trainCartsClass = found.getClass();
         this.getSignControllerMethod = trainCartsClass.getMethod("getSignController");
 
-        Class<?> signControllerClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignController", true, loader);
+        Class<?> signControllerClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignController", false, loader);
         this.signControllerForWorldMethod = signControllerClass.getMethod("forWorld", World.class);
 
-        Class<?> signControllerWorldClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerWorld", true, loader);
+        Class<?> signControllerWorldClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerWorld", false, loader);
         this.signControllerWorldIsEnabledMethod = signControllerWorldClass.getMethod("isEnabled");
         this.signChunksField = signControllerWorldClass.getDeclaredField("signChunks");
         this.signChunksField.setAccessible(true);
 
-        Class<?> longHashMapClass = Class.forName("com.bergerkiller.bukkit.common.wrappers.LongHashMap", true, loader);
+        Class<?> longHashMapClass = Class.forName("com.bergerkiller.bukkit.common.wrappers.LongHashMap", false, loader);
         this.longHashMapValuesMethod = longHashMapClass.getMethod("values");
 
-        Class<?> signControllerChunkClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerChunk", true, loader);
+        Class<?> signControllerChunkClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerChunk", false, loader);
         this.chunkGetEntriesMethod = signControllerChunkClass.getMethod("getEntries");
 
-        Class<?> entryClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignController$Entry", true, loader);
+        Class<?> entryClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignController$Entry", false, loader);
         this.entryGetBlockMethod = entryClass.getMethod("getBlock");
         this.entryHasSignActionEventsMethod = entryClass.getMethod("hasSignActionEvents");
-        Class<?> railPieceClass = Class.forName("com.bergerkiller.bukkit.tc.controller.components.RailPiece", true, loader);
+        Class<?> railPieceClass = Class.forName("com.bergerkiller.bukkit.tc.controller.components.RailPiece", false, loader);
         this.entryCreateFrontTrackedSignMethod = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
         this.entryCreateBackTrackedSignMethod = entryClass.getMethod("createBackTrackedSign", railPieceClass);
 
         Field noneField = railPieceClass.getField("NONE");
         this.railPieceNone = noneField.get(null);
 
-        Class<?> trackedSignClass = Class.forName("com.bergerkiller.bukkit.tc.rails.RailLookup$TrackedSign", true, loader);
+        Class<?> trackedSignClass = Class.forName("com.bergerkiller.bukkit.tc.rails.RailLookup$TrackedSign", false, loader);
         this.trackedSignGetLineMethod = trackedSignClass.getMethod("getLine", int.class);
     }
 
@@ -258,35 +258,28 @@ public class TrainCartsStationService implements StationCounter {
     }
 
     private boolean isTrainOrCartHeader(String line) {
-        String cleaned = stripFormatting(line);
-        if (cleaned.isEmpty()) {
-            return false;
-        }
-        if (cleaned.charAt(0) == '[' && cleaned.length() > 1) {
-            cleaned = cleaned.substring(1);
-        }
-        if (!cleaned.isEmpty() && cleaned.charAt(cleaned.length() - 1) == ']') {
-            cleaned = cleaned.substring(0, cleaned.length() - 1);
-        }
-        cleaned = trimLeadingPunctuation(cleaned);
-        if (cleaned.isEmpty()) {
+        String cleaned = normalizeLine(line);
+        if (cleaned == null) {
             return false;
         }
         int colon = cleaned.indexOf(':');
         if (colon >= 0) {
             cleaned = cleaned.substring(0, colon);
         }
-        cleaned = cleaned.replace(" ", "").replace("\t", "");
+        int space = cleaned.indexOf(' ');
+        if (space >= 0) {
+            cleaned = cleaned.substring(0, space);
+        }
+        cleaned = stripPrefixCharacters(cleaned, "+-!/\\");
         if (cleaned.isEmpty()) {
             return false;
         }
-        String lower = cleaned.toLowerCase(Locale.ROOT);
-        return lower.equals("train") || lower.equals("cart");
+        return cleaned.equals("train") || cleaned.equals("cart");
     }
 
     private boolean isStationActionLine(String line) {
-        String cleaned = trimLeadingPunctuation(stripFormatting(line));
-        if (cleaned.isEmpty()) {
+        String cleaned = normalizeLine(line);
+        if (cleaned == null) {
             return false;
         }
         int space = cleaned.indexOf(' ');
@@ -297,7 +290,26 @@ public class TrainCartsStationService implements StationCounter {
         if (colon >= 0) {
             cleaned = cleaned.substring(0, colon);
         }
-        return cleaned.equalsIgnoreCase("station");
+        cleaned = stripPrefixCharacters(cleaned, "+-!/\\");
+        return cleaned.equals("station");
+    }
+
+    private String normalizeLine(String line) {
+        String stripped = stripFormatting(line);
+        if (stripped.isEmpty()) {
+            return null;
+        }
+        if (stripped.charAt(0) == '[' && stripped.length() > 1) {
+            stripped = stripped.substring(1);
+        }
+        if (!stripped.isEmpty() && stripped.charAt(stripped.length() - 1) == ']') {
+            stripped = stripped.substring(0, stripped.length() - 1);
+        }
+        stripped = stripped.trim();
+        if (stripped.isEmpty()) {
+            return null;
+        }
+        return stripped.toLowerCase(Locale.ROOT);
     }
 
     private String stripFormatting(String line) {
@@ -311,9 +323,9 @@ public class TrainCartsStationService implements StationCounter {
         return stripped.trim();
     }
 
-    private String trimLeadingPunctuation(String input) {
+    private String stripPrefixCharacters(String input, String characters) {
         int index = 0;
-        while (index < input.length() && !Character.isLetterOrDigit(input.charAt(index))) {
+        while (index < input.length() && characters.indexOf(input.charAt(index)) >= 0) {
             index++;
         }
         return index >= input.length() ? "" : input.substring(index);
