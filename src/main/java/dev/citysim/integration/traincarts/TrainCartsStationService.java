@@ -39,7 +39,7 @@ public class TrainCartsStationService implements StationCounter {
     private final Constructor<?> signActionEventConstructor;
     private final Method signActionGetSignActionMethod;
     private final Object railPieceNone;
-    private final Class<?> signActionStationClass;
+    private final String signActionStationClassName;
 
     private boolean failureLogged;
 
@@ -86,7 +86,7 @@ public class TrainCartsStationService implements StationCounter {
         Class<?> signActionClass = Class.forName("com.bergerkiller.bukkit.tc.signactions.SignAction", true, loader);
         this.signActionGetSignActionMethod = signActionClass.getMethod("getSignAction", signActionEventClass);
 
-        this.signActionStationClass = Class.forName("com.bergerkiller.bukkit.tc.signactions.SignActionStation", true, loader);
+        this.signActionStationClassName = "com.bergerkiller.bukkit.tc.signactions.SignActionStation";
     }
 
     private Plugin findTrainCartsPlugin(JavaPlugin plugin) {
@@ -242,7 +242,10 @@ public class TrainCartsStationService implements StationCounter {
         }
         Object event = signActionEventConstructor.newInstance(trackedSign);
         Object handler = signActionGetSignActionMethod.invoke(null, event);
-        return handler != null && signActionStationClass.isInstance(handler);
+        if (handler == null) {
+            return false;
+        }
+        return handler.getClass().getName().equals(signActionStationClassName);
     }
 
     private boolean isInsideAny(List<Cuboid> cuboids, int x, int y, int z) {
