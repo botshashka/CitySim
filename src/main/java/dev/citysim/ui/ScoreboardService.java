@@ -98,7 +98,7 @@ public class ScoreboardService {
                 continue;
             }
 
-            statsService.requestCityUpdate(city);
+            statsService.requestCityUpdate(city, false, "scoreboard tick", player.getLocation());
             HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(city);
 
             Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());

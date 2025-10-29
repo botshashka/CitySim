@@ -10,17 +10,22 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.plugin.Plugin;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public class StatsService {
 
@@ -54,12 +59,14 @@ public class StatsService {
     private double housingMaxPts = 10;
     private double transitMaxPts = 5;
 
-    private final Map<String, Boolean> pendingCityUpdates = new LinkedHashMap<>();
+    private final Map<String, ScanRequest> pendingCityUpdates = new LinkedHashMap<>();
     private final Deque<String> scheduledCityQueue = new ArrayDeque<>();
     private final Map<String, CityScanJob> activeCityJobs = new LinkedHashMap<>();
     private int maxCitiesPerTick = 1;
     private int maxEntityChunksPerTick = 2;
     private int maxBedBlocksPerTick = 2048;
+
+    private final ScanDebugManager scanDebugManager = new ScanDebugManager();
 
     public StatsService(Plugin plugin, CityManager cm) {
         this.plugin = plugin;
@@ -97,10 +104,18 @@ public class StatsService {
     }
 
     public void requestCityUpdate(City city, boolean forceRefresh) {
+        requestCityUpdate(city, forceRefresh, null, null);
+    }
+
+    public void requestCityUpdate(City city, boolean forceRefresh, String reason) {
+        requestCityUpdate(city, forceRefresh, reason, null);
+    }
+
+    public void requestCityUpdate(City city, boolean forceRefresh, String reason, Location triggerLocation) {
         if (city == null || city.id == null) {
             return;
         }
-        addPendingCity(city.id, forceRefresh);
+        addPendingCity(city.id, forceRefresh, reason, createContext(triggerLocation));
     }
 
     public void requestCityUpdate(Location location) {
@@ -108,26 +123,50 @@ public class StatsService {
     }
 
     public void requestCityUpdate(Location location, boolean forceRefresh) {
+        requestCityUpdate(location, forceRefresh, null);
+    }
+
+    public void requestCityUpdate(Location location, boolean forceRefresh, String reason) {
         if (location == null) {
             return;
         }
         City city = cityManager.cityAt(location);
         if (city != null) {
-            requestCityUpdate(city, forceRefresh);
+            requestCityUpdate(city, forceRefresh, reason, location);
         }
     }
 
+    public boolean toggleScanDebug(Player player) {
+        if (player == null) {
+            return false;
+        }
+        return scanDebugManager.toggle(player);
+    }
+
     private void addPendingCity(String cityId, boolean forceRefresh) {
+        addPendingCity(cityId, forceRefresh, null, null);
+    }
+
+    private void addPendingCity(String cityId, boolean forceRefresh, String reason, ScanContext context) {
         if (cityId == null || cityId.isEmpty()) {
             return;
         }
         CityScanJob activeJob = activeCityJobs.get(cityId);
         if (activeJob != null) {
-            activeJob.requestRequeue(forceRefresh);
+            activeJob.requestRequeue(forceRefresh, reason, context);
             return;
         }
-        pendingCityUpdates.merge(cityId, forceRefresh, (existing, incoming) -> existing || incoming);
+        ScanRequest request = new ScanRequest(forceRefresh, reason, context);
+        pendingCityUpdates.merge(cityId, request, ScanRequest::merge);
         scheduledCityQueue.remove(cityId);
+    }
+
+    private ScanContext createContext(Location location) {
+        if (location == null) {
+            return null;
+        }
+        String worldName = location.getWorld() != null ? location.getWorld().getName() : null;
+        return new ScanContext(worldName, location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
     private void tick() {
@@ -158,7 +197,8 @@ public class StatsService {
             if (city == null) {
                 continue;
             }
-            if (startCityScanJob(city, entry.getValue())) {
+            ScanRequest request = entry.getValue();
+            if (startCityScanJob(city, request)) {
                 return true;
             }
         }
@@ -193,7 +233,7 @@ public class StatsService {
             if (city == null) {
                 continue;
             }
-            if (startCityScanJob(city, false)) {
+            if (startCityScanJob(city, new ScanRequest(false, "scheduled sweep", null))) {
                 return true;
             }
         }
@@ -229,21 +269,21 @@ public class StatsService {
         for (CityScanJob job : completed) {
             RerunRequest rerun = job.consumeRerunRequest();
             if (rerun.requested()) {
-                addPendingCity(job.cityId(), rerun.forceRefresh());
+                addPendingCity(job.cityId(), rerun.forceRefresh(), rerun.reason(), rerun.context());
             }
         }
     }
 
-    private boolean startCityScanJob(City city, boolean forceRefresh) {
+    private boolean startCityScanJob(City city, ScanRequest request) {
         if (city == null || city.id == null || city.id.isEmpty()) {
             return false;
         }
         CityScanJob existing = activeCityJobs.get(city.id);
         if (existing != null) {
-            existing.requestRequeue(forceRefresh);
+            existing.requestRequeue(request.forceRefresh(), request.reason(), request.context());
             return false;
         }
-        CityScanJob job = new CityScanJob(city, forceRefresh);
+        CityScanJob job = new CityScanJob(city, request);
         activeCityJobs.put(city.id, job);
         return true;
     }
@@ -267,7 +307,7 @@ public class StatsService {
 
     private void queueAllCitiesForInitialScan() {
         for (City city : cityManager.all()) {
-            requestCityUpdate(city, true);
+            requestCityUpdate(city, true, "initial startup");
         }
     }
 
@@ -280,7 +320,7 @@ public class StatsService {
             return new HappinessBreakdown();
         }
         cancelActiveJob(city);
-        CityScanJob job = new CityScanJob(city, forceRefresh);
+        CityScanJob job = new CityScanJob(city, new ScanRequest(forceRefresh, "synchronous update", null));
         while (!job.process(Integer.MAX_VALUE, Integer.MAX_VALUE)) {
             // Keep processing until the scan completes synchronously
         }
@@ -303,13 +343,146 @@ public class StatsService {
         scheduledCityQueue.remove(city.id);
     }
 
+    private record ScanRequest(boolean forceRefresh, String reason, ScanContext context) {
+        ScanRequest merge(ScanRequest other) {
+            if (other == null) {
+                return this;
+            }
+            boolean mergedForce = this.forceRefresh || other.forceRefresh;
+            String mergedReason = other.reason != null ? other.reason : this.reason;
+            ScanContext mergedContext = other.context != null ? other.context : this.context;
+            return new ScanRequest(mergedForce, mergedReason, mergedContext);
+        }
+    }
+
+    private record ScanContext(String world, Integer x, Integer y, Integer z) {
+        String describe() {
+            if (world == null) {
+                return "unknown";
+            }
+            if (x != null && y != null && z != null) {
+                return world + " (" + x + ", " + y + ", " + z + ")";
+            }
+            return world;
+        }
+    }
+
     private record ChunkCoord(String world, int x, int z) {}
 
-    private record RerunRequest(boolean requested, boolean forceRefresh) {}
+    private record RerunRequest(boolean requested, boolean forceRefresh, String reason, ScanContext context) {}
+
+    private final class ScanDebugManager {
+        private final Set<UUID> watchers = new HashSet<>();
+        private final DateTimeFormatter timestampFormat = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+
+        boolean toggle(Player player) {
+            UUID id = player.getUniqueId();
+            if (watchers.remove(id)) {
+                return false;
+            }
+            watchers.add(id);
+            return true;
+        }
+
+        boolean isEnabled() {
+            return !watchers.isEmpty();
+        }
+
+        void logJobStarted(CityScanJob job) {
+            String type = describeReason(job.reasonDescription());
+            String cityLabel = describeCity(job.city());
+            String location = describeLocation(job.city(), job.context());
+            String refreshMode = job.isForceRefresh() ? "force" : "incremental";
+            int chunks = job.totalEntityChunks();
+            int cuboids = job.cuboidCount();
+            String message = String.format(
+                    "Started %s scan for %s at %s — refresh=%s, entityChunks=%d, cuboids=%d",
+                    type,
+                    cityLabel,
+                    location,
+                    refreshMode,
+                    chunks,
+                    cuboids
+            );
+            broadcast(message);
+        }
+
+        void logJobCompleted(CityScanJob job) {
+            long duration = Math.max(0L, System.currentTimeMillis() - job.startedAtMillis());
+            String type = describeReason(job.reasonDescription());
+            String cityLabel = describeCity(job.city());
+            HappinessBreakdown breakdown = job.getResult();
+            int happiness = breakdown != null ? breakdown.total : job.city().happiness;
+            String message = String.format(
+                    "Completed %s scan for %s in %d ms — pop=%d, employed=%d, beds=%d, happiness=%d",
+                    type,
+                    cityLabel,
+                    duration,
+                    job.populationCount(),
+                    job.employedCount(),
+                    job.bedCount(),
+                    happiness
+            );
+            broadcast(message);
+        }
+
+        private void broadcast(String message) {
+            if (watchers.isEmpty()) {
+                return;
+            }
+            String timestamped = "[" + LocalDateTime.now().format(timestampFormat) + "] " + message;
+            var iterator = watchers.iterator();
+            while (iterator.hasNext()) {
+                UUID id = iterator.next();
+                Player player = Bukkit.getPlayer(id);
+                if (player == null || !player.isOnline()) {
+                    iterator.remove();
+                    continue;
+                }
+                player.sendMessage(timestamped);
+            }
+        }
+
+        private String describeCity(City city) {
+            if (city == null) {
+                return "unknown city";
+            }
+            String name = city.name != null ? city.name : "(unnamed)";
+            String id = city.id != null ? city.id : "?";
+            return name + " (" + id + ")";
+        }
+
+        private String describeReason(String reason) {
+            if (reason == null || reason.isBlank()) {
+                return "unspecified";
+            }
+            return reason;
+        }
+
+        private String describeLocation(City city, ScanContext context) {
+            if (context != null) {
+                return context.describe();
+            }
+            if (city != null && city.cuboids != null && !city.cuboids.isEmpty()) {
+                Cuboid cuboid = city.cuboids.get(0);
+                String world = cuboid.world != null ? cuboid.world : city.world;
+                int centerX = cuboid.minX + ((cuboid.maxX - cuboid.minX) / 2);
+                int centerY = cuboid.minY + ((cuboid.maxY - cuboid.minY) / 2);
+                int centerZ = cuboid.minZ + ((cuboid.maxZ - cuboid.minZ) / 2);
+                return (world != null ? world : "unknown") + " (" + centerX + ", " + centerY + ", " + centerZ + ")";
+            }
+            if (city != null && city.world != null) {
+                return city.world;
+            }
+            return "unknown";
+        }
+    }
 
     private final class CityScanJob {
         private final City city;
         private boolean forceRefresh;
+        private final String reason;
+        private final ScanContext context;
         private final List<ChunkCoord> entityChunks;
         private int entityChunkIndex = 0;
 
@@ -330,10 +503,18 @@ public class StatsService {
 
         private boolean rerunRequested = false;
         private boolean rerunForceRefresh = false;
+        private String rerunReason = null;
+        private ScanContext rerunContext = null;
 
-        CityScanJob(City city, boolean forceRefresh) {
+        private final long startedAtMillis = System.currentTimeMillis();
+        private boolean startLogged = false;
+
+        CityScanJob(City city, ScanRequest request) {
             this.city = city;
-            this.forceRefresh = forceRefresh;
+            boolean refresh = request != null && request.forceRefresh();
+            this.forceRefresh = refresh;
+            this.reason = request != null ? request.reason() : null;
+            this.context = request != null ? request.context() : null;
             this.entityChunks = buildChunkList(city);
         }
 
@@ -342,6 +523,7 @@ public class StatsService {
                 stage = Stage.COMPLETE;
                 return true;
             }
+            logStartIfNeeded();
             if (stage == Stage.ENTITY_SCAN) {
                 if (!processEntityStage(chunkLimit)) {
                     return false;
@@ -357,8 +539,18 @@ public class StatsService {
             if (stage == Stage.BLOCK_CACHE) {
                 finalizeCity();
                 stage = Stage.COMPLETE;
+                if (scanDebugManager.isEnabled()) {
+                    scanDebugManager.logJobCompleted(this);
+                }
             }
             return stage == Stage.COMPLETE;
+        }
+
+        private void logStartIfNeeded() {
+            if (!startLogged && scanDebugManager.isEnabled()) {
+                startLogged = true;
+                scanDebugManager.logJobStarted(this);
+            }
         }
 
         private boolean processEntityStage(int chunkLimit) {
@@ -473,6 +665,46 @@ public class StatsService {
             return result;
         }
 
+        City city() {
+            return city;
+        }
+
+        String reasonDescription() {
+            return reason;
+        }
+
+        ScanContext context() {
+            return context;
+        }
+
+        boolean isForceRefresh() {
+            return forceRefresh;
+        }
+
+        int totalEntityChunks() {
+            return entityChunks.size();
+        }
+
+        int cuboidCount() {
+            return city.cuboids != null ? city.cuboids.size() : 0;
+        }
+
+        long startedAtMillis() {
+            return startedAtMillis;
+        }
+
+        int populationCount() {
+            return population;
+        }
+
+        int employedCount() {
+            return employed;
+        }
+
+        int bedCount() {
+            return beds;
+        }
+
         String cityId() {
             return city.id;
         }
@@ -485,19 +717,30 @@ public class StatsService {
             cancelled = true;
         }
 
-        void requestRequeue(boolean force) {
+        void requestRequeue(boolean force, String newReason, ScanContext newContext) {
             rerunRequested = true;
             rerunForceRefresh = rerunForceRefresh || force;
             forceRefresh = forceRefresh || force;
+            if (newReason != null && !newReason.isBlank()) {
+                rerunReason = newReason;
+            } else if (rerunReason == null) {
+                rerunReason = reason;
+            }
+            if (newContext != null) {
+                rerunContext = newContext;
+            }
         }
 
         RerunRequest consumeRerunRequest() {
             if (!rerunRequested) {
-                return new RerunRequest(false, false);
+                return new RerunRequest(false, false, null, null);
             }
-            RerunRequest req = new RerunRequest(true, rerunForceRefresh);
+            String nextReason = rerunReason != null ? rerunReason : reason;
+            RerunRequest req = new RerunRequest(true, rerunForceRefresh, nextReason, rerunContext);
             rerunRequested = false;
             rerunForceRefresh = false;
+            rerunReason = null;
+            rerunContext = null;
             return req;
         }
 
@@ -537,7 +780,7 @@ public class StatsService {
             city.happiness = hb.total;
             return hb;
         }
-        requestCityUpdate(city, true);
+        requestCityUpdate(city, true, "compute happiness breakdown");
         return city.happinessBreakdown != null ? city.happinessBreakdown : new HappinessBreakdown();
     }
 

@@ -37,7 +37,8 @@ public class CityTab implements TabCompleter {
                     "display",
                     "ymode",
                     "top",
-                    "reload"
+                    "reload",
+                    "debug"
             ), args[0]);
         }
 
@@ -133,6 +134,12 @@ public class CityTab implements TabCompleter {
                 return List.of();
 
             case "reload":
+                return List.of();
+
+            case "debug":
+                if (args.length == 2) {
+                    return filter(List.of("scans"), args[1]);
+                }
                 return List.of();
 
             default:

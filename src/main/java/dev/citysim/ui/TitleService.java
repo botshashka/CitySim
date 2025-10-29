@@ -74,7 +74,7 @@ public class TitleService implements Listener {
         City current = cityManager.cityAt(player.getLocation());
         lastCity.put(player.getUniqueId(), current != null ? current.id : null);
         if (current != null) {
-            statsService.requestCityUpdate(current, true);
+            statsService.requestCityUpdate(current, true, "title join", player.getLocation());
         }
     }
 
@@ -106,7 +106,7 @@ public class TitleService implements Listener {
             lastCity.put(player.getUniqueId(), currentId);
 
             if (current != null) {
-                statsService.requestCityUpdate(current, true);
+                statsService.requestCityUpdate(current, true, "title movement", player.getLocation());
             }
 
             if (!configEnabled || current == null) {
