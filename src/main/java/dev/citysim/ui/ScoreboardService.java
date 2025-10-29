@@ -35,6 +35,8 @@ public class ScoreboardService {
     private int taskId = -1;
 
     private final Map<UUID, Scoreboard> boards = new HashMap<>();
+    private final Map<UUID, String> lastTitles = new HashMap<>();
+    private final Map<UUID, List<String>> lastLines = new HashMap<>();
     private final DisplayPreferencesStore displayPreferencesStore;
 
     public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
@@ -65,6 +67,8 @@ public class ScoreboardService {
             }
         }
         boards.clear();
+        lastTitles.clear();
+        lastLines.clear();
     }
 
     public void setEnabled(Player player, boolean on) {
@@ -75,8 +79,12 @@ public class ScoreboardService {
                 player.setScoreboard(manager.getMainScoreboard());
             }
             boards.remove(player.getUniqueId());
+            lastTitles.remove(player.getUniqueId());
+            lastLines.remove(player.getUniqueId());
         } else {
             boards.remove(player.getUniqueId());
+            lastTitles.remove(player.getUniqueId());
+            lastLines.remove(player.getUniqueId());
         }
     }
 
@@ -92,13 +100,20 @@ public class ScoreboardService {
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!isEnabled(player)) {
+                UUID uuid = player.getUniqueId();
+                boards.remove(uuid);
+                lastTitles.remove(uuid);
+                lastLines.remove(uuid);
                 continue;
             }
 
             City city = cityManager.cityAt(player.getLocation());
             if (city == null) {
                 player.setScoreboard(manager.getMainScoreboard());
-                boards.remove(player.getUniqueId());
+                UUID uuid = player.getUniqueId();
+                boards.remove(uuid);
+                lastTitles.remove(uuid);
+                lastLines.remove(uuid);
                 continue;
             }
 
@@ -111,15 +126,36 @@ public class ScoreboardService {
                 objective = board.registerNewObjective("citysim", "dummy", ChatColor.GOLD + "CitySim");
                 objective.setDisplaySlot(DisplaySlot.SIDEBAR);
             }
-            objective.setDisplayName(ChatColor.YELLOW + "" + ChatColor.BOLD + city.name);
-
-            clearBoardEntries(board);
-
+            String title = ChatColor.YELLOW + "" + ChatColor.BOLD + city.name;
             List<String> lines = buildLines(city, breakdown, displayPreferencesStore.getScoreboardMode(player.getUniqueId()));
-            applyLines(objective, board, lines);
+
+            UUID uuid = player.getUniqueId();
+            String cachedTitle = lastTitles.get(uuid);
+            List<String> cachedLines = lastLines.get(uuid);
+
+            boolean titleChanged = !title.equals(cachedTitle);
+            boolean linesChanged = cachedLines == null || !lines.equals(cachedLines);
+
+            if (titleChanged || linesChanged) {
+                objective.setDisplayName(title);
+                clearBoardEntries(board);
+                applyLines(objective, board, lines);
+                lastTitles.put(uuid, title);
+                lastLines.put(uuid, new ArrayList<>(lines));
+            }
 
             player.setScoreboard(board);
         }
+
+        boards.entrySet().removeIf(entry -> {
+            Player tracked = Bukkit.getPlayer(entry.getKey());
+            if (tracked == null || !tracked.isOnline()) {
+                lastTitles.remove(entry.getKey());
+                lastLines.remove(entry.getKey());
+                return true;
+            }
+            return false;
+        });
     }
 
     private void clearBoardEntries(Scoreboard board) {
