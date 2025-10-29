@@ -4,6 +4,9 @@ updates:
   stats_interval_ticks: 100     # ~5 seconds between stat updates (min 20, max 12000)
   stats_initial_delay_ticks: 40 # Delay before the first stat update (0 - 6000)
   bossbar_interval_ticks: 40    # ~2 seconds
+  max_cities_per_tick: 1        # How many city scans to start/process each tick
+  max_entity_chunks_per_tick: 2 # Loaded chunks checked per active city scan each tick
+  max_bed_blocks_per_tick: 2048 # Block lookups for bed counting per tick
 
 happiness_weights:
   nature_max_points: 10

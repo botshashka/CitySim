@@ -7,6 +7,7 @@ import dev.citysim.city.Cuboid;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.IronGolem;
@@ -18,8 +19,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class StatsService {
     public enum EmploymentMode { PROFESSION_ONLY, PROFESSION_AND_WORKSTATION, WORKSTATION_PROXIMITY }
@@ -59,7 +62,10 @@ public class StatsService {
 
     private final Map<String, Boolean> pendingCityUpdates = new LinkedHashMap<>();
     private final Deque<String> scheduledCityQueue = new ArrayDeque<>();
+    private final Map<String, CityScanJob> activeCityJobs = new LinkedHashMap<>();
     private int maxCitiesPerTick = 1;
+    private int maxEntityChunksPerTick = 2;
+    private int maxBedBlocksPerTick = 2048;
 
     public StatsService(Plugin plugin, CityManager cm) {
         this.plugin = plugin;
@@ -121,19 +127,25 @@ public class StatsService {
         if (cityId == null || cityId.isEmpty()) {
             return;
         }
+        CityScanJob activeJob = activeCityJobs.get(cityId);
+        if (activeJob != null) {
+            activeJob.requestRequeue(forceRefresh);
+            return;
+        }
         pendingCityUpdates.merge(cityId, forceRefresh, (existing, incoming) -> existing || incoming);
         scheduledCityQueue.remove(cityId);
     }
 
     private void tick() {
+        progressActiveJobs();
         int processed = 0;
         int target = Math.max(1, maxCitiesPerTick);
         while (processed < target) {
-            boolean handled = processNextPendingCity();
-            if (!handled) {
-                handled = processNextScheduledCity();
+            boolean started = processNextPendingCity();
+            if (!started) {
+                started = processNextScheduledCity();
             }
-            if (!handled) {
+            if (!started) {
                 break;
             }
             processed++;
@@ -152,8 +164,9 @@ public class StatsService {
             if (city == null) {
                 continue;
             }
-            updateCity(city, entry.getValue());
-            return true;
+            if (startCityScanJob(city, entry.getValue())) {
+                return true;
+            }
         }
         return false;
     }
@@ -177,9 +190,59 @@ public class StatsService {
             if (city == null) {
                 continue;
             }
-            updateCity(city, false);
-            return true;
+            if (startCityScanJob(city, false)) {
+                return true;
+            }
         }
+    }
+
+    private void progressActiveJobs() {
+        if (activeCityJobs.isEmpty()) {
+            return;
+        }
+        int jobsToProcess = Math.max(1, maxCitiesPerTick);
+        var iterator = activeCityJobs.entrySet().iterator();
+        List<CityScanJob> toRequeue = new ArrayList<>();
+        List<CityScanJob> completed = new ArrayList<>();
+        while (iterator.hasNext() && jobsToProcess > 0) {
+            Map.Entry<String, CityScanJob> entry = iterator.next();
+            iterator.remove();
+            CityScanJob job = entry.getValue();
+            if (job.isCancelled()) {
+                jobsToProcess--;
+                continue;
+            }
+            boolean done = job.process(maxEntityChunksPerTick, maxBedBlocksPerTick);
+            if (done) {
+                completed.add(job);
+            } else {
+                toRequeue.add(job);
+            }
+            jobsToProcess--;
+        }
+        for (CityScanJob job : toRequeue) {
+            activeCityJobs.put(job.cityId(), job);
+        }
+        for (CityScanJob job : completed) {
+            RerunRequest rerun = job.consumeRerunRequest();
+            if (rerun.requested()) {
+                addPendingCity(job.cityId(), rerun.forceRefresh());
+            }
+        }
+    }
+
+    private boolean startCityScanJob(City city, boolean forceRefresh) {
+        if (city == null || city.id == null || city.id.isEmpty()) {
+            return false;
+        }
+        CityScanJob existing = activeCityJobs.get(city.id);
+        if (existing != null) {
+            existing.requestRequeue(forceRefresh);
+            return false;
+        }
+        CityScanJob job = new CityScanJob(city, forceRefresh);
+        activeCityJobs.put(city.id, job);
+        return true;
     }
 
     private void refillScheduledQueue() {
@@ -208,60 +271,263 @@ public class StatsService {
     }
 
     public HappinessBreakdown updateCity(City city, boolean forceRefresh) {
-        int pop = 0, employed = 0, golems = 0;
+        if (city == null) {
+            return new HappinessBreakdown();
+        }
+        cancelActiveJob(city);
+        CityScanJob job = new CityScanJob(city, forceRefresh);
+        while (!job.process(Integer.MAX_VALUE, Integer.MAX_VALUE)) {
+            // Keep processing until the scan completes synchronously
+        }
+        HappinessBreakdown result = job.getResult();
+        if (result == null) {
+            result = city.happinessBreakdown != null ? city.happinessBreakdown : new HappinessBreakdown();
+        }
+        return result;
+    }
 
-        for (Cuboid c : city.cuboids) {
-            World w = Bukkit.getWorld(c.world);
-            if (w == null) continue;
+    private void cancelActiveJob(City city) {
+        if (city == null || city.id == null) {
+            return;
+        }
+        CityScanJob running = activeCityJobs.remove(city.id);
+        if (running != null) {
+            running.cancel();
+        }
+        pendingCityUpdates.remove(city.id);
+        scheduledCityQueue.remove(city.id);
+    }
 
-            int minCX = c.minX >> 4, maxCX = c.maxX >> 4;
-            int minCZ = c.minZ >> 4, maxCZ = c.maxZ >> 4;
+    private record ChunkCoord(String world, int x, int z) {}
 
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    if (!w.isChunkLoaded(cx, cz)) continue;
-                    Chunk ch = w.getChunkAt(cx, cz);
-                    for (Entity e : ch.getEntities()) {
-                        Location loc = e.getLocation();
-                        if (!c.contains(loc)) continue;
+    private record RerunRequest(boolean requested, boolean forceRefresh) {}
 
-                        if (e instanceof Villager v) {
-                            pop++;
-                            Villager.Profession prof = v.getProfession();
-                            boolean isNitwit = prof == Villager.Profession.NITWIT;
-                            boolean hasProf = prof != Villager.Profession.NONE && !isNitwit;
-                            boolean nearWork = hasNearbyWorkstation(loc, wsRadius, wsYRadius);
-                            boolean emp;
-                            switch (employmentMode) {
-                                case PROFESSION_ONLY:            emp = hasProf; break;
-                                case WORKSTATION_PROXIMITY:     emp = nearWork; break;
-                                case PROFESSION_AND_WORKSTATION:
-                                default:                         emp = hasProf && nearWork; break;
-                            }
-                            if (emp) employed++;
-                        } else if (e instanceof IronGolem) {
-                            if (c.contains(e.getLocation())) golems++;
+    private final class CityScanJob {
+        private final City city;
+        private boolean forceRefresh;
+        private final List<ChunkCoord> entityChunks;
+        private int entityChunkIndex = 0;
+
+        private int population = 0;
+        private int employed = 0;
+        private int golems = 0;
+
+        private int bedHalfCount = 0;
+        private int beds = 0;
+        private int bedCuboidIndex = 0;
+        private int bedX;
+        private int bedY;
+        private int bedZ;
+        private boolean bedInitialized = false;
+
+        private Stage stage = Stage.ENTITY_SCAN;
+        private boolean cancelled = false;
+        private HappinessBreakdown result = null;
+
+        private boolean rerunRequested = false;
+        private boolean rerunForceRefresh = false;
+
+        CityScanJob(City city, boolean forceRefresh) {
+            this.city = city;
+            this.forceRefresh = forceRefresh;
+            this.entityChunks = buildChunkList(city);
+        }
+
+        boolean process(int chunkLimit, int bedLimit) {
+            if (cancelled) {
+                stage = Stage.COMPLETE;
+                return true;
+            }
+            if (stage == Stage.ENTITY_SCAN) {
+                if (!processEntityStage(chunkLimit)) {
+                    return false;
+                }
+                stage = Stage.BEDS;
+            }
+            if (stage == Stage.BEDS) {
+                if (!processBedStage(bedLimit)) {
+                    return false;
+                }
+                stage = Stage.BLOCK_CACHE;
+            }
+            if (stage == Stage.BLOCK_CACHE) {
+                finalizeCity();
+                stage = Stage.COMPLETE;
+            }
+            return stage == Stage.COMPLETE;
+        }
+
+        private boolean processEntityStage(int chunkLimit) {
+            if (entityChunkIndex >= entityChunks.size()) {
+                return true;
+            }
+            int limit = chunkLimit <= 0 ? Integer.MAX_VALUE : chunkLimit;
+            int processed = 0;
+            while (entityChunkIndex < entityChunks.size() && processed < limit) {
+                ChunkCoord coord = entityChunks.get(entityChunkIndex++);
+                World world = Bukkit.getWorld(coord.world());
+                if (world == null) {
+                    processed++;
+                    continue;
+                }
+                if (!world.isChunkLoaded(coord.x(), coord.z())) {
+                    processed++;
+                    continue;
+                }
+                Chunk chunk = world.getChunkAt(coord.x(), coord.z());
+                for (Entity entity : chunk.getEntities()) {
+                    Location loc = entity.getLocation();
+                    if (!city.contains(loc)) {
+                        continue;
+                    }
+                    if (entity instanceof Villager villager) {
+                        population++;
+                        Villager.Profession prof = villager.getProfession();
+                        boolean isNitwit = prof == Villager.Profession.NITWIT;
+                        boolean hasProf = prof != Villager.Profession.NONE && !isNitwit;
+                        boolean nearWork = hasNearbyWorkstation(loc, wsRadius, wsYRadius);
+                        boolean employedNow;
+                        switch (employmentMode) {
+                            case PROFESSION_ONLY -> employedNow = hasProf;
+                            case WORKSTATION_PROXIMITY -> employedNow = nearWork;
+                            case PROFESSION_AND_WORKSTATION -> employedNow = hasProf && nearWork;
+                            default -> employedNow = hasProf;
                         }
+                        if (employedNow) {
+                            employed++;
+                        }
+                    } else if (entity instanceof IronGolem) {
+                        golems++;
+                    }
+                }
+                processed++;
+            }
+            return entityChunkIndex >= entityChunks.size();
+        }
+
+        private boolean processBedStage(int bedLimit) {
+            if (bedCuboidIndex >= city.cuboids.size()) {
+                beds = bedHalfCount / 2;
+                return true;
+            }
+            int limit = bedLimit <= 0 ? Integer.MAX_VALUE : bedLimit;
+            int processed = 0;
+            while (bedCuboidIndex < city.cuboids.size() && processed < limit) {
+                Cuboid cuboid = city.cuboids.get(bedCuboidIndex);
+                World world = Bukkit.getWorld(cuboid.world);
+                if (world == null) {
+                    bedCuboidIndex++;
+                    bedInitialized = false;
+                    continue;
+                }
+                if (!bedInitialized) {
+                    bedX = cuboid.minX;
+                    bedY = cuboid.minY;
+                    bedZ = cuboid.minZ;
+                    bedInitialized = true;
+                }
+                while (bedCuboidIndex < city.cuboids.size() && processed < limit) {
+                    Material type = world.getBlockAt(bedX, bedY, bedZ).getType();
+                    if (isBed(type)) {
+                        bedHalfCount++;
+                    }
+                    processed++;
+                    if (!advanceBedCursor(cuboid)) {
+                        bedCuboidIndex++;
+                        bedInitialized = false;
+                        break;
                     }
                 }
             }
+            if (bedCuboidIndex >= city.cuboids.size()) {
+                beds = bedHalfCount / 2;
+                return true;
+            }
+            return false;
         }
 
-        int beds = countBeds(city);
-        int unemployed = Math.max(0, pop - employed);
+        private boolean advanceBedCursor(Cuboid cuboid) {
+            bedY++;
+            if (bedY > cuboid.maxY) {
+                bedY = cuboid.minY;
+                bedZ++;
+                if (bedZ > cuboid.maxZ) {
+                    bedZ = cuboid.minZ;
+                    bedX++;
+                    if (bedX > cuboid.maxX) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
 
-        city.population = pop;
-        city.employed = employed;
-        city.unemployed = unemployed;
-        city.beds = beds;
-        city.golems = golems;
+        private void finalizeCity() {
+            int unemployed = Math.max(0, population - employed);
+            city.population = population;
+            city.employed = employed;
+            city.unemployed = unemployed;
+            city.beds = beds;
+            city.golems = golems;
 
-        City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
-        HappinessBreakdown hb = calculateHappinessBreakdown(city, metrics);
-        city.happinessBreakdown = hb;
-        city.happiness = hb.total;
+            City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
+            result = calculateHappinessBreakdown(city, metrics);
+            city.happinessBreakdown = result;
+            city.happiness = result.total;
+        }
 
-        return hb;
+        HappinessBreakdown getResult() {
+            return result;
+        }
+
+        String cityId() {
+            return city.id;
+        }
+
+        boolean isCancelled() {
+            return cancelled;
+        }
+
+        void cancel() {
+            cancelled = true;
+        }
+
+        void requestRequeue(boolean force) {
+            rerunRequested = true;
+            rerunForceRefresh = rerunForceRefresh || force;
+            forceRefresh = forceRefresh || force;
+        }
+
+        RerunRequest consumeRerunRequest() {
+            if (!rerunRequested) {
+                return new RerunRequest(false, false);
+            }
+            RerunRequest req = new RerunRequest(true, rerunForceRefresh);
+            rerunRequested = false;
+            rerunForceRefresh = false;
+            return req;
+        }
+
+        private List<ChunkCoord> buildChunkList(City city) {
+            Set<ChunkCoord> coords = new LinkedHashSet<>();
+            for (Cuboid cuboid : city.cuboids) {
+                if (cuboid == null || cuboid.world == null) {
+                    continue;
+                }
+                int minCX = cuboid.minX >> 4;
+                int maxCX = cuboid.maxX >> 4;
+                int minCZ = cuboid.minZ >> 4;
+                int maxCZ = cuboid.maxZ >> 4;
+                for (int cx = minCX; cx <= maxCX; cx++) {
+                    for (int cz = minCZ; cz <= maxCZ; cz++) {
+                        coords.add(new ChunkCoord(cuboid.world, cx, cz));
+                    }
+                }
+            }
+            return new ArrayList<>(coords);
+        }
+
+        private enum Stage { ENTITY_SCAN, BEDS, BLOCK_CACHE, COMPLETE }
     }
 
     private boolean hasNearbyWorkstation(Location loc, int radius, int yRadius) {
@@ -585,24 +851,12 @@ public class StatsService {
         return new PollutionStats(result.ratio(), result.found);
     }
 
-    private int countBeds(City city) {
-        int beds = 0;
-        for (Cuboid c : city.cuboids) {
-            World w = Bukkit.getWorld(c.world);
-            if (w == null) continue;
-            for (int x = c.minX; x <= c.maxX; x++) {
-                for (int z = c.minZ; z <= c.maxZ; z++) {
-                    for (int y = c.minY; y <= c.maxY; y++) {
-                        switch (w.getBlockAt(x, y, z).getType()) {
-                            case WHITE_BED, ORANGE_BED, MAGENTA_BED, LIGHT_BLUE_BED, YELLOW_BED, LIME_BED, PINK_BED,
-                                 GRAY_BED, LIGHT_GRAY_BED, CYAN_BED, PURPLE_BED, BLUE_BED, BROWN_BED, GREEN_BED, RED_BED, BLACK_BED -> beds++;
-                            default -> {}
-                        }
-                    }
-                }
-            }
-        }
-        return beds / 2;
+    private static boolean isBed(Material type) {
+        return switch (type) {
+            case WHITE_BED, ORANGE_BED, MAGENTA_BED, LIGHT_BLUE_BED, YELLOW_BED, LIME_BED, PINK_BED,
+                 GRAY_BED, LIGHT_GRAY_BED, CYAN_BED, PURPLE_BED, BLUE_BED, BROWN_BED, GREEN_BED, RED_BED, BLACK_BED -> true;
+            default -> false;
+        };
     }
 
     private static double clamp(double value, double min, double max) {
@@ -668,6 +922,8 @@ public class StatsService {
         statsInitialDelayTicks = configuredDelay;
 
         maxCitiesPerTick = Math.max(1, c.getInt("updates.max_cities_per_tick", 1));
+        maxEntityChunksPerTick = Math.max(1, c.getInt("updates.max_entity_chunks_per_tick", 2));
+        maxBedBlocksPerTick = Math.max(1, c.getInt("updates.max_bed_blocks_per_tick", 2048));
 
         lightNeutral = Math.max(0.1, c.getDouble("happiness_weights.light_neutral_level", 2.0));
         lightMaxPts = c.getDouble("happiness_weights.light_max_points", 10);
