@@ -1272,7 +1272,7 @@ public class StatsService {
             return -transitMaxPts;
         }
 
-        double idealStations = Math.max(1.0, Math.sqrt(area) / TRANSIT_IDEAL_SPACING_BLOCKS);
+        double idealStations = Math.max(1.0, area / (TRANSIT_IDEAL_SPACING_BLOCKS * TRANSIT_IDEAL_SPACING_BLOCKS));
         double coverageRatio = actualStations / idealStations;
         double easedCoverage = Math.pow(coverageRatio, TRANSIT_EASING_EXPONENT);
         double score = transitMaxPts * clamp(easedCoverage, 0.0, 1.0);
