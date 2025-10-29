@@ -2,6 +2,7 @@ package dev.citysim.stats;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.util.AdventureMessages;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -79,7 +80,8 @@ public class BossBarService {
                 }
                 continue;
             }
-            String text = "<white>" + c.name + "</white><white> — </white>" +
+            String safeName = AdventureMessages.escapeMiniMessage(c.name);
+            String text = "<white>" + safeName + "</white><white> — </white>" +
                     "<gold>" + c.happiness + "%</gold>";
             Component comp = mm.deserialize(text);
             float progress = Math.max(0f, Math.min(1f, c.happiness / 100f));

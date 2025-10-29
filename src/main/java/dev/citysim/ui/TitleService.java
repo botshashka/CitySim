@@ -4,6 +4,7 @@ import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.stats.HappinessBreakdown;
 import dev.citysim.stats.StatsService;
+import dev.citysim.util.AdventureMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -118,8 +119,9 @@ public class TitleService implements Listener {
             Component title = Component.text(current.name)
                     .color(NamedTextColor.GOLD)
                     .decorate(TextDecoration.BOLD);
+            String safeCityName = AdventureMessages.escapeMiniMessage(current.name);
             Component subtitle = miniMessage.deserialize(resolveMessage(key)
-                    .replace("{city}", current.name));
+                    .replace("{city}", safeCityName));
 
             Title.Times times = Title.Times.of(
                     Duration.ofMillis(500),

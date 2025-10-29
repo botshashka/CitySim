@@ -25,4 +25,11 @@ public final class AdventureMessages {
     public static Component joinLines(Component... components) {
         return Component.join(JoinConfiguration.newlines(), Arrays.asList(components));
     }
+
+    public static String escapeMiniMessage(String input) {
+        if (input == null || input.isEmpty()) {
+            return "";
+        }
+        return MINI.escapeTags(input);
+    }
 }
