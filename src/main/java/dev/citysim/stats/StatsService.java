@@ -464,6 +464,7 @@ public class StatsService {
             city.employed = employed;
             city.unemployed = unemployed;
             city.beds = beds;
+
             City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
             result = calculateHappinessBreakdown(city, metrics);
             city.happinessBreakdown = result;
