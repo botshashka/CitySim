@@ -2,6 +2,7 @@ package dev.citysim.integration.traincarts;
 
 import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
+import dev.citysim.stats.StationCountResult;
 import dev.citysim.stats.StationCounter;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -29,7 +30,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.logging.Level;
 
@@ -174,9 +174,9 @@ public class TrainCartsStationService implements StationCounter {
     }
 
     @Override
-    public OptionalInt countStations(City city) {
+    public Optional<StationCountResult> countStations(City city) {
         if (city == null || city.cuboids == null || city.cuboids.isEmpty()) {
-            return OptionalInt.of(0);
+            return Optional.of(new StationCountResult(0, 0));
         }
 
         Map<World, List<Cuboid>> cuboidsByWorld = new HashMap<>();
@@ -192,7 +192,7 @@ public class TrainCartsStationService implements StationCounter {
         }
 
         if (cuboidsByWorld.isEmpty()) {
-            return OptionalInt.of(0);
+            return Optional.of(new StationCountResult(0, 0));
         }
 
         Object signController;
@@ -202,7 +202,7 @@ public class TrainCartsStationService implements StationCounter {
             return logFailure("accessing TrainCarts sign controller", e);
         }
         if (signController == null) {
-            return OptionalInt.empty();
+            return Optional.empty();
         }
 
         Set<String> counted = new HashSet<>();
@@ -263,15 +263,16 @@ public class TrainCartsStationService implements StationCounter {
         }
 
         failureLogged = false;
-        return OptionalInt.of((total >>> 1) + (total & 1));
+        int stations = (total >>> 1) + (total & 1);
+        return Optional.of(new StationCountResult(stations, total));
     }
 
-    private OptionalInt logFailure(String context, Exception ex) {
+    private Optional<StationCountResult> logFailure(String context, Exception ex) {
         if (!failureLogged) {
             plugin.getLogger().log(Level.WARNING, "Failed while " + context + " for TrainCarts integration: " + ex.getMessage(), ex);
             failureLogged = true;
         }
-        return OptionalInt.empty();
+        return Optional.empty();
     }
 
     private Collection<?> getSignChunks(Object worldController) throws ReflectiveOperationException {

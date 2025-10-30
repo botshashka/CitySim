@@ -2,8 +2,8 @@ package dev.citysim.stats;
 
 import dev.citysim.city.City;
 
-import java.util.OptionalInt;
+import java.util.Optional;
 
 public interface StationCounter {
-    OptionalInt countStations(City city);
+    Optional<StationCountResult> countStations(City city);
 }
