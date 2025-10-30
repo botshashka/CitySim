@@ -27,6 +27,8 @@ import java.util.UUID;
 public class ScoreboardService {
     private static final char[] UNIQUE_SUFFIX_CODES =
             new char[]{'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','k','l','m','n','o','r'};
+    private static final int OBJECTIVE_TITLE_LIMIT = 32;
+    private static final String ELLIPSIS = "…";
 
     public enum Mode { COMPACT, FULL }
 
@@ -128,20 +130,21 @@ public class ScoreboardService {
                 objective.setDisplaySlot(DisplaySlot.SIDEBAR);
             }
             String title = ChatColor.YELLOW + "" + ChatColor.BOLD + city.name;
+            String safeTitle = trimObjectiveTitle(title);
             List<String> lines = buildLines(city, breakdown, displayPreferencesStore.getScoreboardMode(player.getUniqueId()));
 
             UUID uuid = player.getUniqueId();
             String cachedTitle = lastTitles.get(uuid);
             List<String> cachedLines = lastLines.get(uuid);
 
-            boolean titleChanged = !title.equals(cachedTitle);
+            boolean titleChanged = !safeTitle.equals(cachedTitle);
             boolean linesChanged = cachedLines == null || !lines.equals(cachedLines);
 
             if (titleChanged || linesChanged) {
-                objective.setDisplayName(title);
+                objective.setDisplayName(safeTitle);
                 clearBoardEntries(board);
                 applyLines(objective, board, lines);
-                lastTitles.put(uuid, title);
+                lastTitles.put(uuid, safeTitle);
                 lastLines.put(uuid, new ArrayList<>(lines));
             }
 
@@ -163,6 +166,49 @@ public class ScoreboardService {
         for (String entry : new ArrayList<>(board.getEntries())) {
             board.resetScores(entry);
         }
+    }
+
+    private String trimObjectiveTitle(String formattedTitle) {
+        if (formattedTitle.length() <= OBJECTIVE_TITLE_LIMIT) {
+            return formattedTitle;
+        }
+
+        int index = 0;
+        StringBuilder prefix = new StringBuilder();
+        while (index + 1 < formattedTitle.length() && formattedTitle.charAt(index) == ChatColor.COLOR_CHAR) {
+            prefix.append(formattedTitle, index, index + 2);
+            index += 2;
+        }
+
+        String baseName = formattedTitle.substring(index);
+        int available = OBJECTIVE_TITLE_LIMIT - prefix.length();
+
+        if (available <= 0) {
+            return formattedTitle.substring(0, OBJECTIVE_TITLE_LIMIT);
+        }
+
+        if (baseName.length() <= available) {
+            return formattedTitle.substring(0, prefix.length() + baseName.length());
+        }
+
+        int ellipsisLength = ELLIPSIS.length();
+        if (ellipsisLength >= available) {
+            String truncated = formattedTitle.substring(0, OBJECTIVE_TITLE_LIMIT);
+            if (!truncated.isEmpty() && truncated.charAt(truncated.length() - 1) == ChatColor.COLOR_CHAR) {
+                truncated = truncated.substring(0, truncated.length() - 1);
+            }
+            return truncated;
+        }
+
+        int textLength = available - ellipsisLength;
+        if (textLength > baseName.length()) {
+            textLength = baseName.length();
+        }
+        String candidate = prefix + baseName.substring(0, textLength) + ELLIPSIS;
+        if (!candidate.isEmpty() && candidate.charAt(candidate.length() - 1) == ChatColor.COLOR_CHAR) {
+            candidate = candidate.substring(0, candidate.length() - 1);
+        }
+        return candidate;
     }
 
     private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
