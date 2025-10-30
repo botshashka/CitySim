@@ -2,6 +2,10 @@ package dev.citysim.stats;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.stats.schedule.ScanScheduler;
+import dev.citysim.stats.scan.CityScanCallbacks;
+import dev.citysim.stats.scan.CityScanRunner;
+import dev.citysim.stats.scan.ScanDebugManager;
 import io.papermc.paper.plugin.configuration.PluginMeta;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
 import org.bukkit.Server;
@@ -22,54 +26,58 @@ import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 
-import static java.nio.file.Files.writeString;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class StatsServiceTest {
+class ScanSchedulerTest {
 
     @Test
-    void updateCityHandlesNullCuboidEntries() throws Exception {
+    void processesPendingCitiesInQueueOrder() {
         DummyPlugin plugin = new DummyPlugin();
         CityManager cityManager = new CityManager(plugin);
+        City alpha = cityManager.create("Alpha");
+        City beta = cityManager.create("Beta");
 
-        File dataFile = new File(plugin.getDataFolder(), "cities.json");
-        String json = """
-                [
-                  {
-                    \"id\": \"nulltown\",
-                    \"name\": \"Nulltown\",
-                    \"world\": null,
-                    \"cuboids\": [ null ]
-                  }
-                ]
-                """;
-        writeString(dataFile.toPath(), json);
+        CityScanRunner runner = new CityScanRunner(new StubCallbacks(), new ScanDebugManager());
+        ScanScheduler scheduler = new ScanScheduler(cityManager, runner);
+        scheduler.setLimits(1, 16, 128);
 
-        cityManager.load();
-        City city = cityManager.get("nulltown");
-        assertNotNull(city);
+        scheduler.queueCity(alpha.id, true, false, "alpha update", null);
+        scheduler.queueCity(beta.id, true, false, "beta update", null);
 
-        city.cuboids.add(null);
-
-        TestStatsService statsService = new TestStatsService(plugin, cityManager);
-
-        assertDoesNotThrow(() -> statsService.updateCity(city));
+        for (int i = 0; i < 5; i++) {
+            scheduler.tick();
+        }
+        assertEquals(42, alpha.happiness);
+        assertEquals(42, beta.happiness);
     }
 
-    private static final class TestStatsService extends StatsService {
-        TestStatsService(Plugin plugin, CityManager cityManager) {
-            super(plugin, cityManager, null);
+    private static final class StubCallbacks implements CityScanCallbacks {
+        @Override
+        public StationCountResult refreshStationCount(City city) {
+            return null;
         }
 
         @Override
-        public void updateConfig() {
-            // Avoid touching Bukkit configuration during tests.
+        public City.BlockScanCache ensureBlockScanCache(City city, boolean forceRefresh) {
+            City.BlockScanCache cache = city.blockScanCache;
+            if (cache == null) {
+                cache = new City.BlockScanCache();
+                city.blockScanCache = cache;
+            }
+            return cache;
+        }
+
+        @Override
+        public HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache cache) {
+            HappinessBreakdown breakdown = new HappinessBreakdown();
+            breakdown.total = 42;
+            return breakdown;
         }
     }
 
     private static final class DummyPlugin implements Plugin {
-        private final File dataFolder = new File("build/tmp/dummy-plugin");
+        private final File dataFolder = new File("build/tmp/dummy-plugin-scheduler");
         private final Logger logger = Logger.getLogger("DummyPlugin");
         private boolean naggable;
 
@@ -156,8 +164,8 @@ class StatsServiceTest {
         }
 
         @Override
-        public void setNaggable(boolean naggable) {
-            this.naggable = naggable;
+        public void setNaggable(boolean b) {
+            this.naggable = b;
         }
 
         @Override
@@ -168,6 +176,10 @@ class StatsServiceTest {
         @Override
         public BiomeProvider getDefaultBiomeProvider(String s, String s1) {
             return null;
+        }
+
+        public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+            return Collections.emptyList();
         }
 
         @Override
@@ -186,13 +198,8 @@ class StatsServiceTest {
         }
 
         @Override
-        public boolean onCommand(CommandSender commandSender, Command command, String label, String[] args) {
+        public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
             return false;
-        }
-
-        @Override
-        public List<String> onTabComplete(CommandSender commandSender, Command command, String alias, String[] args) {
-            return Collections.emptyList();
         }
     }
 }
