@@ -66,12 +66,24 @@ public class TrainCartsStationService implements StationCounter {
             signChunksField = signControllerWorldClass.getDeclaredField("signChunks");
             signChunksField.setAccessible(true);
         } catch (NoSuchFieldException missingField) {
+            NoSuchMethodException declaredMissing = null;
             try {
                 getSignChunksMethod = signControllerWorldClass.getDeclaredMethod("getSignChunks");
                 getSignChunksMethod.setAccessible(true);
-            } catch (NoSuchMethodException missingMethod) {
-                missingField.addSuppressed(missingMethod);
-                throw missingField;
+            } catch (NoSuchMethodException ex) {
+                declaredMissing = ex;
+            }
+            if (getSignChunksMethod == null) {
+                try {
+                    getSignChunksMethod = signControllerWorldClass.getMethod("getSignChunks");
+                    getSignChunksMethod.setAccessible(true);
+                } catch (NoSuchMethodException missingMethod) {
+                    if (declaredMissing != null) {
+                        missingMethod.addSuppressed(declaredMissing);
+                    }
+                    missingField.addSuppressed(missingMethod);
+                    throw missingField;
+                }
             }
         }
         this.signChunksField = signChunksField;
@@ -244,7 +256,12 @@ public class TrainCartsStationService implements StationCounter {
             return signChunksField.get(worldController);
         }
         if (signControllerWorldGetSignChunksMethod != null) {
-            return signControllerWorldGetSignChunksMethod.invoke(worldController);
+            try {
+                return signControllerWorldGetSignChunksMethod.invoke(worldController);
+            } catch (InvocationTargetException ex) {
+                Throwable cause = ex.getCause();
+                throw new ReflectiveOperationException(cause != null ? cause : ex);
+            }
         }
         return null;
     }
