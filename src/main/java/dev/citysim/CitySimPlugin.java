@@ -81,8 +81,9 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            getCommand("city").setTabCompleter(new CityTab(cityManager));
-            getCommand("city").setExecutor(new CityCommand(this, cityManager, statsService));
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService);
+            getCommand("city").setExecutor(cityCommand);
+            getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
         } else {
             getLogger().severe("Command 'city' not found in plugin.yml");
