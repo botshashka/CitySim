@@ -1017,7 +1017,6 @@ public class StatsService {
         }
         switch (stationCountingMode) {
             case DISABLED -> {
-                city.stations = 0;
                 return null;
             }
             case TRAIN_CARTS -> {
