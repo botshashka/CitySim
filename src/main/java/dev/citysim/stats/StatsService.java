@@ -27,7 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -458,7 +458,7 @@ public class StatsService {
             String cityLabel = describeCity(job.city());
             HappinessBreakdown breakdown = job.getResult();
             int happiness = breakdown != null ? breakdown.total : job.city().happiness;
-            String message = String.format(
+            StringBuilder message = new StringBuilder(String.format(
                     "Completed %s scan for %s in %d ms — pop=%d, employed=%d, beds=%d, happiness=%d",
                     type,
                     cityLabel,
@@ -467,8 +467,16 @@ public class StatsService {
                     job.employedCount(),
                     job.bedCount(),
                     happiness
-            );
-            broadcast(message);
+            ));
+            StationCountResult stationCounts = job.trainCartsStationCount();
+            if (stationCounts != null) {
+                message.append(String.format(
+                        ", TrainCarts stations=%d (Signs: %d)",
+                        stationCounts.stations(),
+                        stationCounts.signs()
+                ));
+            }
+            broadcast(message.toString());
         }
 
         private void broadcast(String message) {
@@ -560,6 +568,7 @@ public class StatsService {
 
         private final long startedAtMillis = System.currentTimeMillis();
         private boolean startLogged = false;
+        private StationCountResult trainCartsStationCount = null;
 
         private final Set<ChunkCoord> chunksLoadedByJob = new LinkedHashSet<>();
         private ChunkCoord activeBedChunk = null;
@@ -748,7 +757,7 @@ public class StatsService {
             city.unemployed = unemployed;
             city.beds = beds;
 
-            refreshStationCount(city);
+            trainCartsStationCount = refreshStationCount(city);
 
             City.BlockScanCache metrics = ensureBlockScanCache(city, forceRefresh);
             result = calculateHappinessBreakdown(city, metrics);
@@ -798,6 +807,10 @@ public class StatsService {
 
         int bedCount() {
             return beds;
+        }
+
+        StationCountResult trainCartsStationCount() {
+            return trainCartsStationCount;
         }
 
         String cityId() {
@@ -998,12 +1011,15 @@ public class StatsService {
         return city.happinessBreakdown != null ? city.happinessBreakdown : new HappinessBreakdown();
     }
 
-    private void refreshStationCount(City city) {
+    private StationCountResult refreshStationCount(City city) {
         if (city == null) {
-            return;
+            return null;
         }
         switch (stationCountingMode) {
-            case DISABLED -> city.stations = 0;
+            case DISABLED -> {
+                city.stations = 0;
+                return null;
+            }
             case TRAIN_CARTS -> {
                 StationCounter counter = stationCounter;
                 if (counter == null) {
@@ -1011,13 +1027,15 @@ public class StatsService {
                         plugin.getLogger().warning("TrainCarts station counting requested but integration is unavailable; using manual station totals.");
                         stationCountingWarningLogged = true;
                     }
-                    return;
+                    return null;
                 }
                 try {
-                    OptionalInt counted = counter.countStations(city);
+                    Optional<StationCountResult> counted = counter.countStations(city);
                     if (counted.isPresent()) {
-                        city.stations = Math.max(0, counted.getAsInt());
+                        StationCountResult result = counted.get();
+                        city.stations = Math.max(0, result.stations());
                         stationCountingWarningLogged = false;
+                        return new StationCountResult(city.stations, result.signs());
                     } else if (!stationCountingWarningLogged) {
                         plugin.getLogger().warning("Failed to refresh TrainCarts station count for city '" + city.name + "'; keeping the previous value.");
                         stationCountingWarningLogged = true;
@@ -1028,9 +1046,14 @@ public class StatsService {
                         stationCountingWarningLogged = true;
                     }
                 }
+                return null;
             }
-            case MANUAL -> stationCountingWarningLogged = false;
+            case MANUAL -> {
+                stationCountingWarningLogged = false;
+                return null;
+            }
         }
+        return null;
     }
 
     private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
