@@ -4,6 +4,9 @@ import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CityCommand;
 import dev.citysim.cmd.CityTab;
+import dev.citysim.integration.traincarts.StationSignParser;
+import dev.citysim.integration.traincarts.TrainCartsLocator;
+import dev.citysim.integration.traincarts.TrainCartsReflectionBinder;
 import dev.citysim.integration.traincarts.TrainCartsStationService;
 import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
@@ -141,12 +144,14 @@ public class CitySimPlugin extends JavaPlugin {
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {
-        var plugin = findTrainCartsPlugin();
+        var plugin = TrainCartsLocator.locate(this).orElse(null);
         if (plugin == null || !plugin.isEnabled()) {
             return null;
         }
         try {
-            TrainCartsStationService service = new TrainCartsStationService(this);
+            TrainCartsReflectionBinder binder = new TrainCartsReflectionBinder(getLogger());
+            StationSignParser parser = new StationSignParser();
+            TrainCartsStationService service = new TrainCartsStationService(this, getServer(), plugin, binder, parser);
             getLogger().info("TrainCarts detected: station counts can be synchronized automatically when enabled.");
             return service;
         } catch (Exception ex) {
@@ -155,39 +160,6 @@ public class CitySimPlugin extends JavaPlugin {
             getLogger().warning("TrainCarts detected but CitySim could not initialize the integration: " + err.getMessage());
         }
         return null;
-    }
-
-    private org.bukkit.plugin.Plugin findTrainCartsPlugin() {
-        var pluginManager = getServer().getPluginManager();
-        var direct = pluginManager.getPlugin("TrainCarts");
-        if (isTrainCartsPlugin(direct)) {
-            return direct;
-        }
-        var underscored = pluginManager.getPlugin("Train_Carts");
-        if (isTrainCartsPlugin(underscored)) {
-            return underscored;
-        }
-        for (var plugin : pluginManager.getPlugins()) {
-            if (isTrainCartsPlugin(plugin)) {
-                return plugin;
-            }
-        }
-        return null;
-    }
-
-    private boolean isTrainCartsPlugin(org.bukkit.plugin.Plugin plugin) {
-        if (plugin == null) {
-            return false;
-        }
-        return isTrainCartsName(plugin.getName());
-    }
-
-    private boolean isTrainCartsName(String name) {
-        if (name == null) {
-            return false;
-        }
-        String normalized = name.replace("_", "").replace("-", "").toLowerCase();
-        return "traincarts".equals(normalized);
     }
 
     private void refreshStationsForAllCities(String reason) {
@@ -205,7 +177,7 @@ public class CitySimPlugin extends JavaPlugin {
     private final class DependencyListener implements Listener {
         @EventHandler
         public void onPluginEnable(PluginEnableEvent event) {
-            if (!isTrainCartsName(event.getPlugin().getName())) {
+            if (!TrainCartsLocator.isTrainCartsName(event.getPlugin().getName())) {
                 return;
             }
             if (trainCartsStationService != null) {
@@ -229,7 +201,7 @@ public class CitySimPlugin extends JavaPlugin {
 
         @EventHandler
         public void onPluginDisable(PluginDisableEvent event) {
-            if (!isTrainCartsName(event.getPlugin().getName())) {
+            if (!TrainCartsLocator.isTrainCartsName(event.getPlugin().getName())) {
                 return;
             }
             if (trainCartsStationService == null || statsService == null) {
