@@ -613,6 +613,7 @@ public class CityCommand implements CommandExecutor {
             homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
         }
 
+        String safeName = AdventureMessages.escapeMiniMessage(city.name);
         String msg = """
         <gray><b>%s — City stats</b></gray>
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
@@ -620,7 +621,7 @@ public class CityCommand implements CommandExecutor {
         <gold>Happiness:</gold> %d%%  <gray>(base 50)</gray>
         %s
         """.formatted(
-                city.name, city.population, city.employed, city.unemployed,
+                safeName, city.population, city.employed, city.unemployed,
                 homesLine,
                 hb.total,
                 breakdownLines
