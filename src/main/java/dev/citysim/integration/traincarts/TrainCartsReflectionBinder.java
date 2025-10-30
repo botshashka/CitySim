@@ -231,7 +231,11 @@ public class TrainCartsReflectionBinder {
                 if (Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
-                if (!isCollectionLikeRaw(field.getType())) {
+                boolean referencesChunk = typeReferences(field.getGenericType(), chunkClass);
+                boolean referencesEntry = typeReferences(field.getGenericType(), entryClass);
+                if (!isCollectionLikeRaw(field.getType(), chunkIntrospector)
+                        && !referencesChunk
+                        && !referencesEntry) {
                     continue;
                 }
                 field.setAccessible(true);
@@ -247,7 +251,11 @@ public class TrainCartsReflectionBinder {
                         || method.getReturnType() == void.class) {
                     continue;
                 }
-                if (!isCollectionLikeRaw(method.getReturnType())) {
+                boolean referencesChunk = typeReferences(method.getGenericReturnType(), chunkClass);
+                boolean referencesEntry = typeReferences(method.getGenericReturnType(), entryClass);
+                if (!isCollectionLikeRaw(method.getReturnType(), chunkIntrospector)
+                        && !referencesChunk
+                        && !referencesEntry) {
                     continue;
                 }
                 method.setAccessible(true);
@@ -268,16 +276,19 @@ public class TrainCartsReflectionBinder {
                 chunkIntrospector);
     }
 
-    private boolean isCollectionLikeRaw(Class<?> rawType) {
+    private boolean isCollectionLikeRaw(Class<?> rawType, ChunkIntrospector chunkIntrospector) {
         if (rawType == null) {
             return false;
         }
         if (rawType.isArray()) {
             return true;
         }
-        return Collection.class.isAssignableFrom(rawType)
+        if (Collection.class.isAssignableFrom(rawType)
                 || Iterable.class.isAssignableFrom(rawType)
-                || Map.class.isAssignableFrom(rawType);
+                || Map.class.isAssignableFrom(rawType)) {
+            return true;
+        }
+        return chunkIntrospector != null && chunkIntrospector.isKnownContainerType(rawType);
     }
 
     private SignChunksAccessor createFieldAccessor(Field field, ChunkIntrospector chunkIntrospector) {
@@ -549,6 +560,17 @@ public class TrainCartsReflectionBinder {
             this.entryClass = entryClass;
             this.longHashMapClass = longHashMapClass;
             this.longHashMapValuesMethod = longHashMapValuesMethod;
+        }
+
+        boolean isKnownContainerType(Class<?> rawType) {
+            if (rawType == null) {
+                return false;
+            }
+            if (longHashMapClass != null && longHashMapClass.isAssignableFrom(rawType)) {
+                return true;
+            }
+            return chunkClass != null
+                    && (rawType.isAssignableFrom(chunkClass) || chunkClass.isAssignableFrom(rawType));
         }
 
         Collection<?> toCollection(Object container) throws ReflectiveOperationException {
