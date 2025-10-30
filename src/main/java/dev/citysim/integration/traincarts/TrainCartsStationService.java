@@ -10,9 +10,15 @@ import org.bukkit.block.Block;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -20,20 +26,29 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.logging.Level;
 
 public class TrainCartsStationService implements StationCounter {
+    private interface SignChunksAccessor {
+        Collection<?> load(Object worldController) throws ReflectiveOperationException;
+    }
+
     private final JavaPlugin plugin;
     private final Plugin trainCarts;
     private final Method getSignControllerMethod;
     private final Method signControllerForWorldMethod;
     private final Method signControllerWorldIsEnabledMethod;
-    private final Field signChunksField;
-    private final Method signControllerWorldGetSignChunksMethod;
+    private final SignChunksAccessor signChunksAccessor;
+    private final Class<?> longHashMapClass;
     private final Method longHashMapValuesMethod;
+    private final Map<Class<?>, Optional<Method>> valuesMethodCache = new HashMap<>();
+    private final Map<Class<?>, Optional<Method>> chunkEntriesMethodCache = new HashMap<>();
     private final Method chunkGetEntriesMethod;
+    private final Class<?> signControllerChunkClass;
+    private final Class<?> entryClass;
     private final Method entryGetBlockMethod;
     private final Method entryHasSignActionEventsMethod;
     private final Method entryCreateFrontTrackedSignMethod;
@@ -60,42 +75,26 @@ public class TrainCartsStationService implements StationCounter {
 
         Class<?> signControllerWorldClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerWorld", false, loader);
         this.signControllerWorldIsEnabledMethod = signControllerWorldClass.getMethod("isEnabled");
-        Field signChunksField = null;
-        Method getSignChunksMethod = null;
-        try {
-            signChunksField = signControllerWorldClass.getDeclaredField("signChunks");
-            signChunksField.setAccessible(true);
-        } catch (NoSuchFieldException missingField) {
-            NoSuchMethodException declaredMissing = null;
-            try {
-                getSignChunksMethod = signControllerWorldClass.getDeclaredMethod("getSignChunks");
-                getSignChunksMethod.setAccessible(true);
-            } catch (NoSuchMethodException ex) {
-                declaredMissing = ex;
-            }
-            if (getSignChunksMethod == null) {
-                try {
-                    getSignChunksMethod = signControllerWorldClass.getMethod("getSignChunks");
-                    getSignChunksMethod.setAccessible(true);
-                } catch (NoSuchMethodException missingMethod) {
-                    if (declaredMissing != null) {
-                        missingMethod.addSuppressed(declaredMissing);
-                    }
-                    missingField.addSuppressed(missingMethod);
-                    throw missingField;
-                }
-            }
-        }
-        this.signChunksField = signChunksField;
-        this.signControllerWorldGetSignChunksMethod = getSignChunksMethod;
 
-        Class<?> longHashMapClass = Class.forName("com.bergerkiller.bukkit.common.wrappers.LongHashMap", false, loader);
+        this.entryClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignController$Entry", false, loader);
+
+        Class<?> chunkClass = null;
+        Method getEntriesMethod = null;
+        try {
+            chunkClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerChunk", false, loader);
+            getEntriesMethod = chunkClass.getMethod("getEntries");
+            getEntriesMethod.setAccessible(true);
+        } catch (ClassNotFoundException ignored) {
+            // newer versions might hide the chunk class
+        }
+        this.signControllerChunkClass = chunkClass;
+        this.chunkGetEntriesMethod = getEntriesMethod;
+
+        this.signChunksAccessor = discoverSignChunksAccessor(signControllerWorldClass, chunkClass);
+
+        this.longHashMapClass = Class.forName("com.bergerkiller.bukkit.common.wrappers.LongHashMap", false, loader);
         this.longHashMapValuesMethod = longHashMapClass.getMethod("values");
 
-        Class<?> signControllerChunkClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerChunk", false, loader);
-        this.chunkGetEntriesMethod = signControllerChunkClass.getMethod("getEntries");
-
-        Class<?> entryClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignController$Entry", false, loader);
         this.entryGetBlockMethod = entryClass.getMethod("getBlock");
         this.entryHasSignActionEventsMethod = entryClass.getMethod("hasSignActionEvents");
         Class<?> railPieceClass = Class.forName("com.bergerkiller.bukkit.tc.controller.components.RailPiece", false, loader);
@@ -189,16 +188,7 @@ public class TrainCartsStationService implements StationCounter {
                     continue;
                 }
 
-                Object signChunks = getSignChunks(worldController);
-                if (signChunks == null) {
-                    continue;
-                }
-                Collection<?> chunks;
-                try {
-                    chunks = (Collection<?>) longHashMapValuesMethod.invoke(signChunks);
-                } catch (ClassCastException ex) {
-                    return logFailure("reading TrainCarts sign chunk collection", ex);
-                }
+                Collection<?> chunks = getSignChunks(worldController);
                 if (chunks == null || chunks.isEmpty()) {
                     continue;
                 }
@@ -207,8 +197,8 @@ public class TrainCartsStationService implements StationCounter {
                     if (chunk == null) {
                         continue;
                     }
-                    Object entriesObj = chunkGetEntriesMethod.invoke(chunk);
-                    if (!(entriesObj instanceof Object[] entries)) {
+                    Object[] entries = toEntries(chunk);
+                    if (entries == null || entries.length == 0) {
                         continue;
                     }
                     for (Object rawEntry : entries) {
@@ -251,17 +241,419 @@ public class TrainCartsStationService implements StationCounter {
         return OptionalInt.empty();
     }
 
-    private Object getSignChunks(Object worldController) throws ReflectiveOperationException {
-        if (signChunksField != null) {
-            return signChunksField.get(worldController);
+    private Collection<?> getSignChunks(Object worldController) throws ReflectiveOperationException {
+        if (signChunksAccessor == null) {
+            return null;
         }
-        if (signControllerWorldGetSignChunksMethod != null) {
+        return signChunksAccessor.load(worldController);
+    }
+
+    private SignChunksAccessor discoverSignChunksAccessor(Class<?> signControllerWorldClass, Class<?> chunkClass)
+            throws ReflectiveOperationException {
+        Field namedField = findField(signControllerWorldClass, "signChunks");
+        if (namedField != null) {
+            return createFieldAccessor(namedField);
+        }
+
+        Method namedMethod = findZeroArgMethod(signControllerWorldClass, "getSignChunks");
+        if (namedMethod != null) {
+            return createMethodAccessor(namedMethod);
+        }
+
+        if (chunkClass != null) {
+            Field chunkField = findFieldReferencingType(signControllerWorldClass, chunkClass);
+            if (chunkField != null) {
+                return createFieldAccessor(chunkField);
+            }
+
+            Method chunkMethod = findMethodReferencingType(signControllerWorldClass, chunkClass);
+            if (chunkMethod != null) {
+                return createMethodAccessor(chunkMethod);
+            }
+        }
+
+        throw new NoSuchFieldException("signChunks");
+    }
+
+    private SignChunksAccessor createFieldAccessor(Field field) {
+        field.setAccessible(true);
+        return worldController -> toCollection(field.get(worldController));
+    }
+
+    private SignChunksAccessor createMethodAccessor(Method method) {
+        method.setAccessible(true);
+        return worldController -> {
             try {
-                return signControllerWorldGetSignChunksMethod.invoke(worldController);
+                Object container = method.invoke(worldController);
+                return toCollection(container);
             } catch (InvocationTargetException ex) {
                 Throwable cause = ex.getCause();
                 throw new ReflectiveOperationException(cause != null ? cause : ex);
             }
+        };
+    }
+
+    private Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                Field field = current.getDeclaredField(name);
+                field.setAccessible(true);
+                return field;
+            } catch (NoSuchFieldException ignored) {
+            }
+            current = current.getSuperclass();
+        }
+        return null;
+    }
+
+    private Method findZeroArgMethod(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                Method method = current.getDeclaredMethod(name);
+                if (method.getParameterCount() == 0) {
+                    method.setAccessible(true);
+                    return method;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+            current = current.getSuperclass();
+        }
+        try {
+            Method method = type.getMethod(name);
+            if (method.getParameterCount() == 0) {
+                method.setAccessible(true);
+                return method;
+            }
+        } catch (NoSuchMethodException ignored) {
+        }
+        return null;
+    }
+
+    private Field findFieldReferencingType(Class<?> type, Class<?> referencedClass) {
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (Field field : current.getDeclaredFields()) {
+                if (typeReferences(field.getGenericType(), referencedClass)) {
+                    field.setAccessible(true);
+                    return field;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Method findMethodReferencingType(Class<?> type, Class<?> referencedClass) {
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (method.getParameterCount() == 0 && typeReferences(method.getGenericReturnType(), referencedClass)) {
+                    method.setAccessible(true);
+                    return method;
+                }
+            }
+        }
+        for (Method method : type.getMethods()) {
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            if (method.getParameterCount() == 0 && typeReferences(method.getGenericReturnType(), referencedClass)) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private boolean typeReferences(Type type, Class<?> referencedClass) {
+        if (type == null || referencedClass == null) {
+            return false;
+        }
+        if (type instanceof Class<?> clazz) {
+            if (clazz.isArray()) {
+                return typeReferences(clazz.getComponentType(), referencedClass);
+            }
+            return referencedClass.isAssignableFrom(clazz);
+        }
+        if (type instanceof ParameterizedType parameterized) {
+            if (typeReferences(parameterized.getRawType(), referencedClass)) {
+                return true;
+            }
+            for (Type argument : parameterized.getActualTypeArguments()) {
+                if (typeReferences(argument, referencedClass)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (type instanceof WildcardType wildcard) {
+            for (Type upper : wildcard.getUpperBounds()) {
+                if (typeReferences(upper, referencedClass)) {
+                    return true;
+                }
+            }
+            for (Type lower : wildcard.getLowerBounds()) {
+                if (typeReferences(lower, referencedClass)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (type instanceof GenericArrayType arrayType) {
+            return typeReferences(arrayType.getGenericComponentType(), referencedClass);
+        }
+        if (type instanceof TypeVariable<?> variable) {
+            for (Type bound : variable.getBounds()) {
+                if (typeReferences(bound, referencedClass)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        String name = type.getTypeName();
+        return name != null && name.equals(referencedClass.getName());
+    }
+
+    private Collection<?> toCollection(Object container) throws ReflectiveOperationException {
+        if (container == null) {
+            return null;
+        }
+        if (container instanceof Collection<?> collection) {
+            return collection;
+        }
+        if (container instanceof Map<?, ?> map) {
+            return map.values();
+        }
+        if (container instanceof Iterable<?> iterable) {
+            List<Object> values = new ArrayList<>();
+            for (Object value : iterable) {
+                values.add(value);
+            }
+            return values;
+        }
+        Class<?> containerClass = container.getClass();
+        if (containerClass.isArray()) {
+            int length = Array.getLength(container);
+            List<Object> values = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                values.add(Array.get(container, i));
+            }
+            return values;
+        }
+        if (longHashMapClass.isInstance(container)) {
+            Object values = longHashMapValuesMethod.invoke(container);
+            return toCollection(values);
+        }
+        Method valuesMethod = findValuesLikeMethod(containerClass);
+        if (valuesMethod != null) {
+            try {
+                Object values = valuesMethod.invoke(container);
+                return toCollection(values);
+            } catch (InvocationTargetException ex) {
+                Throwable cause = ex.getCause();
+                throw new ReflectiveOperationException(cause != null ? cause : ex);
+            }
+        }
+        return null;
+    }
+
+    private Method findValuesLikeMethod(Class<?> type) {
+        Optional<Method> cached = valuesMethodCache.get(type);
+        if (cached != null) {
+            return cached.orElse(null);
+        }
+        Method located = locateValuesLikeMethod(type);
+        valuesMethodCache.put(type, Optional.ofNullable(located));
+        return located;
+    }
+
+    private Method locateValuesLikeMethod(Class<?> type) {
+        Method namedValues = findZeroArgMethod(type, "values");
+        if (namedValues != null && isValuesCandidate(namedValues)) {
+            return namedValues;
+        }
+        for (Method method : type.getMethods()) {
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            if (isValuesCandidate(method)) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (isValuesCandidate(method)) {
+                    method.setAccessible(true);
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isValuesCandidate(Method method) {
+        if (method.getParameterCount() != 0 || method.getReturnType() == void.class) {
+            return false;
+        }
+        if (typeReferences(method.getGenericReturnType(), signControllerChunkClass)) {
+            return true;
+        }
+        Type genericType = method.getGenericReturnType();
+        if (genericType instanceof Class<?> raw && raw.getTypeParameters().length == 0) {
+            return Collection.class.isAssignableFrom(raw)
+                    || Iterable.class.isAssignableFrom(raw)
+                    || Map.class.isAssignableFrom(raw)
+                    || raw.isArray();
+        }
+        return false;
+    }
+
+    private Object[] toEntries(Object chunk) throws ReflectiveOperationException {
+        if (chunk == null) {
+            return null;
+        }
+        if (chunk instanceof Object[] array) {
+            return array;
+        }
+        if (chunk instanceof Collection<?> collection) {
+            return collection.toArray();
+        }
+        if (chunk instanceof Map<?, ?> map) {
+            Collection<?> values = map.values();
+            return values.toArray();
+        }
+        if (chunk instanceof Iterable<?> iterable) {
+            List<Object> values = new ArrayList<>();
+            for (Object value : iterable) {
+                values.add(value);
+            }
+            return values.toArray();
+        }
+        Class<?> chunkClass = chunk.getClass();
+        if (chunkClass.isArray()) {
+            int length = Array.getLength(chunk);
+            Object[] values = new Object[length];
+            for (int i = 0; i < length; i++) {
+                values[i] = Array.get(chunk, i);
+            }
+            return values;
+        }
+        if (chunkGetEntriesMethod != null && chunkGetEntriesMethod.getDeclaringClass().isInstance(chunk)) {
+            Object result = invokeChunkEntriesMethod(chunkGetEntriesMethod, chunk);
+            return convertEntriesResult(result);
+        }
+        Method method = findChunkEntriesMethod(chunkClass);
+        if (method == null) {
+            return null;
+        }
+        Object value = invokeChunkEntriesMethod(method, chunk);
+        return convertEntriesResult(value);
+    }
+
+    private Method findChunkEntriesMethod(Class<?> type) {
+        Optional<Method> cached = chunkEntriesMethodCache.get(type);
+        if (cached != null) {
+            return cached.orElse(null);
+        }
+        Method located = locateChunkEntriesMethod(type);
+        chunkEntriesMethodCache.put(type, Optional.ofNullable(located));
+        return located;
+    }
+
+    private Method locateChunkEntriesMethod(Class<?> type) {
+        Method namedGetEntries = findZeroArgMethod(type, "getEntries");
+        if (namedGetEntries != null && isEntriesCandidate(namedGetEntries)) {
+            return namedGetEntries;
+        }
+        for (Method method : type.getMethods()) {
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            if (isEntriesCandidate(method)) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (isEntriesCandidate(method)) {
+                    method.setAccessible(true);
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isEntriesCandidate(Method method) {
+        if (method == null || method.getParameterCount() != 0 || method.getReturnType() == void.class) {
+            return false;
+        }
+        if (typeReferences(method.getGenericReturnType(), entryClass)) {
+            return true;
+        }
+        String name = method.getName().toLowerCase(Locale.ROOT);
+        if (name.contains("entries") || name.contains("signs") || name.contains("values")) {
+            Class<?> raw = method.getReturnType();
+            if (raw.isArray()) {
+                return true;
+            }
+            return Collection.class.isAssignableFrom(raw)
+                    || Iterable.class.isAssignableFrom(raw)
+                    || Map.class.isAssignableFrom(raw);
+        }
+        return false;
+    }
+
+    private Object invokeChunkEntriesMethod(Method method, Object chunk) throws ReflectiveOperationException {
+        try {
+            return method.invoke(chunk);
+        } catch (IllegalAccessException ex) {
+            throw new ReflectiveOperationException(ex);
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            throw new ReflectiveOperationException(cause != null ? cause : ex);
+        }
+    }
+
+    private Object[] convertEntriesResult(Object value) throws ReflectiveOperationException {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Object[] array) {
+            return array;
+        }
+        if (value instanceof Collection<?> collection) {
+            return collection.toArray();
+        }
+        if (value instanceof Map<?, ?> map) {
+            Collection<?> values = map.values();
+            return values.toArray();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> values = new ArrayList<>();
+            for (Object element : iterable) {
+                values.add(element);
+            }
+            return values.toArray();
+        }
+        Class<?> valueClass = value.getClass();
+        if (valueClass.isArray()) {
+            int length = Array.getLength(value);
+            Object[] array = new Object[length];
+            for (int i = 0; i < length; i++) {
+                array[i] = Array.get(value, i);
+            }
+            return array;
+        }
+        if (longHashMapClass.isInstance(value)) {
+            Object nested = longHashMapValuesMethod.invoke(value);
+            return convertEntriesResult(nested);
+        }
+        Method valuesMethod = findValuesLikeMethod(valueClass);
+        if (valuesMethod != null) {
+            Object nested = invokeChunkEntriesMethod(valuesMethod, value);
+            return convertEntriesResult(nested);
         }
         return null;
     }
