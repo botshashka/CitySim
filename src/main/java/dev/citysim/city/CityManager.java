@@ -248,17 +248,22 @@ public class CityManager {
         citiesByWorld.clear();
         if (list != null) {
             for (City c : list) {
-                if (c.cuboids == null) {
-                    c.cuboids = new ArrayList<>();
-                }
-                for (Cuboid cuboid : c.cuboids) {
-                    if (cuboid == null) continue;
-                    if (cuboid.fullHeight) continue;
-                    org.bukkit.World world = Bukkit.getWorld(cuboid.world);
-                    if (cuboid.isFullHeight(world)) {
-                        cuboid.fullHeight = true;
+                List<Cuboid> sanitized = new ArrayList<>();
+                if (c.cuboids != null) {
+                    for (Cuboid cuboid : c.cuboids) {
+                        if (cuboid == null || cuboid.world == null) {
+                            continue;
+                        }
+                        if (!cuboid.fullHeight) {
+                            org.bukkit.World world = Bukkit.getWorld(cuboid.world);
+                            if (cuboid.isFullHeight(world)) {
+                                cuboid.fullHeight = true;
+                            }
+                        }
+                        sanitized.add(cuboid);
                     }
                 }
+                c.cuboids = sanitized;
                 if (c.cuboids.isEmpty()) {
                     c.world = null;
                 }

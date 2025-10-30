@@ -678,6 +678,12 @@ public class StatsService {
             int processed = 0;
             while (bedCuboidIndex < city.cuboids.size() && processed < limit) {
                 Cuboid cuboid = city.cuboids.get(bedCuboidIndex);
+                if (cuboid == null || cuboid.world == null) {
+                    bedCuboidIndex++;
+                    bedInitialized = false;
+                    releaseActiveBedChunk();
+                    continue;
+                }
                 World world = Bukkit.getWorld(cuboid.world);
                 if (world == null) {
                     bedCuboidIndex++;
@@ -1186,6 +1192,9 @@ public class StatsService {
     private double totalEffectiveArea(City city) {
         long sum = 0;
         for (Cuboid c : city.cuboids) {
+            if (c == null || c.world == null) {
+                continue;
+            }
             long width = (long) (c.maxX - c.minX + 1);
             long length = (long) (c.maxZ - c.minZ + 1);
             long area = width * length;
@@ -1202,6 +1211,9 @@ public class StatsService {
     private double totalFootprintArea(City city) {
         long sum = 0;
         for (Cuboid c : city.cuboids) {
+            if (c == null || c.world == null) {
+                continue;
+            }
             long width = (long) (c.maxX - c.minX + 1);
             long length = (long) (c.maxZ - c.minZ + 1);
             if (width < 0) width = 0;
@@ -1214,6 +1226,9 @@ public class StatsService {
     private double averageSurfaceLight(City city) {
         int samples = 0, lightSum = 0;
         for (Cuboid c : city.cuboids) {
+            if (c == null || c.world == null) {
+                continue;
+            }
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
             int step = 8;
@@ -1275,6 +1290,9 @@ public class StatsService {
     private SampledRatio ratioHighriseColumns(City city, int step, BlockTest test) {
         Map<String, Map<Long, ColumnSample>> columns = new HashMap<>();
         for (Cuboid c : city.cuboids) {
+            if (c == null || c.world == null) {
+                continue;
+            }
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
             for (int x = c.minX; x <= c.maxX; x += step) {
@@ -1326,6 +1344,9 @@ public class StatsService {
     private SurfaceSampleResult sampleSurface(City city, int step, BlockTest test) {
         int found = 0, probes = 0;
         for (Cuboid c : city.cuboids) {
+            if (c == null || c.world == null) {
+                continue;
+            }
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
             for (int x = c.minX; x <= c.maxX; x += step) {
