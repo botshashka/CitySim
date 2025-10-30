@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.Sign;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -15,10 +16,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -96,10 +98,40 @@ public class TrainCartsStationService implements StationCounter {
         this.longHashMapValuesMethod = longHashMapClass.getMethod("values");
 
         this.entryGetBlockMethod = entryClass.getMethod("getBlock");
-        this.entryHasSignActionEventsMethod = entryClass.getMethod("hasSignActionEvents");
+        this.entryGetBlockMethod.setAccessible(true);
+
+        Method hasSignActionEvents;
+        try {
+            hasSignActionEvents = entryClass.getMethod("hasSignActionEvents");
+            hasSignActionEvents.setAccessible(true);
+        } catch (NoSuchMethodException ignored) {
+            hasSignActionEvents = null;
+            plugin.getLogger().log(Level.FINE,
+                    "TrainCarts SignController$Entry has no hasSignActionEvents method; counting entries without the filter");
+        }
+        this.entryHasSignActionEventsMethod = hasSignActionEvents;
         Class<?> railPieceClass = Class.forName("com.bergerkiller.bukkit.tc.controller.components.RailPiece", false, loader);
-        this.entryCreateFrontTrackedSignMethod = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
-        this.entryCreateBackTrackedSignMethod = entryClass.getMethod("createBackTrackedSign", railPieceClass);
+        Method createFrontTrackedSign;
+        try {
+            createFrontTrackedSign = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
+            createFrontTrackedSign.setAccessible(true);
+        } catch (NoSuchMethodException ignored) {
+            createFrontTrackedSign = null;
+            plugin.getLogger().log(Level.FINE,
+                    "TrainCarts SignController$Entry has no createFrontTrackedSign method; falling back to block state text");
+        }
+        this.entryCreateFrontTrackedSignMethod = createFrontTrackedSign;
+
+        Method createBackTrackedSign;
+        try {
+            createBackTrackedSign = entryClass.getMethod("createBackTrackedSign", railPieceClass);
+            createBackTrackedSign.setAccessible(true);
+        } catch (NoSuchMethodException ignored) {
+            createBackTrackedSign = null;
+            plugin.getLogger().log(Level.FINE,
+                    "TrainCarts SignController$Entry has no createBackTrackedSign method; falling back to block state text");
+        }
+        this.entryCreateBackTrackedSignMethod = createBackTrackedSign;
 
         Field noneField = railPieceClass.getField("NONE");
         this.railPieceNone = noneField.get(null);
@@ -205,7 +237,8 @@ public class TrainCartsStationService implements StationCounter {
                         if (rawEntry == null) {
                             continue;
                         }
-                        if (!Boolean.TRUE.equals(entryHasSignActionEventsMethod.invoke(rawEntry))) {
+                        if (entryHasSignActionEventsMethod != null
+                                && !Boolean.TRUE.equals(entryHasSignActionEventsMethod.invoke(rawEntry))) {
                             continue;
                         }
                         Block block = (Block) entryGetBlockMethod.invoke(rawEntry);
@@ -215,7 +248,7 @@ public class TrainCartsStationService implements StationCounter {
                         if (!isInsideAny(entry.getValue(), block.getX(), block.getY(), block.getZ())) {
                             continue;
                         }
-                        if (!isStationEntry(rawEntry)) {
+                        if (!isStationEntry(rawEntry, block)) {
                             continue;
                         }
                         String key = blockKey(world, block.getX(), block.getY(), block.getZ());
@@ -230,7 +263,7 @@ public class TrainCartsStationService implements StationCounter {
         }
 
         failureLogged = false;
-        return OptionalInt.of(total);
+        return OptionalInt.of((total >>> 1) + (total & 1));
     }
 
     private OptionalInt logFailure(String context, Exception ex) {
@@ -272,7 +305,62 @@ public class TrainCartsStationService implements StationCounter {
             }
         }
 
-        throw new NoSuchFieldException("signChunks");
+        SignChunksAccessor fallback = discoverFallbackAccessor(signControllerWorldClass);
+        if (fallback != null) {
+            return fallback;
+        }
+
+        throw new NoSuchFieldException("signChunks not found on " + signControllerWorldClass.getName());
+    }
+
+    private SignChunksAccessor discoverFallbackAccessor(Class<?> signControllerWorldClass) {
+        Class<?> longHashMapType = null;
+        try {
+            longHashMapType = Class.forName(
+                    "com.bergerkiller.bukkit.common.wrappers.LongHashMap",
+                    false,
+                    signControllerWorldClass.getClassLoader());
+        } catch (ClassNotFoundException ignored) {
+        }
+
+        List<AccessorCandidate> candidates = new ArrayList<>();
+
+        for (Class<?> current = signControllerWorldClass; current != null; current = current.getSuperclass()) {
+            for (Field field : current.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                if (!isCollectionLikeRaw(field.getType(), longHashMapType)) {
+                    continue;
+                }
+                field.setAccessible(true);
+                candidates.add(new AccessorCandidate(
+                        createFieldAccessor(field),
+                        field.getDeclaringClass().getName() + "#" + field.getName()));
+            }
+        }
+
+        for (Class<?> current = signControllerWorldClass; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (Modifier.isStatic(method.getModifiers()) || method.getParameterCount() != 0
+                        || method.getReturnType() == void.class) {
+                    continue;
+                }
+                if (!isCollectionLikeRaw(method.getReturnType(), longHashMapType)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                candidates.add(new AccessorCandidate(
+                        createMethodAccessor(method),
+                        method.getDeclaringClass().getName() + "#" + method.getName() + "()"));
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        return new AdaptiveSignChunksAccessor(signControllerWorldClass, candidates);
     }
 
     private SignChunksAccessor createFieldAccessor(Field field) {
@@ -454,6 +542,128 @@ public class TrainCartsStationService implements StationCounter {
             }
         }
         return null;
+    }
+
+    private boolean isCollectionLikeRaw(Class<?> rawType, Class<?> longHashMapType) {
+        if (rawType == null) {
+            return false;
+        }
+        if (rawType.isArray()) {
+            return true;
+        }
+        if (Map.class.isAssignableFrom(rawType)) {
+            return true;
+        }
+        if (Iterable.class.isAssignableFrom(rawType)) {
+            return true;
+        }
+        return longHashMapType != null && longHashMapType.isAssignableFrom(rawType);
+    }
+
+    private static final class AccessorCandidate {
+        private final SignChunksAccessor accessor;
+        private final String description;
+
+        private AccessorCandidate(SignChunksAccessor accessor, String description) {
+            this.accessor = accessor;
+            this.description = description;
+        }
+    }
+
+    private final class AdaptiveSignChunksAccessor implements SignChunksAccessor {
+        private final Class<?> worldClass;
+        private List<AccessorCandidate> pendingCandidates;
+        private SignChunksAccessor delegate;
+
+        private AdaptiveSignChunksAccessor(Class<?> worldClass, List<AccessorCandidate> candidates) {
+            this.worldClass = worldClass;
+            this.pendingCandidates = new ArrayList<>(candidates);
+        }
+
+        @Override
+        public synchronized Collection<?> load(Object worldController) throws ReflectiveOperationException {
+            if (delegate != null) {
+                return delegate.load(worldController);
+            }
+            if (worldController == null) {
+                return null;
+            }
+
+            List<AccessorCandidate> retry = new ArrayList<>();
+            List<String> failures = new ArrayList<>();
+
+            for (AccessorCandidate candidate : pendingCandidates) {
+                Collection<?> values;
+                try {
+                    values = candidate.accessor.load(worldController);
+                } catch (ReflectiveOperationException ex) {
+                    failures.add(candidate.description + " threw " + ex.getClass().getSimpleName()
+                            + (ex.getMessage() != null ? ": " + ex.getMessage() : ""));
+                    continue;
+                }
+
+                if (values == null || values.isEmpty()) {
+                    retry.add(candidate);
+                    continue;
+                }
+
+                boolean matches = false;
+                for (Object chunk : values) {
+                    if (chunk == null) {
+                        continue;
+                    }
+                    Object[] entries;
+                    try {
+                        entries = toEntries(chunk);
+                    } catch (ReflectiveOperationException ex) {
+                        failures.add(candidate.description + " chunk inspection failed with "
+                                + ex.getClass().getSimpleName()
+                                + (ex.getMessage() != null ? ": " + ex.getMessage() : ""));
+                        entries = null;
+                        break;
+                    }
+                    if (entries == null || entries.length == 0) {
+                        continue;
+                    }
+                    for (Object entry : entries) {
+                        if (entryClass.isInstance(entry)) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                    if (matches) {
+                        break;
+                    }
+                }
+
+                if (matches) {
+                    delegate = candidate.accessor;
+                    pendingCandidates = null;
+                    return delegate.load(worldController);
+                }
+
+                failures.add(candidate.description + " did not expose SignController$Entry instances");
+            }
+
+            pendingCandidates = retry;
+            if (!retry.isEmpty()) {
+                return null;
+            }
+
+            StringBuilder message = new StringBuilder("Unable to locate sign chunk collection on ")
+                    .append(worldClass.getName());
+            if (!failures.isEmpty()) {
+                message.append(" (attempted: ");
+                for (int i = 0; i < failures.size(); i++) {
+                    if (i > 0) {
+                        message.append("; ");
+                    }
+                    message.append(failures.get(i));
+                }
+                message.append(')');
+            }
+            throw new NoSuchFieldException(message.toString());
+        }
     }
 
     private Method findValuesLikeMethod(Class<?> type) {
@@ -658,9 +868,16 @@ public class TrainCartsStationService implements StationCounter {
         return null;
     }
 
-    private boolean isStationEntry(Object entry) throws ReflectiveOperationException {
-        return isStationTrackedSign(entryCreateFrontTrackedSignMethod.invoke(entry, railPieceNone))
-                || isStationTrackedSign(entryCreateBackTrackedSignMethod.invoke(entry, railPieceNone));
+    private boolean isStationEntry(Object entry, Block block) throws ReflectiveOperationException {
+        if (entryCreateFrontTrackedSignMethod != null
+                && isStationTrackedSign(entryCreateFrontTrackedSignMethod.invoke(entry, railPieceNone))) {
+            return true;
+        }
+        if (entryCreateBackTrackedSignMethod != null
+                && isStationTrackedSign(entryCreateBackTrackedSignMethod.invoke(entry, railPieceNone))) {
+            return true;
+        }
+        return isStationBlock(block);
     }
 
     private boolean isStationTrackedSign(Object trackedSign) throws ReflectiveOperationException {
@@ -669,6 +886,32 @@ public class TrainCartsStationService implements StationCounter {
         }
         String header = readSignLine(trackedSign, 0);
         String action = readSignLine(trackedSign, 1);
+        return isStationLines(header, action);
+    }
+
+    private boolean isStationBlock(Block block) {
+        if (block == null) {
+            return false;
+        }
+        var state = block.getState();
+        if (!(state instanceof Sign sign)) {
+            return false;
+        }
+        String header = safeGetLine(sign, 0);
+        String action = safeGetLine(sign, 1);
+        return isStationLines(header, action);
+    }
+
+    private String safeGetLine(Sign sign, int index) {
+        try {
+            return sign.getLine(index);
+        } catch (Throwable ignored) {
+            // Older Bukkit versions might throw for out-of-bounds; treat as missing text
+            return null;
+        }
+    }
+
+    private boolean isStationLines(String header, String action) {
         if (header == null || action == null) {
             return false;
         }
