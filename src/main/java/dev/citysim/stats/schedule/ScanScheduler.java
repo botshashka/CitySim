@@ -143,8 +143,9 @@ public class ScanScheduler {
     }
 
     private boolean startCityScanJob(City city, ScanRequest request) {
+        boolean alreadyActive = city != null && city.id != null && cityScanRunner.hasActiveJob(city.id);
         CityScanJob job = cityScanRunner.startJob(city, request);
-        return job != null;
+        return job != null && !alreadyActive;
     }
 
     private void refillScheduledQueue() {
