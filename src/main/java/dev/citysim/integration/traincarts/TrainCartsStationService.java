@@ -97,7 +97,18 @@ public class TrainCartsStationService implements StationCounter {
         this.longHashMapValuesMethod = longHashMapClass.getMethod("values");
 
         this.entryGetBlockMethod = entryClass.getMethod("getBlock");
-        this.entryHasSignActionEventsMethod = entryClass.getMethod("hasSignActionEvents");
+        this.entryGetBlockMethod.setAccessible(true);
+
+        Method hasSignActionEvents;
+        try {
+            hasSignActionEvents = entryClass.getMethod("hasSignActionEvents");
+            hasSignActionEvents.setAccessible(true);
+        } catch (NoSuchMethodException ignored) {
+            hasSignActionEvents = null;
+            plugin.getLogger().log(Level.FINE,
+                    "TrainCarts SignController$Entry has no hasSignActionEvents method; counting entries without the filter");
+        }
+        this.entryHasSignActionEventsMethod = hasSignActionEvents;
         Class<?> railPieceClass = Class.forName("com.bergerkiller.bukkit.tc.controller.components.RailPiece", false, loader);
         this.entryCreateFrontTrackedSignMethod = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
         this.entryCreateBackTrackedSignMethod = entryClass.getMethod("createBackTrackedSign", railPieceClass);
@@ -206,7 +217,8 @@ public class TrainCartsStationService implements StationCounter {
                         if (rawEntry == null) {
                             continue;
                         }
-                        if (!Boolean.TRUE.equals(entryHasSignActionEventsMethod.invoke(rawEntry))) {
+                        if (entryHasSignActionEventsMethod != null
+                                && !Boolean.TRUE.equals(entryHasSignActionEventsMethod.invoke(rawEntry))) {
                             continue;
                         }
                         Block block = (Block) entryGetBlockMethod.invoke(rawEntry);
