@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.Sign;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -110,8 +111,27 @@ public class TrainCartsStationService implements StationCounter {
         }
         this.entryHasSignActionEventsMethod = hasSignActionEvents;
         Class<?> railPieceClass = Class.forName("com.bergerkiller.bukkit.tc.controller.components.RailPiece", false, loader);
-        this.entryCreateFrontTrackedSignMethod = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
-        this.entryCreateBackTrackedSignMethod = entryClass.getMethod("createBackTrackedSign", railPieceClass);
+        Method createFrontTrackedSign;
+        try {
+            createFrontTrackedSign = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
+            createFrontTrackedSign.setAccessible(true);
+        } catch (NoSuchMethodException ignored) {
+            createFrontTrackedSign = null;
+            plugin.getLogger().log(Level.FINE,
+                    "TrainCarts SignController$Entry has no createFrontTrackedSign method; falling back to block state text");
+        }
+        this.entryCreateFrontTrackedSignMethod = createFrontTrackedSign;
+
+        Method createBackTrackedSign;
+        try {
+            createBackTrackedSign = entryClass.getMethod("createBackTrackedSign", railPieceClass);
+            createBackTrackedSign.setAccessible(true);
+        } catch (NoSuchMethodException ignored) {
+            createBackTrackedSign = null;
+            plugin.getLogger().log(Level.FINE,
+                    "TrainCarts SignController$Entry has no createBackTrackedSign method; falling back to block state text");
+        }
+        this.entryCreateBackTrackedSignMethod = createBackTrackedSign;
 
         Field noneField = railPieceClass.getField("NONE");
         this.railPieceNone = noneField.get(null);
@@ -228,7 +248,7 @@ public class TrainCartsStationService implements StationCounter {
                         if (!isInsideAny(entry.getValue(), block.getX(), block.getY(), block.getZ())) {
                             continue;
                         }
-                        if (!isStationEntry(rawEntry)) {
+                        if (!isStationEntry(rawEntry, block)) {
                             continue;
                         }
                         String key = blockKey(world, block.getX(), block.getY(), block.getZ());
@@ -848,9 +868,16 @@ public class TrainCartsStationService implements StationCounter {
         return null;
     }
 
-    private boolean isStationEntry(Object entry) throws ReflectiveOperationException {
-        return isStationTrackedSign(entryCreateFrontTrackedSignMethod.invoke(entry, railPieceNone))
-                || isStationTrackedSign(entryCreateBackTrackedSignMethod.invoke(entry, railPieceNone));
+    private boolean isStationEntry(Object entry, Block block) throws ReflectiveOperationException {
+        if (entryCreateFrontTrackedSignMethod != null
+                && isStationTrackedSign(entryCreateFrontTrackedSignMethod.invoke(entry, railPieceNone))) {
+            return true;
+        }
+        if (entryCreateBackTrackedSignMethod != null
+                && isStationTrackedSign(entryCreateBackTrackedSignMethod.invoke(entry, railPieceNone))) {
+            return true;
+        }
+        return isStationBlock(block);
     }
 
     private boolean isStationTrackedSign(Object trackedSign) throws ReflectiveOperationException {
@@ -859,6 +886,32 @@ public class TrainCartsStationService implements StationCounter {
         }
         String header = readSignLine(trackedSign, 0);
         String action = readSignLine(trackedSign, 1);
+        return isStationLines(header, action);
+    }
+
+    private boolean isStationBlock(Block block) {
+        if (block == null) {
+            return false;
+        }
+        var state = block.getState();
+        if (!(state instanceof Sign sign)) {
+            return false;
+        }
+        String header = safeGetLine(sign, 0);
+        String action = safeGetLine(sign, 1);
+        return isStationLines(header, action);
+    }
+
+    private String safeGetLine(Sign sign, int index) {
+        try {
+            return sign.getLine(index);
+        } catch (Throwable ignored) {
+            // Older Bukkit versions might throw for out-of-bounds; treat as missing text
+            return null;
+        }
+    }
+
+    private boolean isStationLines(String header, String action) {
         if (header == null || action == null) {
             return false;
         }
