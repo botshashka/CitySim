@@ -31,6 +31,7 @@ public class TrainCartsStationService implements StationCounter {
     private final Method signControllerForWorldMethod;
     private final Method signControllerWorldIsEnabledMethod;
     private final Field signChunksField;
+    private final Method signControllerWorldGetSignChunksMethod;
     private final Method longHashMapValuesMethod;
     private final Method chunkGetEntriesMethod;
     private final Method entryGetBlockMethod;
@@ -59,8 +60,22 @@ public class TrainCartsStationService implements StationCounter {
 
         Class<?> signControllerWorldClass = Class.forName("com.bergerkiller.bukkit.tc.controller.global.SignControllerWorld", false, loader);
         this.signControllerWorldIsEnabledMethod = signControllerWorldClass.getMethod("isEnabled");
-        this.signChunksField = signControllerWorldClass.getDeclaredField("signChunks");
-        this.signChunksField.setAccessible(true);
+        Field signChunksField = null;
+        Method getSignChunksMethod = null;
+        try {
+            signChunksField = signControllerWorldClass.getDeclaredField("signChunks");
+            signChunksField.setAccessible(true);
+        } catch (NoSuchFieldException missingField) {
+            try {
+                getSignChunksMethod = signControllerWorldClass.getDeclaredMethod("getSignChunks");
+                getSignChunksMethod.setAccessible(true);
+            } catch (NoSuchMethodException missingMethod) {
+                missingField.addSuppressed(missingMethod);
+                throw missingField;
+            }
+        }
+        this.signChunksField = signChunksField;
+        this.signControllerWorldGetSignChunksMethod = getSignChunksMethod;
 
         Class<?> longHashMapClass = Class.forName("com.bergerkiller.bukkit.common.wrappers.LongHashMap", false, loader);
         this.longHashMapValuesMethod = longHashMapClass.getMethod("values");
@@ -162,7 +177,7 @@ public class TrainCartsStationService implements StationCounter {
                     continue;
                 }
 
-                Object signChunks = signChunksField.get(worldController);
+                Object signChunks = getSignChunks(worldController);
                 if (signChunks == null) {
                     continue;
                 }
@@ -222,6 +237,16 @@ public class TrainCartsStationService implements StationCounter {
             failureLogged = true;
         }
         return OptionalInt.empty();
+    }
+
+    private Object getSignChunks(Object worldController) throws ReflectiveOperationException {
+        if (signChunksField != null) {
+            return signChunksField.get(worldController);
+        }
+        if (signControllerWorldGetSignChunksMethod != null) {
+            return signControllerWorldGetSignChunksMethod.invoke(worldController);
+        }
+        return null;
     }
 
     private boolean isStationEntry(Object entry) throws ReflectiveOperationException {
