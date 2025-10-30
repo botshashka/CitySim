@@ -76,7 +76,7 @@ java -version  # should report a Java 21 runtime
 /city edit <cityId> addcuboid                    # add your current selection as another chunk of the city (admin only)
 /city edit <cityId> removecuboid                 # remove the chunk you are standing in from the city (admin only)
 /city edit <cityId> highrise <true|false>        # relax or tighten crowding limits for tall builds (admin only)
-/city edit <cityId> station <add|remove|set|clear> [amount]  # adjust how many transit stations the city counts (admin only)
+/city edit <cityId> station <add|remove|set|clear> [amount]  # adjust how many transit stations the city counts (admin only; available when `stations.counting_mode` is `manual` in config.yml)
 /city wand ymode <full|span>                     # choose whether selections cover the full world height or just the Y range you click
 /city stats [cityId]                             # see population, jobs, beds, stations, and the full happiness breakdown
 /city display titles on|off                      # show or hide the entry banner for your HUD
@@ -88,13 +88,27 @@ java -version  # should report a Java 21 runtime
 ```
 
 ## Configuration (`config.yml`)
-CitySim drops a `config.yml` file in `plugins/CitySim/`. The defaults work for most servers, but you can tailor a few things:
+CitySim drops a `config.yml` file in `plugins/CitySim/`. The shipped defaults work well for most servers, but everything is open
+for tweaking:
 
-- **Update pacing** – `updates.*` lets you decide how quickly the plugin refreshes stats and HUD elements, and how much work it
-  does each tick when scanning cities. Raise the intervals for a quieter server, or ease them down if you want snappier
-  updates.
-- **Score weighting** – `happiness_weights.*` sets the maximum points (or penalties) each factor contributes to the happiness
-  score. Bump a value up if you want that stat to matter more, or lower it to soften its impact.
-- **Entry titles** – `titles.enabled` flips the welcome banner on or off globally, `titles.cooldown_ticks` controls how soon it
-  can reappear, and the `titles.messages.*` sections hold the MiniMessage strings players see for each situation. Feel free to
-  swap in your own wording while keeping `{city}` as the placeholder for the city name.
+- **`updates`** – Controls how frequently stats and HUD elements refresh and how much work each scan performs.
+  - `stats_interval_ticks` / `stats_initial_delay_ticks` – Interval and initial delay (ticks) between stat refreshes.
+  - `bossbar_interval_ticks` – How often the boss bar display is updated.
+  - `max_cities_per_tick`, `max_entity_chunks_per_tick`, `max_bed_blocks_per_tick` – Workload caps that keep scans lightweight.
+- **`stations.counting_mode`** – Default is `manual`. Change to `traincarts` for automatic station syncing or `disabled` to
+  ignore station scoring entirely.
+- **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
+- **`titles`** – Enables or disables entry titles, sets the cooldown, and defines the MiniMessage text players see in different
+  situations (keep `{city}` as the placeholder for the city name).
+
+## Integrations
+
+### TrainCarts station sync
+CitySim can keep the transit stat in step with the TrainCarts rail network. Set `stations.counting_mode: traincarts` in
+`config.yml` to enable the integration. When this mode is active, the plugin scans the `[station]` signs that fall inside each
+city’s cuboids and updates the station total automatically. Manual `/city edit <cityId> station ...` commands are disabled in
+this mode so the TrainCarts counts stay authoritative, and CitySim refreshes the totals whenever TrainCarts is enabled, reloaded,
+or disabled.
+
+**Requirements:** Install both TrainCarts and Vault before switching the counting mode. CitySim relies on Vault being loaded to
+bootstrap the integration; if either plugin is missing, it falls back to manual station counts until they are present.
