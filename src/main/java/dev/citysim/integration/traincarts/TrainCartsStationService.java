@@ -15,10 +15,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -272,7 +273,62 @@ public class TrainCartsStationService implements StationCounter {
             }
         }
 
-        throw new NoSuchFieldException("signChunks");
+        SignChunksAccessor fallback = discoverFallbackAccessor(signControllerWorldClass);
+        if (fallback != null) {
+            return fallback;
+        }
+
+        throw new NoSuchFieldException("signChunks not found on " + signControllerWorldClass.getName());
+    }
+
+    private SignChunksAccessor discoverFallbackAccessor(Class<?> signControllerWorldClass) {
+        Class<?> longHashMapType = null;
+        try {
+            longHashMapType = Class.forName(
+                    "com.bergerkiller.bukkit.common.wrappers.LongHashMap",
+                    false,
+                    signControllerWorldClass.getClassLoader());
+        } catch (ClassNotFoundException ignored) {
+        }
+
+        List<AccessorCandidate> candidates = new ArrayList<>();
+
+        for (Class<?> current = signControllerWorldClass; current != null; current = current.getSuperclass()) {
+            for (Field field : current.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                if (!isCollectionLikeRaw(field.getType(), longHashMapType)) {
+                    continue;
+                }
+                field.setAccessible(true);
+                candidates.add(new AccessorCandidate(
+                        createFieldAccessor(field),
+                        field.getDeclaringClass().getName() + "#" + field.getName()));
+            }
+        }
+
+        for (Class<?> current = signControllerWorldClass; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (Modifier.isStatic(method.getModifiers()) || method.getParameterCount() != 0
+                        || method.getReturnType() == void.class) {
+                    continue;
+                }
+                if (!isCollectionLikeRaw(method.getReturnType(), longHashMapType)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                candidates.add(new AccessorCandidate(
+                        createMethodAccessor(method),
+                        method.getDeclaringClass().getName() + "#" + method.getName() + "()"));
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        return new AdaptiveSignChunksAccessor(signControllerWorldClass, candidates);
     }
 
     private SignChunksAccessor createFieldAccessor(Field field) {
@@ -454,6 +510,128 @@ public class TrainCartsStationService implements StationCounter {
             }
         }
         return null;
+    }
+
+    private boolean isCollectionLikeRaw(Class<?> rawType, Class<?> longHashMapType) {
+        if (rawType == null) {
+            return false;
+        }
+        if (rawType.isArray()) {
+            return true;
+        }
+        if (Map.class.isAssignableFrom(rawType)) {
+            return true;
+        }
+        if (Iterable.class.isAssignableFrom(rawType)) {
+            return true;
+        }
+        return longHashMapType != null && longHashMapType.isAssignableFrom(rawType);
+    }
+
+    private static final class AccessorCandidate {
+        private final SignChunksAccessor accessor;
+        private final String description;
+
+        private AccessorCandidate(SignChunksAccessor accessor, String description) {
+            this.accessor = accessor;
+            this.description = description;
+        }
+    }
+
+    private final class AdaptiveSignChunksAccessor implements SignChunksAccessor {
+        private final Class<?> worldClass;
+        private List<AccessorCandidate> pendingCandidates;
+        private SignChunksAccessor delegate;
+
+        private AdaptiveSignChunksAccessor(Class<?> worldClass, List<AccessorCandidate> candidates) {
+            this.worldClass = worldClass;
+            this.pendingCandidates = new ArrayList<>(candidates);
+        }
+
+        @Override
+        public synchronized Collection<?> load(Object worldController) throws ReflectiveOperationException {
+            if (delegate != null) {
+                return delegate.load(worldController);
+            }
+            if (worldController == null) {
+                return null;
+            }
+
+            List<AccessorCandidate> retry = new ArrayList<>();
+            List<String> failures = new ArrayList<>();
+
+            for (AccessorCandidate candidate : pendingCandidates) {
+                Collection<?> values;
+                try {
+                    values = candidate.accessor.load(worldController);
+                } catch (ReflectiveOperationException ex) {
+                    failures.add(candidate.description + " threw " + ex.getClass().getSimpleName()
+                            + (ex.getMessage() != null ? ": " + ex.getMessage() : ""));
+                    continue;
+                }
+
+                if (values == null || values.isEmpty()) {
+                    retry.add(candidate);
+                    continue;
+                }
+
+                boolean matches = false;
+                for (Object chunk : values) {
+                    if (chunk == null) {
+                        continue;
+                    }
+                    Object[] entries;
+                    try {
+                        entries = toEntries(chunk);
+                    } catch (ReflectiveOperationException ex) {
+                        failures.add(candidate.description + " chunk inspection failed with "
+                                + ex.getClass().getSimpleName()
+                                + (ex.getMessage() != null ? ": " + ex.getMessage() : ""));
+                        entries = null;
+                        break;
+                    }
+                    if (entries == null || entries.length == 0) {
+                        continue;
+                    }
+                    for (Object entry : entries) {
+                        if (entryClass.isInstance(entry)) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                    if (matches) {
+                        break;
+                    }
+                }
+
+                if (matches) {
+                    delegate = candidate.accessor;
+                    pendingCandidates = null;
+                    return delegate.load(worldController);
+                }
+
+                failures.add(candidate.description + " did not expose SignController$Entry instances");
+            }
+
+            pendingCandidates = retry;
+            if (!retry.isEmpty()) {
+                return null;
+            }
+
+            StringBuilder message = new StringBuilder("Unable to locate sign chunk collection on ")
+                    .append(worldClass.getName());
+            if (!failures.isEmpty()) {
+                message.append(" (attempted: ");
+                for (int i = 0; i < failures.size(); i++) {
+                    if (i > 0) {
+                        message.append("; ");
+                    }
+                    message.append(failures.get(i));
+                }
+                message.append(')');
+            }
+            throw new NoSuchFieldException(message.toString());
+        }
     }
 
     private Method findValuesLikeMethod(Class<?> type) {
