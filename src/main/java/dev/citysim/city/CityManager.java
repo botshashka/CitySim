@@ -11,11 +11,17 @@ import org.bukkit.plugin.Plugin;
 
 import java.io.*;
 import java.lang.reflect.Type;
+import java.nio.charset.Charset;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.logging.Level;
 
 public class CityManager {
+    private static final Type CITY_LIST_TYPE = new TypeToken<List<City>>(){}.getType();
+
     private final Plugin plugin;
     private final Map<String, City> byId = new LinkedHashMap<>();
     private final Map<String, List<City>> citiesByWorld = new HashMap<>();
@@ -196,8 +202,8 @@ public class CityManager {
     public void save() {
         try {
             plugin.getDataFolder().mkdirs();
-            try (FileWriter fw = new FileWriter(dataFile)) {
-                gson.toJson(byId.values(), fw);
+            try (Writer writer = Files.newBufferedWriter(dataFile.toPath(), StandardCharsets.UTF_8)) {
+                gson.toJson(byId.values(), writer);
             }
         } catch (IOException e) {
             plugin.getLogger().severe("Failed saving cities: " + e.getMessage());
@@ -206,38 +212,66 @@ public class CityManager {
 
     public void load() {
         if (!dataFile.exists()) return;
-        try (FileReader fr = new FileReader(dataFile)) {
-            Type listType = new TypeToken<List<City>>(){}.getType();
-            List<City> list = gson.fromJson(fr, listType);
-            byId.clear();
-            citiesByWorld.clear();
-            if (list != null) {
-                for (City c : list) {
-                    if (c.cuboids == null) {
-                        c.cuboids = new ArrayList<>();
-                    }
-                    for (Cuboid cuboid : c.cuboids) {
-                        if (cuboid == null) continue;
-                        if (cuboid.fullHeight) continue;
-                        org.bukkit.World world = Bukkit.getWorld(cuboid.world);
-                        if (cuboid.isFullHeight(world)) {
-                            cuboid.fullHeight = true;
-                        }
-                    }
-                    if (c.cuboids.isEmpty()) {
-                        c.world = null;
-                    }
-                    byId.put(c.id, c);
-                    addCityToWorldIndex(c);
-                }
+        List<City> list;
+        try {
+            list = readCities(StandardCharsets.UTF_8);
+        } catch (MalformedInputException malformedInputException) {
+            Charset fallbackCharset = Charset.defaultCharset();
+            if (fallbackCharset.equals(StandardCharsets.UTF_8)) {
+                plugin.getLogger().log(Level.SEVERE, "Failed loading cities: " + malformedInputException.getMessage(), malformedInputException);
+                return;
             }
-            verifyWorldIndexState("load");
+
+            plugin.getLogger().log(Level.WARNING, "Failed reading cities.json as UTF-8, retrying with " + fallbackCharset.displayName(), malformedInputException);
+            try {
+                list = readCities(fallbackCharset);
+            } catch (JsonParseException e) {
+                byId.clear();
+                citiesByWorld.clear();
+                plugin.getLogger().warning("Failed parsing cities data '" + dataFile.getName() + "': " + e.getMessage() + ". Starting with an empty city list.");
+                return;
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.SEVERE, "Failed loading cities with fallback charset " + fallbackCharset.displayName() + ": " + e.getMessage(), e);
+                return;
+            }
         } catch (JsonParseException e) {
             byId.clear();
             citiesByWorld.clear();
             plugin.getLogger().warning("Failed parsing cities data '" + dataFile.getName() + "': " + e.getMessage() + ". Starting with an empty city list.");
+            return;
         } catch (IOException e) {
             plugin.getLogger().severe("Failed loading cities: " + e.getMessage());
+            return;
+        }
+
+        byId.clear();
+        citiesByWorld.clear();
+        if (list != null) {
+            for (City c : list) {
+                if (c.cuboids == null) {
+                    c.cuboids = new ArrayList<>();
+                }
+                for (Cuboid cuboid : c.cuboids) {
+                    if (cuboid == null) continue;
+                    if (cuboid.fullHeight) continue;
+                    org.bukkit.World world = Bukkit.getWorld(cuboid.world);
+                    if (cuboid.isFullHeight(world)) {
+                        cuboid.fullHeight = true;
+                    }
+                }
+                if (c.cuboids.isEmpty()) {
+                    c.world = null;
+                }
+                byId.put(c.id, c);
+                addCityToWorldIndex(c);
+            }
+        }
+        verifyWorldIndexState("load");
+    }
+
+    private List<City> readCities(Charset charset) throws IOException, JsonParseException {
+        try (Reader reader = Files.newBufferedReader(dataFile.toPath(), charset)) {
+            return gson.fromJson(reader, CITY_LIST_TYPE);
         }
     }
 
