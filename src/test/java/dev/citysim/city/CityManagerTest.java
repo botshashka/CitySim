@@ -27,6 +27,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -97,6 +98,22 @@ class CityManagerTest {
                 .anyMatch(record -> record.getLevel().equals(Level.WARNING)
                         && record.getMessage().contains("Failed parsing cities data"));
         assertTrue(sawWarning, "Expected warning about invalid cities data");
+    }
+
+    @Test
+    void saveAndLoadRoundTripsInternationalNames() throws Exception {
+        Plugin plugin = createPluginStub();
+        CityManager manager = new CityManager(plugin);
+
+        City created = manager.create("Québec 市");
+        manager.save();
+
+        CityManager reloaded = new CityManager(plugin);
+        reloaded.load();
+
+        City loaded = reloaded.get(created.id);
+        assertNotNull(loaded, "Expected city to load successfully");
+        assertEquals(created.name, loaded.name, "City name should be preserved across save/load");
     }
 
     @Test

@@ -11,6 +11,8 @@ import org.bukkit.plugin.Plugin;
 
 import java.io.*;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.logging.Level;
@@ -196,8 +198,8 @@ public class CityManager {
     public void save() {
         try {
             plugin.getDataFolder().mkdirs();
-            try (FileWriter fw = new FileWriter(dataFile)) {
-                gson.toJson(byId.values(), fw);
+            try (Writer writer = Files.newBufferedWriter(dataFile.toPath(), StandardCharsets.UTF_8)) {
+                gson.toJson(byId.values(), writer);
             }
         } catch (IOException e) {
             plugin.getLogger().severe("Failed saving cities: " + e.getMessage());
@@ -206,9 +208,9 @@ public class CityManager {
 
     public void load() {
         if (!dataFile.exists()) return;
-        try (FileReader fr = new FileReader(dataFile)) {
+        try (Reader reader = Files.newBufferedReader(dataFile.toPath(), StandardCharsets.UTF_8)) {
             Type listType = new TypeToken<List<City>>(){}.getType();
-            List<City> list = gson.fromJson(fr, listType);
+            List<City> list = gson.fromJson(reader, listType);
             byId.clear();
             citiesByWorld.clear();
             if (list != null) {
