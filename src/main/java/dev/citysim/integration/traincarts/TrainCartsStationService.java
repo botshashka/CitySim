@@ -263,7 +263,7 @@ public class TrainCartsStationService implements StationCounter {
         }
 
         failureLogged = false;
-        return OptionalInt.of(total);
+        return OptionalInt.of((total >>> 1) + (total & 1));
     }
 
     private OptionalInt logFailure(String context, Exception ex) {
