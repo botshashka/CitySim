@@ -26,7 +26,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
+import static java.nio.file.Files.writeString;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class StatsServiceTest {
@@ -52,6 +55,35 @@ class StatsServiceTest {
 
         boolean result = assertTimeoutPreemptively(Duration.ofSeconds(1), () -> (boolean) method.invoke(statsService));
         assertFalse(result);
+    }
+
+    @Test
+    void updateCityHandlesNullCuboidEntries() throws Exception {
+        DummyPlugin plugin = new DummyPlugin();
+        CityManager cityManager = new CityManager(plugin);
+
+        File dataFile = new File(plugin.getDataFolder(), "cities.json");
+        String json = """
+                [
+                  {
+                    \"id\": \"nulltown\",
+                    \"name\": \"Nulltown\",
+                    \"world\": null,
+                    \"cuboids\": [ null ]
+                  }
+                ]
+                """;
+        writeString(dataFile.toPath(), json);
+
+        cityManager.load();
+        City city = cityManager.get("nulltown");
+        assertNotNull(city);
+
+        city.cuboids.add(null);
+
+        TestStatsService statsService = new TestStatsService(plugin, cityManager);
+
+        assertDoesNotThrow(() -> statsService.updateCity(city));
     }
 
     private static final class TestStatsService extends StatsService {
