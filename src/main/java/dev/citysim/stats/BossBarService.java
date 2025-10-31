@@ -85,7 +85,7 @@ public class BossBarService {
             String text;
             float progress;
             if (ghostTown) {
-                text = "<gray>" + safeName + " — awaiting residents</gray>";
+                text = "<gray>" + safeName + " — ghost town</gray>";
                 progress = 0f;
             } else {
                 text = "<white>" + safeName + "</white><white> — </white>" +
