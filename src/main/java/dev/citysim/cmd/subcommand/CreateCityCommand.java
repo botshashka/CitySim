@@ -78,6 +78,7 @@ public class CreateCityCommand implements CitySubcommand {
         int pendingHeight = 0;
         String pendingMode = null;
 
+        Player selectionOwner = null;
         if (sender instanceof Player player) {
             SelectionState sel = SelectionListener.get(player);
             if (sel.ready()) {
@@ -96,6 +97,7 @@ public class CreateCityCommand implements CitySubcommand {
                 pendingLength = pendingCuboid.maxZ - pendingCuboid.minZ + 1;
                 pendingHeight = pendingCuboid.maxY - pendingCuboid.minY + 1;
                 pendingMode = fullHeight ? "full" : "span";
+                selectionOwner = player;
             }
         }
 
@@ -123,6 +125,9 @@ public class CreateCityCommand implements CitySubcommand {
             } else {
                 Component details = Component.text(". Use /city wand and /city edit " + created.id + " addcuboid to define its area.", NamedTextColor.GREEN);
                 sender.sendMessage(base.append(details));
+            }
+            if (pendingCuboid != null && selectionOwner != null) {
+                SelectionListener.clear(selectionOwner);
             }
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
