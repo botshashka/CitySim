@@ -1,5 +1,6 @@
 package dev.citysim.selection;
 
+import dev.citysim.cmd.subcommand.EditCityCommand;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -68,7 +69,7 @@ public class SelectionListener implements Listener {
         } else {
             sel.pos2 = block.getLocation();
             sendSelectionUpdate(p, sel, "Pos2", sel.pos2);
-            block.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, block.getLocation().add(0.5, 1, 0.5), 20, 0.4, 0.4, 0.4, 0.01);
+            block.getWorld().spawnParticle(Particle.END_ROD, block.getLocation().add(0.5, 1, 0.5), 12, 0.25, 0.25, 0.25, 0.001);
         }
 
         updateSelectionPreview(p, sel);
@@ -77,6 +78,7 @@ public class SelectionListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         clear(event.getPlayer());
+        EditCityCommand.stopShowCuboids(event.getPlayer());
     }
 
     private void sendSelectionUpdate(Player player, SelectionState sel, String label, Location location) {
@@ -93,7 +95,7 @@ public class SelectionListener implements Listener {
         } else {
             sb.append(" | Size: awaiting second corner");
         }
-        player.sendActionBar(Component.text(sb.toString(), NamedTextColor.YELLOW));
+        player.sendMessage(Component.text(sb.toString(), NamedTextColor.YELLOW));
     }
 
     private void updateSelectionPreview(Player player, SelectionState sel) {
@@ -137,7 +139,7 @@ public class SelectionListener implements Listener {
                 includeMidpoints,
                 fullHeight,
                 viewerY)) {
-            world.spawnParticle(Particle.HAPPY_VILLAGER, location, 1, 0, 0, 0, 0);
+            world.spawnParticle(Particle.END_ROD, location, 1, 0, 0, 0, 0);
         }
     }
 
