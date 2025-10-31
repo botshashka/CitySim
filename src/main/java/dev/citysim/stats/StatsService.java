@@ -19,6 +19,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -347,6 +348,7 @@ public class StatsService {
                     if (world == null) {
                         continue;
                     }
+                    Set<Long> sampledColumns = new HashSet<>();
                     int chunkMinX = chunkPos.x() << 4;
                     int chunkMaxX = chunkMinX + 15;
                     int chunkMinZ = chunkPos.z() << 4;
@@ -364,6 +366,10 @@ public class StatsService {
                         }
                         for (int x = minX; x <= maxX; x += step) {
                             for (int z = minZ; z <= maxZ; z += step) {
+                                long columnKey = (((long) x) << 32) | (z & 0xffffffffL);
+                                if (!sampledColumns.add(columnKey)) {
+                                    continue;
+                                }
                                 int y = world.getHighestBlockYAt(x, z);
                                 org.bukkit.block.Block top = world.getBlockAt(x, y, z);
                                 if (top.isLiquid()) {
