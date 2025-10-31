@@ -15,15 +15,15 @@ public final class CommandFeedback {
     }
 
     public static void sendWarning(CommandSender sender, String message) {
-        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.YELLOW));
+        sendInfo(sender, message);
     }
 
     public static void sendError(CommandSender sender, String message) {
         sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.RED));
     }
 
-    public static void sendGray(CommandSender sender, String message) {
-        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.GRAY));
+    public static void sendInfo(CommandSender sender, String message) {
+        sender.sendMessage(AdventureMessages.colored(message, NamedTextColor.WHITE));
     }
 
     public static void sendNoPermission(CommandSender sender) {

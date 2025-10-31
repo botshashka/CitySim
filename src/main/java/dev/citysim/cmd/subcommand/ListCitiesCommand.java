@@ -35,11 +35,11 @@ public class ListCitiesCommand implements CitySubcommand {
             return true;
         }
 
-        CommandFeedback.sendGray(sender, "Cities:");
+        CommandFeedback.sendInfo(sender, "Cities:");
         for (City city : cityManager.all()) {
             sender.sendMessage(Component.text()
                     .append(Component.text(city.id, NamedTextColor.GOLD))
-                    .append(Component.text(" — ", NamedTextColor.GRAY))
+                    .append(Component.text(" — ", NamedTextColor.WHITE))
                     .append(Component.text(city.name, NamedTextColor.WHITE))
                     .build());
         }

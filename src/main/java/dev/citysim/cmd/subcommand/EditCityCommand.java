@@ -228,9 +228,9 @@ public class EditCityCommand implements CitySubcommand {
 
         if (removed == 0) {
             player.sendMessage(Component.text()
-                    .append(Component.text("You are not standing inside any cuboids for ", NamedTextColor.YELLOW))
-                    .append(Component.text(city.name, NamedTextColor.YELLOW))
-                    .append(Component.text(".", NamedTextColor.YELLOW))
+                    .append(Component.text("You are not standing inside any cuboids for ", NamedTextColor.WHITE))
+                    .append(Component.text(city.name, NamedTextColor.WHITE))
+                    .append(Component.text(".", NamedTextColor.WHITE))
                     .build());
             return true;
         }
@@ -344,12 +344,12 @@ public class EditCityCommand implements CitySubcommand {
         if (updated == previousStations) {
             String word = updated == 1 ? " station" : " stations";
             sender.sendMessage(Component.text()
-                    .append(Component.text("City '", NamedTextColor.YELLOW))
-                    .append(Component.text(city.name, NamedTextColor.YELLOW))
-                    .append(Component.text("' remains at ", NamedTextColor.YELLOW))
-                    .append(Component.text(Integer.toString(updated), NamedTextColor.YELLOW))
-                    .append(Component.text(word, NamedTextColor.YELLOW))
-                    .append(Component.text(".", NamedTextColor.YELLOW))
+                    .append(Component.text("City '", NamedTextColor.WHITE))
+                    .append(Component.text(city.name, NamedTextColor.WHITE))
+                    .append(Component.text("' remains at ", NamedTextColor.WHITE))
+                    .append(Component.text(Integer.toString(updated), NamedTextColor.WHITE))
+                    .append(Component.text(word, NamedTextColor.WHITE))
+                    .append(Component.text(".", NamedTextColor.WHITE))
                     .build());
         } else {
             String newWord = updated == 1 ? " station" : " stations";
