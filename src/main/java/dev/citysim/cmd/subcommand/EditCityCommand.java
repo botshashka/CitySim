@@ -21,6 +21,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -30,6 +31,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class EditCityCommand implements CitySubcommand {
+
+    private static final int MAX_PARTICLES_PER_TICK = 50;
 
     private static final List<Component> HELP = List.of(
             CommandMessages.help("/city edit <cityId> name <new name>"),
@@ -318,6 +321,13 @@ public class EditCityCommand implements CitySubcommand {
         }
 
         String cityName = city.name;
+        Map<World, ArrayDeque<Location>> edgeQueues = new HashMap<>();
+        edgePoints.forEach((world, locations) -> {
+            if (locations != null && !locations.isEmpty()) {
+                edgeQueues.put(world, new ArrayDeque<>(locations));
+            }
+        });
+
         player.sendMessage(Component.text()
                 .append(Component.text("Showing cuboids for ", NamedTextColor.GREEN))
                 .append(Component.text(cityName, NamedTextColor.GREEN))
@@ -340,8 +350,29 @@ public class EditCityCommand implements CitySubcommand {
                 for (Map.Entry<World, List<Location>> entry : edgePoints.entrySet()) {
                     World world = entry.getKey();
                     List<Location> locations = entry.getValue();
-                    for (Location point : locations) {
-                        world.spawnParticle(Particle.END_ROD, point, 1, 0, 0, 0, 0);
+                    ArrayDeque<Location> queue = edgeQueues.get(world);
+                    if (locations == null || locations.isEmpty() || queue == null) {
+                        continue;
+                    }
+
+                    if (queue.isEmpty()) {
+                        queue.addAll(locations);
+                        if (queue.isEmpty()) {
+                            continue;
+                        }
+                    }
+
+                    int spawned = 0;
+                    while (spawned < MAX_PARTICLES_PER_TICK && !queue.isEmpty()) {
+                        Location point = queue.poll();
+                        if (point != null) {
+                            world.spawnParticle(Particle.END_ROD, point, 1, 0, 0, 0, 0);
+                            spawned++;
+                        }
+                    }
+
+                    if (queue.isEmpty()) {
+                        queue.addAll(locations);
                     }
                 }
 
