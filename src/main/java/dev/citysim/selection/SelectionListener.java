@@ -25,6 +25,7 @@ public class SelectionListener implements Listener {
     public static final Material WAND = Material.GOLDEN_AXE;
     public static final Map<UUID, SelectionState> selections = new ConcurrentHashMap<>();
     private static final long PREVIEW_TASK_PERIOD_TICKS = 10L;
+    private static final int MAX_PARTICLES_PER_TICK = 50;
 
     private final JavaPlugin plugin;
 
@@ -65,9 +66,11 @@ public class SelectionListener implements Listener {
 
         if (e.getAction() == Action.LEFT_CLICK_BLOCK) {
             sel.pos1 = block.getLocation();
+            sel.markPreviewDirty();
             sendSelectionUpdate(p, sel, "Pos1", sel.pos1);
         } else {
             sel.pos2 = block.getLocation();
+            sel.markPreviewDirty();
             sendSelectionUpdate(p, sel, "Pos2", sel.pos2);
             block.getWorld().spawnParticle(Particle.END_ROD, block.getLocation().add(0.5, 1, 0.5), 12, 0.25, 0.25, 0.25, 0.001);
         }
@@ -127,19 +130,49 @@ public class SelectionListener implements Listener {
         boolean includeMidpoints = SelectionOutline.resolveSimpleMidpoints(plugin);
         boolean fullHeight = sel.yMode == SelectionState.YMode.FULL;
         int viewerY = player.getLocation().getBlockY();
-        for (Location location : SelectionOutline.planOutline(
-                world,
+        SelectionState.BoundsSnapshot snapshot = new SelectionState.BoundsSnapshot(
                 bounds.minX,
-                bounds.minY,
-                bounds.minZ,
                 bounds.maxX,
+                bounds.minY,
                 bounds.maxY,
-                bounds.maxZ,
-                maxParticles,
-                includeMidpoints,
-                fullHeight,
-                viewerY)) {
-            world.spawnParticle(Particle.END_ROD, location, 1, 0, 0, 0, 0);
+                bounds.minZ,
+                bounds.maxZ
+        );
+
+        SelectionState.PreviewCache cache = sel.preview;
+        boolean outlineInvalid = cache.bounds == null || !cache.bounds.equals(snapshot) || cache.viewerY != viewerY;
+        if (outlineInvalid) {
+            cache.outline = SelectionOutline.planOutline(
+                    world,
+                    bounds.minX,
+                    bounds.minY,
+                    bounds.minZ,
+                    bounds.maxX,
+                    bounds.maxY,
+                    bounds.maxZ,
+                    maxParticles,
+                    includeMidpoints,
+                    fullHeight,
+                    viewerY);
+            cache.queue.clear();
+            if (!cache.outline.isEmpty()) {
+                cache.queue.addAll(cache.outline);
+            }
+            cache.bounds = snapshot;
+            cache.viewerY = viewerY;
+        }
+
+        if (cache.queue.isEmpty() && !cache.outline.isEmpty()) {
+            cache.queue.addAll(cache.outline);
+        }
+
+        int spawned = 0;
+        while (!cache.queue.isEmpty() && spawned < MAX_PARTICLES_PER_TICK) {
+            Location location = cache.queue.poll();
+            if (location != null) {
+                world.spawnParticle(Particle.END_ROD, location, 1, 0, 0, 0, 0);
+                spawned++;
+            }
         }
     }
 

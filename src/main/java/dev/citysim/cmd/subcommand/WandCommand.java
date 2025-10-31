@@ -91,10 +91,12 @@ public class WandCommand implements CitySubcommand {
         switch (modeArg) {
             case "full" -> {
                 sel.yMode = SelectionState.YMode.FULL;
+                sel.markPreviewDirty();
                 player.sendMessage(Component.text("Y-mode set to full.", NamedTextColor.WHITE));
             }
             case "span" -> {
                 sel.yMode = SelectionState.YMode.SPAN;
+                sel.markPreviewDirty();
                 player.sendMessage(Component.text("Y-mode set to span.", NamedTextColor.WHITE));
             }
             default -> player.sendMessage(Component.text("Unknown mode. Use full or span.", NamedTextColor.RED));
