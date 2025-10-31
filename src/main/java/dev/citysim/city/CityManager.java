@@ -33,6 +33,10 @@ public class CityManager {
         this.dataFile = new File(plugin.getDataFolder(), "cities.json");
     }
 
+    public Plugin getPlugin() {
+        return plugin;
+    }
+
     public Collection<City> all() { return byId.values(); }
     public City get(String id) { return byId.get(id.toLowerCase(Locale.ROOT)); }
 

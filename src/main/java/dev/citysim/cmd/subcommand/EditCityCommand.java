@@ -12,13 +12,20 @@ import dev.citysim.stats.StatsService;
 import dev.citysim.util.AdventureMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class EditCityCommand implements CitySubcommand {
@@ -27,6 +34,7 @@ public class EditCityCommand implements CitySubcommand {
             CommandMessages.help("/city edit <cityId> name <new name>"),
             CommandMessages.help("/city edit <cityId> addcuboid"),
             CommandMessages.help("/city edit <cityId> removecuboid"),
+            CommandMessages.help("/city edit <cityId> showcuboids"),
             CommandMessages.help("/city edit <cityId> highrise <true|false>"),
             CommandMessages.help("/city edit <cityId> station <add|remove|set|clear> [amount]")
     );
@@ -77,10 +85,11 @@ public class EditCityCommand implements CitySubcommand {
             case "name" -> handleRename(sender, cityId, args);
             case "addcuboid" -> handleAddCuboid(sender, cityId);
             case "removecuboid" -> handleRemoveCuboid(sender, cityId);
+            case "showcuboids" -> handleShowCuboids(sender, cityId);
             case "highrise" -> handleHighrise(sender, cityId, args);
             case "station" -> handleStation(sender, cityId, args);
             default -> {
-                CommandFeedback.sendError(sender, "Unknown edit action. Use name, addcuboid, removecuboid, highrise, or station.");
+                CommandFeedback.sendError(sender, "Unknown edit action. Use name, addcuboid, removecuboid, showcuboids, highrise, or station.");
                 yield true;
             }
         };
@@ -92,7 +101,7 @@ public class EditCityCommand implements CitySubcommand {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         if (args.length == 2) {
-            return List.of("name", "addcuboid", "removecuboid", "highrise", "station");
+            return List.of("name", "addcuboid", "removecuboid", "showcuboids", "highrise", "station");
         }
 
         String action = args[1].toLowerCase(Locale.ROOT);
@@ -249,6 +258,105 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
+    private boolean handleShowCuboids(CommandSender sender, String cityId) {
+        if (!(sender instanceof Player player)) {
+            CommandFeedback.sendPlayersOnly(sender);
+            return true;
+        }
+
+        City city = cityManager.get(cityId);
+        if (city == null) {
+            player.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
+            return true;
+        }
+
+        if (city.cuboids == null || city.cuboids.isEmpty()) {
+            player.sendMessage(Component.text()
+                    .append(Component.text("City '", NamedTextColor.RED))
+                    .append(Component.text(city.name, NamedTextColor.RED))
+                    .append(Component.text("' has no cuboids to preview.", NamedTextColor.RED))
+                    .build());
+            return true;
+        }
+
+        Map<World, List<Location>> edgePoints = new HashMap<>();
+        boolean missingWorld = false;
+        for (Cuboid cuboid : city.cuboids) {
+            if (cuboid == null || cuboid.world == null) {
+                continue;
+            }
+            World world = Bukkit.getWorld(cuboid.world);
+            if (world == null) {
+                missingWorld = true;
+                continue;
+            }
+            edgePoints.computeIfAbsent(world, ignored -> new ArrayList<>()).addAll(computeEdgePoints(cuboid, world));
+        }
+
+        if (edgePoints.isEmpty()) {
+            Component message;
+            if (missingWorld) {
+                message = Component.text()
+                        .append(Component.text("Unable to preview cuboids because their worlds are not loaded.", NamedTextColor.RED))
+                        .build();
+            } else {
+                message = Component.text()
+                        .append(Component.text("City '", NamedTextColor.RED))
+                        .append(Component.text(city.name, NamedTextColor.RED))
+                        .append(Component.text("' has no loaded cuboids to preview.", NamedTextColor.RED))
+                        .build();
+            }
+            player.sendMessage(message);
+            return true;
+        }
+
+        String cityName = city.name;
+        player.sendMessage(Component.text()
+                .append(Component.text("Showing cuboids for ", NamedTextColor.GREEN))
+                .append(Component.text(cityName, NamedTextColor.GREEN))
+                .append(Component.text("...", NamedTextColor.GREEN))
+                .build());
+
+        final int periodTicks = 5;
+        final int durationTicks = 20 * 5;
+
+        new BukkitRunnable() {
+            private int elapsed = 0;
+
+            @Override
+            public void run() {
+                if (!player.isOnline()) {
+                    cancel();
+                    return;
+                }
+
+                for (Map.Entry<World, List<Location>> entry : edgePoints.entrySet()) {
+                    World world = entry.getKey();
+                    List<Location> locations = entry.getValue();
+                    for (Location point : locations) {
+                        world.spawnParticle(Particle.END_ROD, point, 1, 0, 0, 0, 0);
+                    }
+                }
+
+                elapsed += periodTicks;
+                if (elapsed >= durationTicks) {
+                    player.sendMessage(Component.text()
+                            .append(Component.text("Finished showing cuboids for ", NamedTextColor.GREEN))
+                            .append(Component.text(cityName, NamedTextColor.GREEN))
+                            .append(Component.text(".", NamedTextColor.GREEN))
+                            .build());
+                    cancel();
+                }
+            }
+        }.runTaskTimer(cityManager.getPlugin(), 0L, periodTicks);
+
+        return true;
+    }
+
     private boolean handleHighrise(CommandSender sender, String cityId, String[] args) {
         if (args.length < 3) {
             sendEditUsage(sender);
@@ -367,6 +475,42 @@ public class EditCityCommand implements CitySubcommand {
                     .build());
         }
         return true;
+    }
+
+    private List<Location> computeEdgePoints(Cuboid cuboid, World world) {
+        List<Location> points = new ArrayList<>();
+        double minX = cuboid.minX;
+        double maxX = cuboid.maxX;
+        double minY = cuboid.minY;
+        double maxY = cuboid.maxY;
+        double minZ = cuboid.minZ;
+        double maxZ = cuboid.maxZ;
+
+        for (int x = cuboid.minX; x <= cuboid.maxX; x++) {
+            double centerX = x + 0.5;
+            points.add(new Location(world, centerX, minY + 0.5, minZ + 0.5));
+            points.add(new Location(world, centerX, minY + 0.5, maxZ + 0.5));
+            points.add(new Location(world, centerX, maxY + 0.5, minZ + 0.5));
+            points.add(new Location(world, centerX, maxY + 0.5, maxZ + 0.5));
+        }
+
+        for (int z = cuboid.minZ; z <= cuboid.maxZ; z++) {
+            double centerZ = z + 0.5;
+            points.add(new Location(world, minX + 0.5, minY + 0.5, centerZ));
+            points.add(new Location(world, maxX + 0.5, minY + 0.5, centerZ));
+            points.add(new Location(world, minX + 0.5, maxY + 0.5, centerZ));
+            points.add(new Location(world, maxX + 0.5, maxY + 0.5, centerZ));
+        }
+
+        for (int y = cuboid.minY; y <= cuboid.maxY; y++) {
+            double centerY = y + 0.5;
+            points.add(new Location(world, minX + 0.5, centerY, minZ + 0.5));
+            points.add(new Location(world, minX + 0.5, centerY, maxZ + 0.5));
+            points.add(new Location(world, maxX + 0.5, centerY, minZ + 0.5));
+            points.add(new Location(world, maxX + 0.5, centerY, maxZ + 0.5));
+        }
+
+        return points;
     }
 
     private Integer modifyStations(CommandSender sender, String[] args, int base, String context, StationOperator operator) {
