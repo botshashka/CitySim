@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Queue;
 import java.util.stream.Collectors;
 
 public class EditCityCommand implements CitySubcommand {
@@ -321,7 +322,7 @@ public class EditCityCommand implements CitySubcommand {
         }
 
         String cityName = city.name;
-        Map<World, ArrayDeque<Location>> edgeQueues = new HashMap<>();
+        Map<World, Queue<Location>> edgeQueues = new HashMap<>();
         edgePoints.forEach((world, locations) -> {
             if (locations != null && !locations.isEmpty()) {
                 edgeQueues.put(world, new ArrayDeque<>(locations));
@@ -350,7 +351,7 @@ public class EditCityCommand implements CitySubcommand {
                 for (Map.Entry<World, List<Location>> entry : edgePoints.entrySet()) {
                     World world = entry.getKey();
                     List<Location> locations = entry.getValue();
-                    ArrayDeque<Location> queue = edgeQueues.get(world);
+                    Queue<Location> queue = edgeQueues.get(world);
                     if (locations == null || locations.isEmpty() || queue == null) {
                         continue;
                     }
