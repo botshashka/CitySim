@@ -23,6 +23,8 @@ public class HappinessBreakdown {
 
     public int total;
 
+    public boolean ghostTown;
+
     public String dominantKey() {
         Contribution best = contributions().stream()
                 .max(Comparator.comparingDouble(Contribution::magnitude))

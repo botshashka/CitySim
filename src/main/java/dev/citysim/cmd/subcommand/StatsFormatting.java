@@ -17,6 +17,9 @@ final class StatsFormatting {
     }
 
     static ContributionLists filterTransitIfHidden(StatsService statsService, ContributionLists lists) {
+        if (lists.ghostTown()) {
+            return lists;
+        }
         if (statsService.getStationCountingMode() != StationCountingMode.DISABLED) {
             return lists;
         }
@@ -32,7 +35,7 @@ final class StatsFormatting {
                 negatives.add(line);
             }
         }
-        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives));
+        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
     }
 
     static String joinContributionLines(List<ContributionLine> lines, Function<ContributionType, String> labelProvider) {

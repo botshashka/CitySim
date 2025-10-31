@@ -57,6 +57,28 @@ public class StatsCommand implements CitySubcommand {
             return true;
         }
 
+        boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
+        String homesLine = "<blue>Homes:</blue> %d/%d".formatted(city.beds, city.population);
+        if (showStations) {
+            homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
+        }
+
+        String safeName = AdventureMessages.escapeMiniMessage(city.name);
+        if (city.isGhostTown()) {
+            String msg = """
+            <gray><b>%s — City stats</b></gray>
+            <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
+            %s
+            <gold>Happiness:</gold> N/A (ghost town)
+            <gray>No citizens currently live here.</gray>
+            """.formatted(
+                    safeName, city.population, city.employed, city.unemployed,
+                    homesLine
+            );
+            player.sendMessage(AdventureMessages.mini(msg));
+            return true;
+        }
+
         var hb = statsService.updateCity(city, true);
         ContributionLists contributionLists = StatsFormatting.filterTransitIfHidden(statsService, HappinessBreakdownFormatter.buildContributionLists(hb));
 
@@ -69,13 +91,6 @@ public class StatsCommand implements CitySubcommand {
             breakdownLines += negativeLines;
         }
 
-        boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
-        String homesLine = "<blue>Homes:</blue> %d/%d".formatted(city.beds, city.population);
-        if (showStations) {
-            homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
-        }
-
-        String safeName = AdventureMessages.escapeMiniMessage(city.name);
         String msg = """
         <gray><b>%s — City stats</b></gray>
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d

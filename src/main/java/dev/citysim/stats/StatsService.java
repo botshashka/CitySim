@@ -187,7 +187,13 @@ public class StatsService {
         }
         cancelActiveJob(city);
         HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
-        return result != null ? result : new HappinessBreakdown();
+        if (result != null) {
+            result.ghostTown = city.isGhostTown();
+            return result;
+        }
+        HappinessBreakdown fallback = new HappinessBreakdown();
+        fallback.ghostTown = city.isGhostTown();
+        return fallback;
     }
 
     private void cancelActiveJob(City city) {
@@ -202,6 +208,7 @@ public class StatsService {
             return new HappinessBreakdown();
         }
         if (city.happinessBreakdown != null && city.blockScanCache != null) {
+            city.happinessBreakdown.ghostTown = city.isGhostTown();
             return city.happinessBreakdown;
         }
         City.BlockScanCache metrics = city.blockScanCache;
@@ -212,7 +219,13 @@ public class StatsService {
             return hb;
         }
         requestCityUpdate(city, true, "compute happiness breakdown");
-        return city.happinessBreakdown != null ? city.happinessBreakdown : new HappinessBreakdown();
+        if (city.happinessBreakdown != null) {
+            city.happinessBreakdown.ghostTown = city.isGhostTown();
+            return city.happinessBreakdown;
+        }
+        HappinessBreakdown fallback = new HappinessBreakdown();
+        fallback.ghostTown = city.isGhostTown();
+        return fallback;
     }
 
     private StationCountResult refreshStationCount(City city) {

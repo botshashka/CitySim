@@ -10,6 +10,12 @@ public final class HappinessBreakdownFormatter {
     }
 
     public static ContributionLists buildContributionLists(HappinessBreakdown breakdown) {
+        if (breakdown == null) {
+            return new ContributionLists(List.of(), List.of(), false);
+        }
+        if (breakdown.ghostTown) {
+            return new ContributionLists(List.of(), List.of(), true);
+        }
         List<ContributionLine> positives = new ArrayList<>();
         List<ContributionLine> negatives = new ArrayList<>();
 
@@ -29,7 +35,7 @@ public final class HappinessBreakdownFormatter {
         positives.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
         negatives.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
 
-        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives));
+        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
     }
 
     private static void addContributionLine(List<ContributionLine> positives, List<ContributionLine> negatives,
@@ -55,6 +61,6 @@ public final class HappinessBreakdownFormatter {
     public record ContributionLine(ContributionType type, double value, boolean alwaysShowSign) {
     }
 
-    public record ContributionLists(List<ContributionLine> positives, List<ContributionLine> negatives) {
+    public record ContributionLists(List<ContributionLine> positives, List<ContributionLine> negatives, boolean ghostTown) {
     }
 }

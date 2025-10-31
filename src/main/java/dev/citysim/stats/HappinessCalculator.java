@@ -24,6 +24,7 @@ public class HappinessCalculator {
 
     public HappinessBreakdown calculate(City city, City.BlockScanCache metrics) {
         HappinessBreakdown hb = new HappinessBreakdown();
+        hb.ghostTown = city != null && city.isGhostTown();
         int pop = city.population;
         int employed = city.employed;
 
