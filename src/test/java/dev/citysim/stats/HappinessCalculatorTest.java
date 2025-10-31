@@ -53,8 +53,8 @@ class HappinessCalculatorTest {
         assertEquals(cache.overcrowdingPenalty, breakdown.overcrowdingPenalty, 0.001);
         assertEquals(10.0, breakdown.naturePoints, 0.001);
         assertEquals(0.0, breakdown.pollutionPenalty, 0.001);
-        assertEquals(1.4, breakdown.housingPoints, 0.001);
+        assertEquals(10.0, breakdown.housingPoints, 0.001);
         assertEquals(5.0, breakdown.transitPoints, 0.001);
-        assertEquals(76, breakdown.total);
+        assertEquals(85, breakdown.total);
     }
 }

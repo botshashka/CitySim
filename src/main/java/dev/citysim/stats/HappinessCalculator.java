@@ -59,9 +59,17 @@ public class HappinessCalculator {
         }
 
         int beds = city.beds;
-        double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
-        double housingNeutral = 1.0 / 0.95;
-        double housingScore = (housingRatio / housingNeutral) - 1.0;
+        double housingRatio = pop <= 0 ? 1.0 : (double) beds / Math.max(1.0, (double) pop);
+        double housingScore;
+        if (housingRatio >= 1.0) {
+            double surplus = housingRatio - 1.0;
+            double normalizedSurplus = surplus / 0.20; // 20% surplus reaches the cap
+            housingScore = Math.min(1.0, normalizedSurplus);
+        } else {
+            double deficit = 1.0 - housingRatio;
+            double normalizedDeficit = deficit / 0.25; // 25% deficit reaches the cap
+            housingScore = -Math.min(1.0, normalizedDeficit);
+        }
         hb.housingPoints = clamp(housingScore * housingMaxPts, -housingMaxPts, housingMaxPts);
 
         hb.transitPoints = computeTransitPoints(city);
