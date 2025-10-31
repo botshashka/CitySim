@@ -82,4 +82,8 @@ public class City {
 
     public record ChunkPosition(String world, int x, int z) {
     }
+
+    public boolean isGhostTown() {
+        return population <= 0;
+    }
 }

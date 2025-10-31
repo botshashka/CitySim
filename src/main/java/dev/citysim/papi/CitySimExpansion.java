@@ -41,11 +41,13 @@ public class CitySimExpansion extends PlaceholderExpansion {
         }
         if (city == null) return "0";
 
+        boolean ghostTown = city.isGhostTown();
+
         switch (key) {
             case "pop": case "population": return String.valueOf(city.population);
             case "employed": return String.valueOf(city.employed);
             case "unemployed": return String.valueOf(city.unemployed);
-            case "happy": case "happiness": return String.valueOf(city.happiness);
+            case "happy": case "happiness": return ghostTown ? "" : String.valueOf(city.happiness);
             case "cityname": return city.name;
         }
         return null;

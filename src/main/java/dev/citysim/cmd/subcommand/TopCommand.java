@@ -42,18 +42,27 @@ public class TopCommand implements CitySubcommand {
         String metric = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "happy";
 
         List<City> list = new ArrayList<>(cityManager.all());
+        Comparator<City> comparator;
         if (metric.startsWith("pop")) {
-            list.sort(Comparator.comparingInt((City c) -> c.population).reversed());
+            comparator = Comparator
+                    .comparing(City::isGhostTown)
+                    .thenComparing(Comparator.comparingInt((City c) -> c.population).reversed())
+                    .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
         } else {
-            list.sort(Comparator.comparingInt((City c) -> c.happiness).reversed());
+            comparator = Comparator
+                    .comparing(City::isGhostTown)
+                    .thenComparing(Comparator.comparingInt((City c) -> c.happiness).reversed())
+                    .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
         }
+        list.sort(comparator);
 
         int limit = Math.min(10, list.size());
         StringBuilder sb = new StringBuilder();
         sb.append("Top cities by ").append(metric.startsWith("pop") ? "population" : "happiness").append(":\n");
         for (int i = 0; i < limit; i++) {
             City city = list.get(i);
-            sb.append(String.format("%2d. %s  —  pop %d, happy %d\n", i + 1, city.name, city.population, city.happiness));
+            String happinessDisplay = city.isGhostTown() ? "N/A" : city.happiness + "%";
+            sb.append(String.format("%2d. %s  —  pop %d, happy %s\n", i + 1, city.name, city.population, happinessDisplay));
         }
         player.sendMessage(Component.text(sb.toString(), NamedTextColor.GRAY));
         return true;

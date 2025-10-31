@@ -80,11 +80,19 @@ public class BossBarService {
                 }
                 continue;
             }
+            boolean ghostTown = c.isGhostTown();
             String safeName = AdventureMessages.escapeMiniMessage(c.name);
-            String text = "<white>" + safeName + "</white><white> — </white>" +
-                    "<gold>" + c.happiness + "%</gold>";
+            String text;
+            float progress;
+            if (ghostTown) {
+                text = "<gray>" + safeName + " — Ghost town — no citizens</gray>";
+                progress = 0f;
+            } else {
+                text = "<white>" + safeName + "</white><white> — </white>" +
+                        "<gold>" + c.happiness + "%</gold>";
+                progress = Math.max(0f, Math.min(1f, c.happiness / 100f));
+            }
             Component comp = mm.deserialize(text);
-            float progress = Math.max(0f, Math.min(1f, c.happiness / 100f));
 
             if (bar == null) {
                 bar = BossBar.bossBar(comp, progress, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);

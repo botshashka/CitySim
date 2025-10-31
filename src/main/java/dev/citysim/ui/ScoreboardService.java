@@ -214,19 +214,23 @@ public class ScoreboardService {
     private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
         StationCountingMode stationMode = statsService.getStationCountingMode();
         boolean showStations = stationMode != StationCountingMode.DISABLED;
+        boolean ghostTown = city.isGhostTown();
 
         List<String> raw = new ArrayList<>();
-        switch (mode) {
-            case FULL -> {
-                raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-                raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness + "%");
-                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
-                raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
-                if (showStations) {
-                    raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
-                }
-                raw.add(ChatColor.DARK_GRAY + " ");
+        raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
+        String happinessValue = ghostTown ? "N/A" : city.happiness + "%";
+        raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + happinessValue);
+        raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
+        raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
+        if (showStations) {
+            raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+        }
 
+        if (mode == Mode.FULL) {
+            raw.add(ChatColor.DARK_GRAY + " ");
+            if (ghostTown) {
+                raw.add(ChatColor.GRAY + "Ghost town — no citizens");
+            } else {
                 ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
 
                 for (ContributionLine line : contributionLists.positives()) {
@@ -240,16 +244,10 @@ public class ScoreboardService {
                     }
                 }
             }
-            case COMPACT -> {
-                raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-                raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + city.happiness + "%");
-                raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
-                raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
-                if (showStations) {
-                    raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
-                }
-            }
+        } else if (ghostTown) {
+            raw.add(ChatColor.GRAY + "Ghost town — no citizens");
         }
+
         return decorateLines(raw);
     }
 
@@ -291,6 +289,9 @@ public class ScoreboardService {
     }
 
     private ContributionLists filterTransitIfHidden(ContributionLists lists) {
+        if (lists.ghostTown()) {
+            return lists;
+        }
         if (statsService.getStationCountingMode() != StationCountingMode.DISABLED) {
             return lists;
         }
@@ -306,7 +307,7 @@ public class ScoreboardService {
                 negatives.add(line);
             }
         }
-        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives));
+        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
     }
 
     private void applyLines(Objective objective, Scoreboard board, List<String> lines) {
