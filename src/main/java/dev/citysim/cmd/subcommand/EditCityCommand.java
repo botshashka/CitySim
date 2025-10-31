@@ -35,6 +35,7 @@ public class EditCityCommand implements CitySubcommand {
             CommandMessages.help("/city edit <cityId> addcuboid"),
             CommandMessages.help("/city edit <cityId> removecuboid"),
             CommandMessages.help("/city edit <cityId> showcuboids"),
+            CommandMessages.help("/city edit <cityId> listcuboids"),
             CommandMessages.help("/city edit <cityId> highrise <true|false>"),
             CommandMessages.help("/city edit <cityId> station <add|remove|set|clear> [amount]")
     );
@@ -86,10 +87,11 @@ public class EditCityCommand implements CitySubcommand {
             case "addcuboid" -> handleAddCuboid(sender, cityId);
             case "removecuboid" -> handleRemoveCuboid(sender, cityId);
             case "showcuboids" -> handleShowCuboids(sender, cityId);
+            case "listcuboids" -> handleListCuboids(sender, cityId);
             case "highrise" -> handleHighrise(sender, cityId, args);
             case "station" -> handleStation(sender, cityId, args);
             default -> {
-                CommandFeedback.sendError(sender, "Unknown edit action. Use name, addcuboid, removecuboid, showcuboids, highrise, or station.");
+                CommandFeedback.sendError(sender, "Unknown edit action. Use name, addcuboid, removecuboid, showcuboids, listcuboids, highrise, or station.");
                 yield true;
             }
         };
@@ -101,7 +103,7 @@ public class EditCityCommand implements CitySubcommand {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         if (args.length == 2) {
-            return List.of("name", "addcuboid", "removecuboid", "showcuboids", "highrise", "station");
+            return List.of("name", "addcuboid", "removecuboid", "showcuboids", "listcuboids", "highrise", "station");
         }
 
         String action = args[1].toLowerCase(Locale.ROOT);
@@ -354,6 +356,73 @@ public class EditCityCommand implements CitySubcommand {
             }
         }.runTaskTimer(cityManager.getPlugin(), 0L, periodTicks);
 
+        return true;
+    }
+
+    private boolean handleListCuboids(CommandSender sender, String cityId) {
+        City city = cityManager.get(cityId);
+        if (city == null) {
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
+            return true;
+        }
+
+        List<Cuboid> cuboids = city.cuboids;
+        if (cuboids == null || cuboids.isEmpty()) {
+            sender.sendMessage(AdventureMessages.joinLines(
+                    Component.text()
+                            .append(Component.text("City '", NamedTextColor.YELLOW))
+                            .append(Component.text(city.name, NamedTextColor.YELLOW))
+                            .append(Component.text("' has no cuboids defined.", NamedTextColor.YELLOW))
+                            .build()
+            ));
+            return true;
+        }
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.text()
+                .append(Component.text("Cuboids for ", NamedTextColor.GOLD))
+                .append(Component.text(city.name, NamedTextColor.GOLD))
+                .append(Component.text(" (", NamedTextColor.GOLD))
+                .append(Component.text(city.id, NamedTextColor.GOLD))
+                .append(Component.text("):", NamedTextColor.GOLD))
+                .build());
+
+        for (int i = 0; i < cuboids.size(); i++) {
+            Cuboid cuboid = cuboids.get(i);
+            if (cuboid == null) {
+                lines.add(Component.text()
+                        .append(Component.text("#" + (i + 1) + " ", NamedTextColor.GRAY))
+                        .append(Component.text("<invalid cuboid>", NamedTextColor.RED))
+                        .build());
+                continue;
+            }
+
+            String worldName = cuboid.world != null ? cuboid.world : "<unknown>";
+            int width = cuboid.maxX - cuboid.minX + 1;
+            int length = cuboid.maxZ - cuboid.minZ + 1;
+            int height = cuboid.maxY - cuboid.minY + 1;
+            String mode = cuboid.fullHeight ? "full" : "span";
+            String size = width + "×" + length + "×" + height;
+
+            lines.add(Component.text()
+                    .append(Component.text("#" + (i + 1) + " ", NamedTextColor.GRAY))
+                    .append(Component.text(worldName + ": ", NamedTextColor.WHITE))
+                    .append(Component.text(cuboid.minX + "," + cuboid.minY + "," + cuboid.minZ, NamedTextColor.WHITE))
+                    .append(Component.text(" -> ", NamedTextColor.DARK_GRAY))
+                    .append(Component.text(cuboid.maxX + "," + cuboid.maxY + "," + cuboid.maxZ, NamedTextColor.WHITE))
+                    .append(Component.text(" (", NamedTextColor.DARK_GRAY))
+                    .append(Component.text(mode, NamedTextColor.AQUA))
+                    .append(Component.text(", ", NamedTextColor.DARK_GRAY))
+                    .append(Component.text(size, NamedTextColor.AQUA))
+                    .append(Component.text(")", NamedTextColor.DARK_GRAY))
+                    .build());
+        }
+
+        sender.sendMessage(AdventureMessages.joinLines(lines.toArray(Component[]::new)));
         return true;
     }
 
