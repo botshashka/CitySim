@@ -370,12 +370,11 @@ public class StatsService {
                                 if (!sampledColumns.add(columnKey)) {
                                     continue;
                                 }
-                                int y = world.getHighestBlockYAt(x, z);
-                                org.bukkit.block.Block top = world.getBlockAt(x, y, z);
-                                if (top.isLiquid()) {
+                                Integer blockLight = sampleSurfaceColumnBlockLight(world, x, z);
+                                if (blockLight == null) {
                                     continue;
                                 }
-                                residentialLightSum += top.getLightFromBlocks();
+                                residentialLightSum += blockLight;
                                 residentialSamples++;
                             }
                         }
@@ -407,13 +406,11 @@ public class StatsService {
                             samples++;
                         }
                     } else {
-                        int y = w.getHighestBlockYAt(x, z);
-                        org.bukkit.block.Block top = w.getBlockAt(x, y, z);
-                        if (top.isLiquid()) {
+                        Integer blockLight = sampleSurfaceColumnBlockLight(w, x, z);
+                        if (blockLight == null) {
                             continue;
                         }
-                        int light = top.getLightFromBlocks();
-                        lightSum += light;
+                        lightSum += blockLight;
                         samples++;
                     }
                 }
@@ -557,6 +554,43 @@ public class StatsService {
         }
 
         return ratioSurface(city, 6, natureTest);
+    }
+
+    private Integer sampleSurfaceColumnBlockLight(World world, int x, int z) {
+        if (world == null) {
+            return null;
+        }
+
+        int highestY = world.getHighestBlockYAt(x, z);
+        if (highestY < world.getMinHeight()) {
+            return null;
+        }
+
+        org.bukkit.block.Block surfaceBlock = world.getBlockAt(x, highestY, z);
+        if (surfaceBlock.isLiquid()) {
+            return null;
+        }
+
+        int maxHeight = world.getMaxHeight();
+        int sampleStartY = highestY + 1;
+        if (sampleStartY >= maxHeight) {
+            return (int) surfaceBlock.getLightFromBlocks();
+        }
+
+        org.bukkit.block.Block sampleBlock = null;
+        for (int y = sampleStartY; y < maxHeight; y++) {
+            org.bukkit.block.Block candidate = world.getBlockAt(x, y, z);
+            if (candidate.getType().isAir()) {
+                sampleBlock = candidate;
+                break;
+            }
+        }
+
+        if (sampleBlock == null) {
+            sampleBlock = surfaceBlock;
+        }
+
+        return (int) sampleBlock.getLightFromBlocks();
     }
 
     private record PollutionStats(double ratio, int blockCount) {}
