@@ -376,27 +376,36 @@ public final class SelectionOutline {
             double minZEdge = minZ - EDGE_OFFSET;
             double maxZEdge = maxZ + 1 + EDGE_OFFSET;
 
-            double[] verticalSpan = new double[]{minYEdge, maxYEdge};
-            double[] xSpan = new double[]{minXEdge, maxXEdge};
-            double[] zSpan = new double[]{minZEdge, maxZEdge};
+            double[] xCenters = centers(minX, maxX);
+            double[] yCenters = centers(minY, maxY);
+            double[] zCenters = centers(minZ, maxZ);
+            double[] xEdgesAll = edgesAll(minX, maxX);
+            double[] yEdgesAll = edgesAll(minY, maxY);
+            double[] zEdgesAll = edgesAll(minZ, maxZ);
 
             if (x == minX) {
-                addFacePoints(points, world, Axis.X, minXEdge, verticalSpan, zSpan);
+                addFacePoints(points, world, Axis.X, minXEdge, yCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.X, minXEdge, yEdgesAll, zCenters);
             }
             if (x == maxX) {
-                addFacePoints(points, world, Axis.X, maxXEdge, verticalSpan, zSpan);
+                addFacePoints(points, world, Axis.X, maxXEdge, yCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.X, maxXEdge, yEdgesAll, zCenters);
             }
             if (y == minY) {
-                addFacePoints(points, world, Axis.Y, minYEdge, xSpan, zSpan);
+                addFacePoints(points, world, Axis.Y, minYEdge, xCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.Y, minYEdge, xEdgesAll, zCenters);
             }
             if (y == maxY) {
-                addFacePoints(points, world, Axis.Y, maxYEdge, xSpan, zSpan);
+                addFacePoints(points, world, Axis.Y, maxYEdge, xCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.Y, maxYEdge, xEdgesAll, zCenters);
             }
             if (z == minZ) {
-                addFacePoints(points, world, Axis.Z, minZEdge, xSpan, verticalSpan);
+                addFacePoints(points, world, Axis.Z, minZEdge, xEdgesAll, yCenters);
+                addFacePoints(points, world, Axis.Z, minZEdge, xCenters, yEdgesAll);
             }
             if (z == maxZ) {
-                addFacePoints(points, world, Axis.Z, maxZEdge, xSpan, verticalSpan);
+                addFacePoints(points, world, Axis.Z, maxZEdge, xEdgesAll, yCenters);
+                addFacePoints(points, world, Axis.Z, maxZEdge, xCenters, yEdgesAll);
             }
             return;
         }
@@ -491,6 +500,32 @@ public final class SelectionOutline {
             return edges[0];
         }
         return fallback;
+    }
+
+    private static double[] centers(int min, int max) {
+        if (min > max) {
+            return new double[0];
+        }
+        int length = max - min + 1;
+        double[] values = new double[length];
+        for (int i = 0; i < length; i++) {
+            values[i] = min + i + 0.5;
+        }
+        return values;
+    }
+
+    private static double[] edgesAll(int min, int max) {
+        if (min > max) {
+            return new double[0];
+        }
+        int interior = Math.max(0, max - min);
+        double[] values = new double[interior + 2];
+        values[0] = min - EDGE_OFFSET;
+        for (int i = 1; i <= interior; i++) {
+            values[i] = min + i;
+        }
+        values[values.length - 1] = max + 1 + EDGE_OFFSET;
+        return values;
     }
 
     private static void addFacePoints(List<Location> points,
