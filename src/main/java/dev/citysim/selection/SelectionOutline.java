@@ -15,6 +15,8 @@ public final class SelectionOutline {
     public static final int DEFAULT_MAX_OUTLINE_PARTICLES = 1500;
     public static final boolean DEFAULT_SIMPLE_OUTLINE_MIDPOINTS = true;
 
+    private static final double EDGE_OFFSET = 0.01;
+
     private SelectionOutline() {
     }
 
@@ -80,17 +82,17 @@ public final class SelectionOutline {
         }
 
         for (int x = minX; x <= maxX; x++) {
-            addPoint(points, center(world, x, y, minZ));
+            addOutlinePoints(points, world, x, y, minZ, minX, maxX, y, y, minZ, maxZ, false);
             if (minZ != maxZ) {
-                addPoint(points, center(world, x, y, maxZ));
+                addOutlinePoints(points, world, x, y, maxZ, minX, maxX, y, y, minZ, maxZ, false);
             }
         }
 
         if (maxZ > minZ + 1 || minX == maxX) {
             for (int z = minZ + 1; z <= maxZ - 1; z++) {
-                addPoint(points, center(world, minX, y, z));
+                addOutlinePoints(points, world, minX, y, z, minX, maxX, y, y, minZ, maxZ, false);
                 if (minX != maxX) {
-                    addPoint(points, center(world, maxX, y, z));
+                    addOutlinePoints(points, world, maxX, y, z, minX, maxX, y, y, minZ, maxZ, false);
                 }
             }
         }
@@ -105,10 +107,10 @@ public final class SelectionOutline {
             if (!limited.contains(last)) {
                 limited.add(last);
             }
-            ensureCorner(limited, center(world, minX, y, minZ));
-            ensureCorner(limited, center(world, minX, y, maxZ));
-            ensureCorner(limited, center(world, maxX, y, minZ));
-            ensureCorner(limited, center(world, maxX, y, maxZ));
+            ensureCorner(limited, outlineLocation(world, minX, y, minZ, minX, maxX, y, y, minZ, maxZ, false));
+            ensureCorner(limited, outlineLocation(world, minX, y, maxZ, minX, maxX, y, y, minZ, maxZ, false));
+            ensureCorner(limited, outlineLocation(world, maxX, y, minZ, minX, maxX, y, y, minZ, maxZ, false));
+            ensureCorner(limited, outlineLocation(world, maxX, y, maxZ, minX, maxX, y, y, minZ, maxZ, false));
             return limited;
         }
 
@@ -164,7 +166,7 @@ public final class SelectionOutline {
         for (int x : xCorners) {
             for (int y : yCorners) {
                 for (int z : zCorners) {
-                    points.add(center(world, x, y, z));
+                    addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                 }
             }
         }
@@ -173,7 +175,7 @@ public final class SelectionOutline {
             for (int x = minX + 1; x <= maxX - 1; x++) {
                 for (int y : yCorners) {
                     for (int z : zCorners) {
-                        points.add(center(world, x, y, z));
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -183,7 +185,7 @@ public final class SelectionOutline {
             for (int z = minZ + 1; z <= maxZ - 1; z++) {
                 for (int x : xCorners) {
                     for (int y : yCorners) {
-                        points.add(center(world, x, y, z));
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -193,7 +195,7 @@ public final class SelectionOutline {
             for (int y = minY + 1; y <= maxY - 1; y++) {
                 for (int x : xCorners) {
                     for (int z : zCorners) {
-                        points.add(center(world, x, y, z));
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -228,7 +230,7 @@ public final class SelectionOutline {
             for (int x : xCorners) {
                 for (int z : zCorners) {
                     for (int y = startY; y <= topY; y++) {
-                        addPoint(points, center(world, x, y, z));
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -252,7 +254,7 @@ public final class SelectionOutline {
                     for (int sampleY : sampleYs) {
                         int y = clamp(sampleY, minY, maxY);
                         for (int z : zCorners) {
-                            addPoint(points, center(world, sampleX, y, z));
+                            addOutlinePoints(points, world, sampleX, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                         }
                     }
                 }
@@ -264,7 +266,7 @@ public final class SelectionOutline {
                     for (int sampleY : sampleYs) {
                         int y = clamp(sampleY, minY, maxY);
                         for (int x : xCorners) {
-                            addPoint(points, center(world, x, y, sampleZ));
+                            addOutlinePoints(points, world, x, y, sampleZ, minX, maxX, minY, maxY, minZ, maxZ, true);
                         }
                     }
                 }
@@ -273,9 +275,9 @@ public final class SelectionOutline {
             if (maxX > minX) {
                 for (int sampleY : sampleYs) {
                     int y = clamp(sampleY, minY, maxY);
-                    addPoint(points, center(world, midX, y, minZ));
+                    addOutlinePoints(points, world, midX, y, minZ, minX, maxX, minY, maxY, minZ, maxZ, true);
                     if (minZ != maxZ) {
-                        addPoint(points, center(world, midX, y, maxZ));
+                        addOutlinePoints(points, world, midX, y, maxZ, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -283,9 +285,9 @@ public final class SelectionOutline {
             if (maxZ > minZ) {
                 for (int sampleY : sampleYs) {
                     int y = clamp(sampleY, minY, maxY);
-                    addPoint(points, center(world, minX, y, midZ));
+                    addOutlinePoints(points, world, minX, y, midZ, minX, maxX, minY, maxY, minZ, maxZ, true);
                     if (minX != maxX) {
-                        addPoint(points, center(world, maxX, y, midZ));
+                        addOutlinePoints(points, world, maxX, y, midZ, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -294,7 +296,7 @@ public final class SelectionOutline {
                 int clampedMidY = clamp(midY, minY, maxY);
                 for (int x : xCorners) {
                     for (int z : zCorners) {
-                        addPoint(points, center(world, x, clampedMidY, z));
+                        addOutlinePoints(points, world, x, clampedMidY, z, minX, maxX, minY, maxY, minZ, maxZ, true);
                     }
                 }
             }
@@ -351,6 +353,111 @@ public final class SelectionOutline {
         }
     }
 
+    private static void addOutlinePoints(List<Location> points,
+                                         World world,
+                                         int x,
+                                         int y,
+                                         int z,
+                                         int minX,
+                                         int maxX,
+                                         int minY,
+                                         int maxY,
+                                         int minZ,
+                                         int maxZ,
+                                         boolean offsetY) {
+        if (world == null) {
+            return;
+        }
+        double[] xEdges = axisEdges(x, minX, maxX);
+        double[] yEdges = offsetY ? axisEdges(y, minY, maxY) : new double[]{y + 0.5};
+        double[] zEdges = axisEdges(z, minZ, maxZ);
+
+        if (x == minX) {
+            addFacePoints(points, world, Axis.X, xEdges[0], yEdges, zEdges);
+        }
+        if (x == maxX) {
+            addFacePoints(points, world, Axis.X, xEdges[1], yEdges, zEdges);
+        }
+        if (offsetY && y == minY) {
+            addFacePoints(points, world, Axis.Y, yEdges[0], xEdges, zEdges);
+        }
+        if (offsetY && y == maxY) {
+            addFacePoints(points, world, Axis.Y, yEdges[yEdges.length - 1], xEdges, zEdges);
+        }
+        if (z == minZ) {
+            addFacePoints(points, world, Axis.Z, zEdges[0], xEdges, yEdges);
+        }
+        if (z == maxZ) {
+            addFacePoints(points, world, Axis.Z, zEdges[zEdges.length - 1], xEdges, yEdges);
+        }
+    }
+
+    private static Location outlineLocation(World world,
+                                            int x,
+                                            int y,
+                                            int z,
+                                            int minX,
+                                            int maxX,
+                                            int minY,
+                                            int maxY,
+                                            int minZ,
+                                            int maxZ,
+                                            boolean offsetY) {
+        double[] yEdges = offsetY ? axisEdges(y, minY, maxY) : new double[]{y + 0.5};
+        double[] xEdges = axisEdges(x, minX, maxX);
+        double[] zEdges = axisEdges(z, minZ, maxZ);
+        double xCoord = xEdges.length > 0 ? xEdges[0] : x + 0.5;
+        double yCoord = yEdges.length > 0 ? yEdges[0] : y + 0.5;
+        double zCoord = zEdges.length > 0 ? zEdges[0] : z + 0.5;
+        return new Location(world, xCoord, yCoord, zCoord);
+    }
+
+    private static double[] axisEdges(int coordinate, int min, int max) {
+        double lower;
+        double upper;
+        if (min == max) {
+            lower = coordinate - EDGE_OFFSET;
+            upper = coordinate + 1 + EDGE_OFFSET;
+        } else {
+            lower = coordinate == min ? coordinate - EDGE_OFFSET : coordinate;
+            upper = coordinate == max ? coordinate + 1 + EDGE_OFFSET : coordinate + 1;
+        }
+        return new double[]{lower, upper};
+    }
+
+    private static void addFacePoints(List<Location> points,
+                                      World world,
+                                      Axis axis,
+                                      double fixedCoord,
+                                      double[] firstEdges,
+                                      double[] secondEdges) {
+        for (double first : firstEdges) {
+            for (double second : secondEdges) {
+                Location location;
+                switch (axis) {
+                    case X:
+                        location = new Location(world, fixedCoord, first, second);
+                        break;
+                    case Y:
+                        location = new Location(world, first, fixedCoord, second);
+                        break;
+                    case Z:
+                        location = new Location(world, first, second, fixedCoord);
+                        break;
+                    default:
+                        continue;
+                }
+                addPoint(points, location);
+            }
+        }
+    }
+
+    private enum Axis {
+        X,
+        Y,
+        Z
+    }
+
     private static int clamp(int value, int min, int max) {
         if (value < min) {
             return min;
@@ -361,7 +468,4 @@ public final class SelectionOutline {
         return value;
     }
 
-    private static Location center(World world, int x, int y, int z) {
-        return new Location(world, x + 0.5, y + 0.5, z + 0.5);
-    }
 }
