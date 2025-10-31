@@ -9,7 +9,7 @@ public class HappinessCalculator {
     private static final double TRANSIT_EASING_EXPONENT = 0.5;
     private static final double NATURE_TARGET_RATIO = 0.10;
     private static final int NATURE_MIN_EFFECTIVE_SAMPLES = 36;
-    private static final double HOUSING_SURPLUS_CAP = 1.5;
+    private static final double HOUSING_SURPLUS_CAP = 1.2;
     private static final double HOUSING_SHORTAGE_FLOOR = 0.6;
 
     private double lightNeutral = 2.0;
