@@ -21,8 +21,8 @@ shares these numbers in easy-to-read displays so players can instantly tell whet
 2. **Create the city** – Once both corners are selected, run `/city create <name>`. CitySim checks that the box sits in your
    current world and saves it as a new city. No selection ready yet? Run `/city create` anyway and add the shape afterwards.
 3. **Add more areas (optional)** – Stand in the next spot, mark its corners with `/city wand`, then run `/city edit <cityId>
-   addcuboid`. Grab the `cityId` from `/city list`. To shrink the city, stand in the chunk to remove and use `/city edit <cityId>
-   removecuboid`.
+   cuboid add` (or the shortcut `/city expand <cityId>`). Grab the `cityId` from `/city list`. To shrink the city, stand in the
+   chunk to remove and use `/city edit <cityId> cuboid remove`.
 4. **Tune city settings** – `/city edit <cityId> name <new name>` renames the city. `/city edit <cityId> highrise <true|false>`
    flips the highrise switch (loosens crowding limits for tall builds). `/city edit <cityId> station <add|remove|set|clear>
    <amount>` changes how many transit stations the score counts.
@@ -73,8 +73,11 @@ java -version  # should report a Java 21 runtime
 /city list                                       # show every saved city with its ID
 /city remove <cityId>                            # delete a city and all of its tracked areas (admin only)
 /city edit <cityId> name <new name>              # rename an existing city (admin only)
-/city edit <cityId> addcuboid                    # add your current selection as another chunk of the city (admin only)
-/city edit <cityId> removecuboid                 # remove the chunk you are standing in from the city (admin only)
+/city edit <cityId> cuboid add                   # add your current selection as another chunk of the city (admin only)
+/city edit <cityId> cuboid remove                # remove the chunk you are standing in from the city (admin only)
+/city edit <cityId> cuboid list                  # list every cuboid and its bounds for that city (admin only)
+/city edit <cityId> cuboid show [on|off]         # toggle the live particle preview of a city's cuboids (admin only)
+/city expand <cityId>                            # shortcut for /city edit <cityId> cuboid add (admin only)
 /city edit <cityId> highrise <true|false>        # relax or tighten crowding limits for tall builds (admin only)
 /city edit <cityId> station <add|remove|set|clear> [amount]  # adjust how many transit stations the city counts (admin only; available when `stations.counting_mode` is `manual` in config.yml)
 /city wand ymode <full|span>                     # choose whether selections cover the full world height or just the Y range you click
@@ -95,7 +98,7 @@ for tweaking:
   - `stats_interval_ticks` / `stats_initial_delay_ticks` – Interval and initial delay (ticks) between stat refreshes.
   - `bossbar_interval_ticks` – How often the boss bar display is updated.
   - `max_cities_per_tick`, `max_entity_chunks_per_tick`, `max_bed_blocks_per_tick` – Workload caps that keep scans lightweight.
-- **`selection`** – Governs the golden-axe preview particles and `/city edit ... showcuboids` outlines.
+- **`selection`** – Governs the golden-axe preview particles and `/city edit ... cuboid show` outlines.
   - `max_outline_particles` – Maximum particle count for the detailed edge loop. If a cuboid would exceed this number, the plugin
     switches to light-weight corner columns (with optional mid-edge markers) so huge selections stay readable without flooding
     the client.

@@ -9,6 +9,7 @@ import dev.citysim.cmd.subcommand.CreateCityCommand;
 import dev.citysim.cmd.subcommand.DebugCommand;
 import dev.citysim.cmd.subcommand.DisplayCommand;
 import dev.citysim.cmd.subcommand.EditCityCommand;
+import dev.citysim.cmd.subcommand.ExpandCityCommand;
 import dev.citysim.cmd.subcommand.ListCitiesCommand;
 import dev.citysim.cmd.subcommand.ReloadCommand;
 import dev.citysim.cmd.subcommand.RemoveCityCommand;
@@ -50,7 +51,9 @@ public class CityCommand implements CommandExecutor {
         register(new CreateCityCommand(cityManager, statsService));
         register(new ListCitiesCommand(cityManager));
         register(new RemoveCityCommand(cityManager));
-        register(new EditCityCommand(cityManager, statsService));
+        EditCityCommand editCityCommand = new EditCityCommand(cityManager, statsService);
+        register(editCityCommand);
+        register(new ExpandCityCommand(cityManager, editCityCommand));
         register(new StatsCommand(cityManager, statsService));
         register(new DisplayCommand(titleService, bossBarService, scoreboardService));
         register(new TopCommand(cityManager));
