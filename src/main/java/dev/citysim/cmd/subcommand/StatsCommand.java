@@ -72,17 +72,17 @@ public class StatsCommand implements CitySubcommand {
 
         String safeName = AdventureMessages.escapeMiniMessage(city.name);
         if (hb.isGhostTown()) {
-            String msg = """
-            <gray><b>%s — City stats</b></gray>
+            String msg = ("""
+            <white><b>%s — City stats</b></white>
             <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
             %s
             <gold>Happiness:</gold> N/A (ghost town)
             %s
-            """.formatted(
+            """).formatted(
                     safeName, city.population, city.employed, city.unemployed,
                     homesLine,
                     hb.dominantMessage()
-            );
+            ).stripTrailing();
             player.sendMessage(AdventureMessages.mini(msg));
             return true;
         }
@@ -98,18 +98,18 @@ public class StatsCommand implements CitySubcommand {
             breakdownLines += negativeLines;
         }
 
-        String msg = """
-        <gray><b>%s — City stats</b></gray>
+        String msg = ("""
+        <white><b>%s — City stats</b></white>
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
         %s
-        <gold>Happiness:</gold> %d%%  <gray>(base 50)</gray>
+        <gold>Happiness:</gold> %d%%  <white>(base 50)</white>
         %s
-        """.formatted(
+        """).formatted(
                 safeName, city.population, city.employed, city.unemployed,
                 homesLine,
                 hb.total,
                 breakdownLines
-        );
+        ).stripTrailing();
         player.sendMessage(AdventureMessages.mini(msg));
         return true;
     }

@@ -10,10 +10,10 @@ public final class CommandMessages {
     }
 
     public static Component usage(String message) {
-        return AdventureMessages.colored(message, NamedTextColor.YELLOW);
+        return AdventureMessages.colored(message, NamedTextColor.WHITE);
     }
 
     public static Component help(String message) {
-        return AdventureMessages.colored(message, NamedTextColor.GRAY);
+        return AdventureMessages.colored(message, NamedTextColor.WHITE);
     }
 }

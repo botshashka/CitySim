@@ -70,7 +70,10 @@ public class TopCommand implements CitySubcommand {
             }
             sb.append(String.format("%2d. %s  —  %s\n", i + 1, city.name, details));
         }
-        player.sendMessage(Component.text(sb.toString(), NamedTextColor.GRAY));
+        if (sb.length() > 0 && sb.charAt(sb.length() - 1) == '\n') {
+            sb.setLength(sb.length() - 1);
+        }
+        player.sendMessage(Component.text(sb.toString(), NamedTextColor.WHITE));
         return true;
     }
 
