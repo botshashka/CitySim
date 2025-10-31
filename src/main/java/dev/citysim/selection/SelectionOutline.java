@@ -558,6 +558,12 @@ public final class SelectionOutline {
         }
     }
 
+    private static final double QUANTIZE_EPSILON = 1e-6;
+
+    private static double quantize(double coordinate) {
+        return Math.round(coordinate / QUANTIZE_EPSILON) * QUANTIZE_EPSILON;
+    }
+
     private static final class FaceTracker {
         private final EnumMap<Axis, Set<Double>> processed = new EnumMap<>(Axis.class);
 
