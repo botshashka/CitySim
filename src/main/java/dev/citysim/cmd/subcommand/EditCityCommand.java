@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +39,9 @@ public class EditCityCommand implements CitySubcommand {
     private static final int MAX_PARTICLES_PER_TICK = 50;
     private static final int CUBOID_PREVIEW_PERIOD_TICKS = 5;
     private static final Map<UUID, CuboidPreviewTask> ACTIVE_CUBOID_PREVIEWS = new ConcurrentHashMap<>();
+    private static final Component MISSING_WORLD_WARNING = Component.text()
+            .append(Component.text("Some cuboids could not be shown because their worlds are not loaded.", NamedTextColor.YELLOW))
+            .build();
 
     private static final List<Component> HELP = List.of(
             CommandMessages.help("/city edit <cityId> name <new name>"),
@@ -219,6 +223,7 @@ public class EditCityCommand implements CitySubcommand {
                     .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + mode + ").", NamedTextColor.GREEN))
                     .build();
             player.sendMessage(message);
+            refreshShowCuboids(city);
             SelectionListener.clear(player);
         } catch (IllegalArgumentException ex) {
             player.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
@@ -270,6 +275,7 @@ public class EditCityCommand implements CitySubcommand {
                 .append(Component.text(city.name, NamedTextColor.GREEN))
                 .append(Component.text(".", NamedTextColor.GREEN))
                 .build());
+        refreshShowCuboids(city);
         return true;
     }
 
@@ -322,23 +328,12 @@ public class EditCityCommand implements CitySubcommand {
             return true;
         }
 
-        Map<World, List<Cuboid>> cuboidsByWorld = new HashMap<>();
-        boolean missingWorld = false;
-        for (Cuboid cuboid : city.cuboids) {
-            if (cuboid == null || cuboid.world == null) {
-                continue;
-            }
-            World world = Bukkit.getWorld(cuboid.world);
-            if (world == null) {
-                missingWorld = true;
-                continue;
-            }
-            cuboidsByWorld.computeIfAbsent(world, ignored -> new ArrayList<>()).add(cuboid);
-        }
+        CuboidPreviewSources sources = buildCuboidPreviewSources(city);
+        Map<World, List<Cuboid>> cuboidsByWorld = sources.cuboidsByWorld();
 
         if (cuboidsByWorld.isEmpty()) {
             Component message;
-            if (missingWorld) {
+            if (sources.missingWorld()) {
                 message = Component.text()
                         .append(Component.text("Unable to preview cuboids because their worlds are not loaded.", NamedTextColor.RED))
                         .build();
@@ -357,10 +352,14 @@ public class EditCityCommand implements CitySubcommand {
             stopPreview(player, existing, false);
         }
 
-        CuboidPreviewTask task = new CuboidPreviewTask(player.getUniqueId(), city.name, cuboidsByWorld);
+        CuboidPreviewTask task = new CuboidPreviewTask(player.getUniqueId(), city.id, city.name, cuboidsByWorld);
         task.refreshFor(player.getLocation().getBlockY());
         ACTIVE_CUBOID_PREVIEWS.put(player.getUniqueId(), task);
         task.runTaskTimer(cityManager.getPlugin(), 0L, CUBOID_PREVIEW_PERIOD_TICKS);
+
+        if (task.registerMissingWorld(sources.missingWorld())) {
+            player.sendMessage(MISSING_WORLD_WARNING);
+        }
 
         player.sendMessage(Component.text()
                 .append(Component.text("Showing cuboids for ", NamedTextColor.GREEN))
@@ -371,6 +370,80 @@ public class EditCityCommand implements CitySubcommand {
                 .build());
 
         return true;
+    }
+
+    private CuboidPreviewSources buildCuboidPreviewSources(City city) {
+        Map<World, List<Cuboid>> cuboidsByWorld = new HashMap<>();
+        boolean missingWorld = false;
+        if (city == null || city.cuboids == null) {
+            return new CuboidPreviewSources(cuboidsByWorld, false);
+        }
+        for (Cuboid cuboid : city.cuboids) {
+            if (cuboid == null || cuboid.world == null) {
+                continue;
+            }
+            World world = Bukkit.getWorld(cuboid.world);
+            if (world == null) {
+                missingWorld = true;
+                continue;
+            }
+            cuboidsByWorld.computeIfAbsent(world, ignored -> new ArrayList<>()).add(cuboid);
+        }
+        return new CuboidPreviewSources(cuboidsByWorld, missingWorld);
+    }
+
+    private void refreshShowCuboids(City city) {
+        if (city == null) {
+            return;
+        }
+        CuboidPreviewSources sources = buildCuboidPreviewSources(city);
+        Map<World, List<Cuboid>> cuboidsByWorld = sources.cuboidsByWorld();
+
+        List<UUID> watchers = new ArrayList<>();
+        for (Map.Entry<UUID, CuboidPreviewTask> entry : ACTIVE_CUBOID_PREVIEWS.entrySet()) {
+            CuboidPreviewTask task = entry.getValue();
+            if (task != null && task.isForCity(city.id)) {
+                watchers.add(entry.getKey());
+            }
+        }
+
+        if (watchers.isEmpty()) {
+            return;
+        }
+
+        for (UUID watcherId : watchers) {
+            CuboidPreviewTask task = ACTIVE_CUBOID_PREVIEWS.get(watcherId);
+            if (task == null || !task.isForCity(city.id)) {
+                continue;
+            }
+
+            if (cuboidsByWorld.isEmpty()) {
+                Player viewer = Bukkit.getPlayer(watcherId);
+                if (viewer == null || !viewer.isOnline()) {
+                    task.cancel();
+                    continue;
+                }
+                stopPreview(viewer, task, false);
+                viewer.sendMessage(Component.text()
+                        .append(Component.text("City '", NamedTextColor.YELLOW))
+                        .append(Component.text(city.name, NamedTextColor.YELLOW))
+                        .append(Component.text("' has no cuboids to preview; hiding outline.", NamedTextColor.YELLOW))
+                        .build());
+                continue;
+            }
+
+            Player viewer = Bukkit.getPlayer(watcherId);
+            if (viewer == null || !viewer.isOnline()) {
+                task.cancel();
+                continue;
+            }
+
+            task.updateCuboids(cuboidsByWorld);
+            task.refreshFor(viewer.getLocation().getBlockY());
+            if (task.registerMissingWorld(sources.missingWorld())) {
+                viewer.sendMessage(MISSING_WORLD_WARNING);
+            }
+        }
     }
 
     private boolean handleListCuboids(CommandSender sender, String cityId) {
@@ -447,6 +520,24 @@ public class EditCityCommand implements CitySubcommand {
         CuboidPreviewTask task = ACTIVE_CUBOID_PREVIEWS.remove(player.getUniqueId());
         if (task != null) {
             task.cancel();
+        }
+    }
+
+    private static final class CuboidPreviewSources {
+        private final Map<World, List<Cuboid>> cuboidsByWorld;
+        private final boolean missingWorld;
+
+        private CuboidPreviewSources(Map<World, List<Cuboid>> cuboidsByWorld, boolean missingWorld) {
+            this.cuboidsByWorld = cuboidsByWorld;
+            this.missingWorld = missingWorld;
+        }
+
+        private Map<World, List<Cuboid>> cuboidsByWorld() {
+            return cuboidsByWorld;
+        }
+
+        private boolean missingWorld() {
+            return missingWorld;
         }
     }
 
@@ -677,23 +768,58 @@ public class EditCityCommand implements CitySubcommand {
 
     private final class CuboidPreviewTask extends BukkitRunnable {
         private final UUID playerId;
+        private final String cityId;
         private final String cityName;
-        private final Map<World, List<Cuboid>> cuboidsByWorld;
+        private final Map<World, List<Cuboid>> cuboidsByWorld = new HashMap<>();
         private final Map<World, List<Location>> outlines = new HashMap<>();
         private final Map<World, Queue<Location>> queues = new HashMap<>();
         private int lastViewerY = Integer.MIN_VALUE;
+        private boolean warnedMissingWorld = false;
 
-        private CuboidPreviewTask(UUID playerId, String cityName, Map<World, List<Cuboid>> cuboidsByWorld) {
+        private CuboidPreviewTask(UUID playerId, String cityId, String cityName, Map<World, List<Cuboid>> cuboidsByWorld) {
             this.playerId = playerId;
+            this.cityId = cityId;
             this.cityName = cityName;
-            this.cuboidsByWorld = cuboidsByWorld;
+            updateCuboids(cuboidsByWorld);
         }
 
         private String getCityName() {
             return cityName;
         }
 
-        private void refreshFor(int viewerY) {
+        boolean isForCity(String cityId) {
+            return Objects.equals(this.cityId, cityId);
+        }
+
+        void updateCuboids(Map<World, List<Cuboid>> updated) {
+            cuboidsByWorld.clear();
+            if (updated != null) {
+                for (Map.Entry<World, List<Cuboid>> entry : updated.entrySet()) {
+                    World world = entry.getKey();
+                    List<Cuboid> cuboids = entry.getValue();
+                    if (world == null || cuboids == null || cuboids.isEmpty()) {
+                        continue;
+                    }
+                    cuboidsByWorld.put(world, new ArrayList<>(cuboids));
+                }
+            }
+            outlines.clear();
+            queues.clear();
+        }
+
+        boolean registerMissingWorld(boolean missingWorld) {
+            if (!missingWorld) {
+                warnedMissingWorld = false;
+                return false;
+            }
+            if (warnedMissingWorld) {
+                return false;
+            }
+            warnedMissingWorld = true;
+            return true;
+        }
+
+        void refreshFor(int viewerY) {
             rebuild(viewerY);
         }
 
