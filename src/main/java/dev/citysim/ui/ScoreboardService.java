@@ -9,8 +9,6 @@ import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionType;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
@@ -31,8 +29,6 @@ public class ScoreboardService {
             new char[]{'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','k','l','m','n','o','r'};
     private static final int OBJECTIVE_TITLE_LIMIT = 32;
     private static final String ELLIPSIS = "…";
-    private static final MiniMessage MINI = MiniMessage.miniMessage();
-    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
     public enum Mode { COMPACT, FULL }
 
@@ -230,26 +226,20 @@ public class ScoreboardService {
             raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
         }
 
-        if (mode == Mode.FULL) {
+        if (mode == Mode.FULL && !ghostTown) {
             raw.add(ChatColor.DARK_GRAY + " ");
-            if (ghostTown) {
-                raw.add(ChatColor.GRAY + plainDominantMessage(breakdown));
-            } else {
-                ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
+            ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
 
-                for (ContributionLine line : contributionLists.positives()) {
+            for (ContributionLine line : contributionLists.positives()) {
+                raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
+            }
+
+            if (!contributionLists.negatives().isEmpty()) {
+                raw.add(ChatColor.DARK_GRAY + " ");
+                for (ContributionLine line : contributionLists.negatives()) {
                     raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
                 }
-
-                if (!contributionLists.negatives().isEmpty()) {
-                    raw.add(ChatColor.DARK_GRAY + " ");
-                    for (ContributionLine line : contributionLists.negatives()) {
-                        raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
-                    }
-                }
             }
-        } else if (ghostTown) {
-            raw.add(ChatColor.GRAY + plainDominantMessage(breakdown));
         }
 
         return decorateLines(raw);
@@ -312,17 +302,6 @@ public class ScoreboardService {
             }
         }
         return new ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
-    }
-
-    private String plainDominantMessage(HappinessBreakdown breakdown) {
-        if (breakdown == null) {
-            return "";
-        }
-        String message = breakdown.dominantMessage();
-        if (message == null || message.isBlank()) {
-            return "";
-        }
-        return PLAIN.serialize(MINI.deserialize(message));
     }
 
     private void applyLines(Objective objective, Scoreboard board, List<String> lines) {
