@@ -53,8 +53,25 @@ class HappinessCalculatorTest {
         assertEquals(cache.overcrowdingPenalty, breakdown.overcrowdingPenalty, 0.001);
         assertEquals(10.0, breakdown.naturePoints, 0.001);
         assertEquals(0.0, breakdown.pollutionPenalty, 0.001);
-        assertEquals(1.4, breakdown.housingPoints, 0.001);
+        assertEquals(4.0, breakdown.housingPoints, 0.001);
         assertEquals(5.0, breakdown.transitPoints, 0.001);
-        assertEquals(76, breakdown.total);
+        assertEquals(79, breakdown.total);
+    }
+
+    @Test
+    void rewardsHousingSurplusMoreGenerously() {
+        HappinessCalculator calculator = new HappinessCalculator();
+
+        City city = new City();
+        city.id = "surplus-city";
+        city.population = 329;
+        city.beds = 437;
+
+        City.BlockScanCache cache = new City.BlockScanCache();
+        cache.light = calculator.getLightNeutral();
+
+        HappinessBreakdown breakdown = calculator.calculate(city, cache);
+
+        assertEquals(6.57, breakdown.housingPoints, 0.01);
     }
 }
