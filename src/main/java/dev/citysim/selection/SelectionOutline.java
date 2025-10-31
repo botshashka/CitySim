@@ -19,6 +19,7 @@ public final class SelectionOutline {
     public static final boolean DEFAULT_SIMPLE_OUTLINE_MIDPOINTS = true;
 
     private static final double EDGE_OFFSET = 0.01;
+    private static final int DEFAULT_EDGE_POINT_TARGET = 32;
 
     private SelectionOutline() {
     }
@@ -59,32 +60,12 @@ public final class SelectionOutline {
         if (fullHeight) {
             int minWorldY = world.getMinHeight();
             int maxWorldY = world.getMaxHeight() - 1;
-            int clampedViewerY = clamp(viewerY, minWorldY, maxWorldY);
-            List<Location> outline = generateFullHeightColumns(
-                    world,
-                    minX,
-                    minWorldY,
-                    minZ,
-                    maxX,
-                    maxWorldY,
-                    maxZ,
-                    includeMidpoints,
-                    clampedViewerY,
-                    maxParticles
-            );
-            if (maxParticles > 0 && outline.size() > maxParticles) {
-                return limitPoints(outline, maxParticles);
-            }
-            return outline;
+            return generateEdgeOutline(world, minX, minWorldY, minZ, maxX, maxWorldY, maxZ, maxParticles);
         }
-        if (maxParticles <= 0) {
-            return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
+        if (minY == maxY) {
+            return generateHorizontalSlice(world, minX, minZ, maxX, maxZ, minY, maxParticles);
         }
-        long estimate = estimateFullOutlineParticles(minX, minY, minZ, maxX, maxY, maxZ);
-        if (estimate > maxParticles) {
-            return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
-        }
-        return generateFullOutline(world, minX, minY, minZ, maxX, maxY, maxZ);
+        return generateEdgeOutline(world, minX, minY, minZ, maxX, maxY, maxZ, maxParticles);
     }
 
     private static List<Location> limitPoints(List<Location> points, int maxParticles) {
@@ -101,72 +82,6 @@ public final class SelectionOutline {
             limited.add(last);
         }
         return limited;
-    }
-
-    private static List<Location> generateFullHeightColumns(World world,
-                                                            int minX,
-                                                            int minY,
-                                                            int minZ,
-                                                            int maxX,
-                                                            int maxY,
-                                                            int maxZ,
-                                                            boolean includeMidpoints,
-                                                            int viewerY,
-                                                            int maxParticles) {
-        List<Location> points = new ArrayList<>();
-        if (world == null || minX > maxX || minZ > maxZ) {
-            return points;
-        }
-
-        List<Integer> ySamples = new ArrayList<>();
-        int height = Math.max(1, maxY - minY + 1);
-        int targetSamples = Math.min(6, height);
-        for (int i = 0; i < targetSamples; i++) {
-            double fraction = targetSamples == 1 ? 0d : (double) i / (targetSamples - 1);
-            int sampleY = minY + (int) Math.round(fraction * (maxY - minY));
-            addIfAbsent(ySamples, clamp(sampleY, minY, maxY));
-        }
-        addIfAbsent(ySamples, clamp(viewerY, minY, maxY));
-        Collections.sort(ySamples);
-
-        List<int[]> columns = new ArrayList<>();
-        addColumn(columns, minX, minZ);
-        addColumn(columns, maxX, minZ);
-        addColumn(columns, minX, maxZ);
-        addColumn(columns, maxX, maxZ);
-
-        if (includeMidpoints) {
-            int midX = minX + (maxX - minX) / 2;
-            int midZ = minZ + (maxZ - minZ) / 2;
-            addColumn(columns, midX, minZ);
-            addColumn(columns, midX, maxZ);
-            addColumn(columns, minX, midZ);
-            addColumn(columns, maxX, midZ);
-            addColumn(columns, midX, midZ);
-        }
-
-        for (int[] column : columns) {
-            int columnX = column[0];
-            int columnZ = column[1];
-            for (int sampleY : ySamples) {
-                Location location = outlineLocation(world, columnX, sampleY, columnZ, minX, maxX, minY, maxY, minZ, maxZ, false);
-                addPoint(points, location);
-                if (maxParticles > 0 && points.size() >= maxParticles) {
-                    return points;
-                }
-            }
-        }
-
-        return points;
-    }
-
-    private static void addColumn(List<int[]> columns, int x, int z) {
-        for (int[] column : columns) {
-            if (column[0] == x && column[1] == z) {
-                return;
-            }
-        }
-        columns.add(new int[]{x, z});
     }
 
     private static List<Location> generateHorizontalSlice(World world,
@@ -215,6 +130,303 @@ public final class SelectionOutline {
         }
 
         return points;
+    }
+
+    private static List<Location> generateEdgeOutline(World world,
+                                                      int minX,
+                                                      int minY,
+                                                      int minZ,
+                                                      int maxX,
+                                                      int maxY,
+                                                      int maxZ,
+                                                      int maxParticles) {
+        List<Location> points = new ArrayList<>();
+        if (world == null || minX > maxX || minY > maxY || minZ > maxZ) {
+            return points;
+        }
+
+        int samplesPerEdge = 0;
+        if (maxParticles > 0) {
+            int allocated = maxParticles / 12;
+            if (allocated <= 0) {
+                samplesPerEdge = 2;
+            } else {
+                samplesPerEdge = Math.min(DEFAULT_EDGE_POINT_TARGET, Math.max(2, allocated));
+            }
+        }
+
+        EdgeEmissionContext context = new EdgeEmissionContext(world, minX, minY, minZ, maxX, maxY, maxZ, samplesPerEdge);
+        EDGE_CONTEXT.set(context);
+        try {
+            emitEdges(points, world, minX, minY, minZ, maxX, maxY, maxZ);
+            context.ensureCorners(points);
+        } finally {
+            EDGE_CONTEXT.remove();
+        }
+
+        if (maxParticles > 0 && points.size() > maxParticles) {
+            return limitEdgePoints(points, maxParticles, world, minX, maxX, minY, maxY, minZ, maxZ);
+        }
+
+        return points;
+    }
+
+    private static List<Location> limitEdgePoints(List<Location> points,
+                                                  int maxParticles,
+                                                  World world,
+                                                  int minX,
+                                                  int maxX,
+                                                  int minY,
+                                                  int maxY,
+                                                  int minZ,
+                                                  int maxZ) {
+        if (points.isEmpty() || maxParticles <= 0 || points.size() <= maxParticles) {
+            return points;
+        }
+
+        List<Location> limited = new ArrayList<>(maxParticles);
+        Set<Location> added = new HashSet<>();
+
+        int[] xCorners = axisValues(minX, maxX);
+        int[] yCorners = axisValues(minY, maxY);
+        int[] zCorners = axisValues(minZ, maxZ);
+
+        for (int x : xCorners) {
+            for (int y : yCorners) {
+                for (int z : zCorners) {
+                    if (limited.size() >= maxParticles) {
+                        break;
+                    }
+                    Location corner = outlineLocation(world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, false);
+                    if (corner != null && added.add(corner)) {
+                        limited.add(corner);
+                    }
+                }
+            }
+        }
+
+        for (Location point : points) {
+            if (limited.size() >= maxParticles) {
+                break;
+            }
+            if (added.add(point)) {
+                limited.add(point);
+            }
+        }
+
+        return limited;
+    }
+
+    private static final ThreadLocal<EdgeEmissionContext> EDGE_CONTEXT = new ThreadLocal<>();
+
+    private static void emitEdges(List<Location> points,
+                                  World world,
+                                  int minX,
+                                  int minY,
+                                  int minZ,
+                                  int maxX,
+                                  int maxY,
+                                  int maxZ) {
+        EdgeEmissionContext context = EDGE_CONTEXT.get();
+        if (context == null) {
+            return;
+        }
+
+        List<int[]> edges = new ArrayList<>();
+        Set<String> uniqueEdges = new HashSet<>();
+
+        if (minY < maxY) {
+            int[] xValues = axisValues(minX, maxX);
+            int[] zValues = axisValues(minZ, maxZ);
+            for (int x : xValues) {
+                for (int z : zValues) {
+                    addEdge(edges, uniqueEdges, x, minY, z, x, maxY, z);
+                }
+            }
+        }
+
+        addRectangleEdges(edges, uniqueEdges, minX, minZ, maxX, maxZ, minY);
+        if (minY < maxY) {
+            addRectangleEdges(edges, uniqueEdges, minX, minZ, maxX, maxZ, maxY);
+        }
+
+        for (int[] edge : edges) {
+            double step = context.stepFor(edge[0], edge[1], edge[2], edge[3], edge[4], edge[5]);
+            emitLine(points, world, edge[0], edge[1], edge[2], edge[3], edge[4], edge[5], step);
+        }
+    }
+
+    private static void addRectangleEdges(List<int[]> edges,
+                                          Set<String> uniqueEdges,
+                                          int minX,
+                                          int minZ,
+                                          int maxX,
+                                          int maxZ,
+                                          int y) {
+        addEdge(edges, uniqueEdges, minX, y, minZ, maxX, y, minZ);
+        addEdge(edges, uniqueEdges, minX, y, maxZ, maxX, y, maxZ);
+        addEdge(edges, uniqueEdges, minX, y, minZ, minX, y, maxZ);
+        addEdge(edges, uniqueEdges, maxX, y, minZ, maxX, y, maxZ);
+    }
+
+    private static void addEdge(List<int[]> edges,
+                                Set<String> uniqueEdges,
+                                int x1,
+                                int y1,
+                                int z1,
+                                int x2,
+                                int y2,
+                                int z2) {
+        String key = edgeKey(x1, y1, z1, x2, y2, z2);
+        if (uniqueEdges.add(key)) {
+            edges.add(new int[]{x1, y1, z1, x2, y2, z2});
+        }
+    }
+
+    private static String edgeKey(int x1, int y1, int z1, int x2, int y2, int z2) {
+        if (x1 > x2 || (x1 == x2 && (y1 > y2 || (y1 == y2 && z1 > z2)))) {
+            int tmpX = x1;
+            int tmpY = y1;
+            int tmpZ = z1;
+            x1 = x2;
+            y1 = y2;
+            z1 = z2;
+            x2 = tmpX;
+            y2 = tmpY;
+            z2 = tmpZ;
+        }
+        return x1 + ":" + y1 + ":" + z1 + "-" + x2 + ":" + y2 + ":" + z2;
+    }
+
+    private static void emitLine(List<Location> points,
+                                 World world,
+                                 int x1,
+                                 int y1,
+                                 int z1,
+                                 int x2,
+                                 int y2,
+                                 int z2,
+                                 double step) {
+        EdgeEmissionContext context = EDGE_CONTEXT.get();
+        if (context == null) {
+            return;
+        }
+
+        int distance = Math.max(Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)), Math.abs(z2 - z1));
+
+        context.addSample(points, x1, y1, z1);
+
+        if (distance == 0) {
+            return;
+        }
+
+        double stepSize = Math.max(1d, step);
+        for (double travelled = stepSize; travelled < distance; travelled += stepSize) {
+            double fraction = travelled / distance;
+            int currentX = x1 + (int) Math.round((x2 - x1) * fraction);
+            int currentY = y1 + (int) Math.round((y2 - y1) * fraction);
+            int currentZ = z1 + (int) Math.round((z2 - z1) * fraction);
+            context.addSample(points, currentX, currentY, currentZ);
+        }
+
+        context.addSample(points, x2, y2, z2);
+    }
+
+    private static final class EdgeEmissionContext {
+        private final World world;
+        private final int minX;
+        private final int minY;
+        private final int minZ;
+        private final int maxX;
+        private final int maxY;
+        private final int maxZ;
+        private final int samplesPerEdge;
+        private final Set<EdgeSampleKey> emitted = new HashSet<>();
+
+        private EdgeEmissionContext(World world,
+                                    int minX,
+                                    int minY,
+                                    int minZ,
+                                    int maxX,
+                                    int maxY,
+                                    int maxZ,
+                                    int samplesPerEdge) {
+            this.world = world;
+            this.minX = minX;
+            this.minY = minY;
+            this.minZ = minZ;
+            this.maxX = maxX;
+            this.maxY = maxY;
+            this.maxZ = maxZ;
+            this.samplesPerEdge = samplesPerEdge;
+        }
+
+        private double stepFor(int x1, int y1, int z1, int x2, int y2, int z2) {
+            int distance = Math.max(Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)), Math.abs(z2 - z1));
+            if (distance <= 0) {
+                return 1d;
+            }
+            if (samplesPerEdge <= 1) {
+                int targetPoints = Math.max(2, DEFAULT_EDGE_POINT_TARGET);
+                return Math.max(1d, distance / (double) (targetPoints - 1));
+            }
+            return Math.max(1d, distance / (double) (samplesPerEdge - 1));
+        }
+
+        private void ensureCorners(List<Location> points) {
+            int[] xValues = axisValues(minX, maxX);
+            int[] yValues = axisValues(minY, maxY);
+            int[] zValues = axisValues(minZ, maxZ);
+            for (int x : xValues) {
+                for (int y : yValues) {
+                    for (int z : zValues) {
+                        addSample(points, x, y, z);
+                    }
+                }
+            }
+        }
+
+        private void addSample(List<Location> points, int x, int y, int z) {
+            EdgeSampleKey key = new EdgeSampleKey(x, y, z);
+            if (!emitted.add(key)) {
+                return;
+            }
+            Location location = outlineLocation(world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, false);
+            if (location != null) {
+                points.add(location);
+            }
+        }
+    }
+
+    private static final class EdgeSampleKey {
+        private final int x;
+        private final int y;
+        private final int z;
+
+        private EdgeSampleKey(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof EdgeSampleKey other)) {
+                return false;
+            }
+            return x == other.x && y == other.y && z == other.z;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Integer.hashCode(x);
+            result = 31 * result + Integer.hashCode(y);
+            result = 31 * result + Integer.hashCode(z);
+            return result;
+        }
     }
 
     private static void ensureCorner(List<Location> locations, Location corner) {
