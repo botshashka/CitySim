@@ -9,6 +9,8 @@ public class HappinessCalculator {
     private static final double TRANSIT_EASING_EXPONENT = 0.5;
     private static final double NATURE_TARGET_RATIO = 0.10;
     private static final int NATURE_MIN_EFFECTIVE_SAMPLES = 36;
+    private static final double HOUSING_SURPLUS_CAP = 1.5;
+    private static final double HOUSING_SHORTAGE_FLOOR = 0.6;
 
     private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
@@ -58,10 +60,18 @@ public class HappinessCalculator {
             hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
         }
 
-        int beds = city.beds;
-        double housingRatio = pop <= 0 ? 1.0 : Math.min(2.0, (double) beds / Math.max(1.0, (double) pop));
-        double housingNeutral = 1.0 / 0.95;
-        double housingScore = (housingRatio / housingNeutral) - 1.0;
+        int beds = Math.max(0, city.beds);
+        double housingRatio = pop <= 0 ? 1.0 : (double) beds / Math.max(1.0, (double) pop);
+        double housingScore;
+        if (housingRatio >= 1.0) {
+            double surplus = housingRatio - 1.0;
+            double normalized = surplus / Math.max(0.0001, HOUSING_SURPLUS_CAP - 1.0);
+            housingScore = Math.min(1.0, normalized);
+        } else {
+            double shortage = 1.0 - housingRatio;
+            double normalized = shortage / Math.max(0.0001, 1.0 - HOUSING_SHORTAGE_FLOOR);
+            housingScore = -Math.min(1.0, normalized);
+        }
         hb.housingPoints = clamp(housingScore * housingMaxPts, -housingMaxPts, housingMaxPts);
 
         hb.transitPoints = computeTransitPoints(city);
