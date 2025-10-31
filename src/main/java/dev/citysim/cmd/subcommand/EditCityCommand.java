@@ -6,6 +6,7 @@ import dev.citysim.city.Cuboid;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.selection.SelectionListener;
+import dev.citysim.selection.SelectionOutline;
 import dev.citysim.selection.SelectionState;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
@@ -547,39 +548,20 @@ public class EditCityCommand implements CitySubcommand {
     }
 
     private List<Location> computeEdgePoints(Cuboid cuboid, World world) {
-        List<Location> points = new ArrayList<>();
-        double minX = cuboid.minX;
-        double maxX = cuboid.maxX;
-        double minY = cuboid.minY;
-        double maxY = cuboid.maxY;
-        double minZ = cuboid.minZ;
-        double maxZ = cuboid.maxZ;
-
-        for (int x = cuboid.minX; x <= cuboid.maxX; x++) {
-            double centerX = x + 0.5;
-            points.add(new Location(world, centerX, minY + 0.5, minZ + 0.5));
-            points.add(new Location(world, centerX, minY + 0.5, maxZ + 0.5));
-            points.add(new Location(world, centerX, maxY + 0.5, minZ + 0.5));
-            points.add(new Location(world, centerX, maxY + 0.5, maxZ + 0.5));
-        }
-
-        for (int z = cuboid.minZ; z <= cuboid.maxZ; z++) {
-            double centerZ = z + 0.5;
-            points.add(new Location(world, minX + 0.5, minY + 0.5, centerZ));
-            points.add(new Location(world, maxX + 0.5, minY + 0.5, centerZ));
-            points.add(new Location(world, minX + 0.5, maxY + 0.5, centerZ));
-            points.add(new Location(world, maxX + 0.5, maxY + 0.5, centerZ));
-        }
-
-        for (int y = cuboid.minY; y <= cuboid.maxY; y++) {
-            double centerY = y + 0.5;
-            points.add(new Location(world, minX + 0.5, centerY, minZ + 0.5));
-            points.add(new Location(world, minX + 0.5, centerY, maxZ + 0.5));
-            points.add(new Location(world, maxX + 0.5, centerY, minZ + 0.5));
-            points.add(new Location(world, maxX + 0.5, centerY, maxZ + 0.5));
-        }
-
-        return points;
+        var plugin = cityManager.getPlugin();
+        int maxParticles = SelectionOutline.resolveMaxOutlineParticles(plugin);
+        boolean includeMidpoints = SelectionOutline.resolveSimpleMidpoints(plugin);
+        return SelectionOutline.planOutline(
+                world,
+                cuboid.minX,
+                cuboid.minY,
+                cuboid.minZ,
+                cuboid.maxX,
+                cuboid.maxY,
+                cuboid.maxZ,
+                maxParticles,
+                includeMidpoints
+        );
     }
 
     private Integer modifyStations(CommandSender sender, String[] args, int base, String context, StationOperator operator) {
