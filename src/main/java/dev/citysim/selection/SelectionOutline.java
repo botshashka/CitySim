@@ -45,9 +45,15 @@ public final class SelectionOutline {
                                              int maxY,
                                              int maxZ,
                                              int maxParticles,
-                                             boolean includeMidpoints) {
+                                             boolean includeMidpoints,
+                                             boolean fullHeight,
+                                             int viewerY) {
         if (world == null) {
             return Collections.emptyList();
+        }
+        if (fullHeight) {
+            int targetY = clamp(viewerY, minY, maxY);
+            return generateHorizontalSlice(world, minX, minZ, maxX, maxZ, targetY, maxParticles);
         }
         if (maxParticles <= 0) {
             return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
@@ -57,6 +63,61 @@ public final class SelectionOutline {
             return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
         }
         return generateFullOutline(world, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private static List<Location> generateHorizontalSlice(World world,
+                                                          int minX,
+                                                          int minZ,
+                                                          int maxX,
+                                                          int maxZ,
+                                                          int y,
+                                                          int maxParticles) {
+        List<Location> points = new ArrayList<>();
+        if (minX > maxX || minZ > maxZ) {
+            return points;
+        }
+
+        for (int x = minX; x <= maxX; x++) {
+            addPoint(points, center(world, x, y, minZ));
+            if (minZ != maxZ) {
+                addPoint(points, center(world, x, y, maxZ));
+            }
+        }
+
+        if (maxZ > minZ + 1 || minX == maxX) {
+            for (int z = minZ + 1; z <= maxZ - 1; z++) {
+                addPoint(points, center(world, minX, y, z));
+                if (minX != maxX) {
+                    addPoint(points, center(world, maxX, y, z));
+                }
+            }
+        }
+
+        if (maxParticles > 0 && points.size() > maxParticles) {
+            int stride = Math.max(1, (int) Math.ceil(points.size() / (double) maxParticles));
+            List<Location> limited = new ArrayList<>(Math.min(points.size(), maxParticles));
+            for (int i = 0; i < points.size(); i += stride) {
+                limited.add(points.get(i));
+            }
+            Location last = points.get(points.size() - 1);
+            if (!limited.contains(last)) {
+                limited.add(last);
+            }
+            ensureCorner(limited, center(world, minX, y, minZ));
+            ensureCorner(limited, center(world, minX, y, maxZ));
+            ensureCorner(limited, center(world, maxX, y, minZ));
+            ensureCorner(limited, center(world, maxX, y, maxZ));
+            return limited;
+        }
+
+        return points;
+    }
+
+    private static void ensureCorner(List<Location> locations, Location corner) {
+        if (corner == null || locations.contains(corner)) {
+            return;
+        }
+        locations.add(corner);
     }
 
     public static long estimateFullOutlineParticles(int minX,
