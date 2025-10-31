@@ -24,7 +24,6 @@ public class SelectionListener implements Listener {
     public static final Material WAND = Material.GOLDEN_AXE;
     public static final Map<UUID, SelectionState> selections = new ConcurrentHashMap<>();
     private static final long PREVIEW_TASK_PERIOD_TICKS = 10L;
-    private static final int MAX_EDGE_POINTS = 128;
 
     private final JavaPlugin plugin;
 
@@ -118,124 +117,20 @@ public class SelectionListener implements Listener {
     }
 
     private void drawSelectionParticles(World world, SelectionBounds bounds) {
-        int stepX = edgeIterationStep(bounds.maxX - bounds.minX);
-        int lastX = Integer.MIN_VALUE;
-        for (int x = bounds.minX; x <= bounds.maxX; x += stepX) {
-            lastX = x;
-            spawnEdgeParticle(world, x, bounds.minY, bounds.minZ);
-            if (bounds.maxZ != bounds.minZ) {
-                spawnEdgeParticle(world, x, bounds.minY, bounds.maxZ);
-            }
+        int maxParticles = SelectionOutline.resolveMaxOutlineParticles(plugin);
+        boolean includeMidpoints = SelectionOutline.resolveSimpleMidpoints(plugin);
+        for (Location location : SelectionOutline.planOutline(
+                world,
+                bounds.minX,
+                bounds.minY,
+                bounds.minZ,
+                bounds.maxX,
+                bounds.maxY,
+                bounds.maxZ,
+                maxParticles,
+                includeMidpoints)) {
+            world.spawnParticle(Particle.HAPPY_VILLAGER, location, 1, 0, 0, 0, 0);
         }
-        if (lastX != bounds.maxX) {
-            spawnEdgeParticle(world, bounds.maxX, bounds.minY, bounds.minZ);
-            if (bounds.maxZ != bounds.minZ) {
-                spawnEdgeParticle(world, bounds.maxX, bounds.minY, bounds.maxZ);
-            }
-        }
-
-        if (bounds.maxZ != bounds.minZ) {
-            int stepZ = edgeIterationStep(bounds.maxZ - bounds.minZ);
-            int startZ = bounds.minZ + 1;
-            int endZ = bounds.maxZ - 1;
-            if (startZ <= endZ) {
-                int lastZ = Integer.MIN_VALUE;
-                for (int z = startZ; z <= endZ; z += stepZ) {
-                    lastZ = z;
-                    spawnEdgeParticle(world, bounds.minX, bounds.minY, z);
-                    if (bounds.maxX != bounds.minX) {
-                        spawnEdgeParticle(world, bounds.maxX, bounds.minY, z);
-                    }
-                }
-                if (lastZ != endZ) {
-                    spawnEdgeParticle(world, bounds.minX, bounds.minY, endZ);
-                    if (bounds.maxX != bounds.minX) {
-                        spawnEdgeParticle(world, bounds.maxX, bounds.minY, endZ);
-                    }
-                }
-            }
-        }
-
-        if (bounds.maxY != bounds.minY) {
-            lastX = Integer.MIN_VALUE;
-            for (int x = bounds.minX; x <= bounds.maxX; x += stepX) {
-                lastX = x;
-                spawnEdgeParticle(world, x, bounds.maxY, bounds.minZ);
-                if (bounds.maxZ != bounds.minZ) {
-                    spawnEdgeParticle(world, x, bounds.maxY, bounds.maxZ);
-                }
-            }
-            if (lastX != bounds.maxX) {
-                spawnEdgeParticle(world, bounds.maxX, bounds.maxY, bounds.minZ);
-                if (bounds.maxZ != bounds.minZ) {
-                    spawnEdgeParticle(world, bounds.maxX, bounds.maxY, bounds.maxZ);
-                }
-            }
-
-            if (bounds.maxZ != bounds.minZ) {
-                int stepZ = edgeIterationStep(bounds.maxZ - bounds.minZ);
-                int startZ = bounds.minZ + 1;
-                int endZ = bounds.maxZ - 1;
-                if (startZ <= endZ) {
-                    int lastZ = Integer.MIN_VALUE;
-                    for (int z = startZ; z <= endZ; z += stepZ) {
-                        lastZ = z;
-                        spawnEdgeParticle(world, bounds.minX, bounds.maxY, z);
-                        if (bounds.maxX != bounds.minX) {
-                            spawnEdgeParticle(world, bounds.maxX, bounds.maxY, z);
-                        }
-                    }
-                    if (lastZ != endZ) {
-                        spawnEdgeParticle(world, bounds.minX, bounds.maxY, endZ);
-                        if (bounds.maxX != bounds.minX) {
-                            spawnEdgeParticle(world, bounds.maxX, bounds.maxY, endZ);
-                        }
-                    }
-                }
-            }
-        }
-
-        if (bounds.maxY != bounds.minY) {
-            int stepY = edgeIterationStep(bounds.maxY - bounds.minY);
-            int startY = bounds.minY + 1;
-            int endY = bounds.maxY - 1;
-            if (startY <= endY) {
-                int lastY = Integer.MIN_VALUE;
-                for (int y = startY; y <= endY; y += stepY) {
-                    lastY = y;
-                    spawnEdgeParticle(world, bounds.minX, y, bounds.minZ);
-                    if (bounds.maxZ != bounds.minZ) {
-                        spawnEdgeParticle(world, bounds.minX, y, bounds.maxZ);
-                    }
-                    if (bounds.maxX != bounds.minX) {
-                        spawnEdgeParticle(world, bounds.maxX, y, bounds.minZ);
-                        if (bounds.maxZ != bounds.minZ) {
-                            spawnEdgeParticle(world, bounds.maxX, y, bounds.maxZ);
-                        }
-                    }
-                }
-                if (lastY != endY) {
-                    spawnEdgeParticle(world, bounds.minX, endY, bounds.minZ);
-                    if (bounds.maxZ != bounds.minZ) {
-                        spawnEdgeParticle(world, bounds.minX, endY, bounds.maxZ);
-                    }
-                    if (bounds.maxX != bounds.minX) {
-                        spawnEdgeParticle(world, bounds.maxX, endY, bounds.minZ);
-                        if (bounds.maxZ != bounds.minZ) {
-                            spawnEdgeParticle(world, bounds.maxX, endY, bounds.maxZ);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static int edgeIterationStep(int length) {
-        return Math.max(1, (int) Math.ceil(length / (double) MAX_EDGE_POINTS));
-    }
-
-    private void spawnEdgeParticle(World world, int x, int y, int z) {
-        world.spawnParticle(Particle.HAPPY_VILLAGER, x + 0.5, y + 0.5, z + 0.5, 1, 0, 0, 0, 0);
     }
 
     private static String fmt(Location l) {

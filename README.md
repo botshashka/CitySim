@@ -95,6 +95,12 @@ for tweaking:
   - `stats_interval_ticks` / `stats_initial_delay_ticks` – Interval and initial delay (ticks) between stat refreshes.
   - `bossbar_interval_ticks` – How often the boss bar display is updated.
   - `max_cities_per_tick`, `max_entity_chunks_per_tick`, `max_bed_blocks_per_tick` – Workload caps that keep scans lightweight.
+- **`selection`** – Governs the golden-axe preview particles and `/city edit ... showcuboids` outlines.
+  - `max_outline_particles` – Maximum particle count for the detailed edge loop. If a cuboid would exceed this number, the plugin
+    switches to light-weight corner columns (with optional mid-edge markers) so huge selections stay readable without flooding
+    the client.
+  - `simple_outline_midpoints` – When the simplified outline is active, toggles the extra mid-edge markers that help players
+    gauge width and depth.
 - **`stations.counting_mode`** – Default is `manual`. Change to `traincarts` for automatic station syncing or `disabled` to
   ignore station scoring entirely.
 - **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
