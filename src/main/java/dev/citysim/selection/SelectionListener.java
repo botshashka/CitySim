@@ -9,6 +9,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -71,6 +72,11 @@ public class SelectionListener implements Listener {
         }
 
         updateSelectionPreview(sel);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        clear(event.getPlayer());
     }
 
     private void sendSelectionUpdate(Player player, SelectionState sel, String label, Location location) {
