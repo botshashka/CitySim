@@ -52,7 +52,9 @@ public final class SelectionOutline {
             return Collections.emptyList();
         }
         if (fullHeight) {
-            int targetY = clamp(viewerY, minY, maxY);
+            int minWorldY = world.getMinHeight();
+            int maxWorldY = world.getMaxHeight() - 1;
+            int targetY = clamp(viewerY, minWorldY, maxWorldY);
             return generateHorizontalSlice(world, minX, minZ, maxX, maxZ, targetY, maxParticles);
         }
         if (maxParticles <= 0) {
