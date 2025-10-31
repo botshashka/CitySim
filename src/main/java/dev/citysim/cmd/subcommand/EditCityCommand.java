@@ -29,17 +29,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class EditCityCommand implements CitySubcommand {
 
     private static final int MAX_PARTICLES_PER_TICK = 50;
+    private static final int CUBOID_PREVIEW_PERIOD_TICKS = 5;
+    private static final Map<UUID, CuboidPreviewTask> ACTIVE_CUBOID_PREVIEWS = new ConcurrentHashMap<>();
 
     private static final List<Component> HELP = List.of(
             CommandMessages.help("/city edit <cityId> name <new name>"),
             CommandMessages.help("/city edit <cityId> addcuboid"),
             CommandMessages.help("/city edit <cityId> removecuboid"),
-            CommandMessages.help("/city edit <cityId> showcuboids"),
+            CommandMessages.help("/city edit <cityId> showcuboids [on|off]"),
             CommandMessages.help("/city edit <cityId> listcuboids"),
             CommandMessages.help("/city edit <cityId> highrise <true|false>"),
             CommandMessages.help("/city edit <cityId> station <add|remove|set|clear> [amount]")
@@ -91,7 +95,7 @@ public class EditCityCommand implements CitySubcommand {
             case "name" -> handleRename(sender, cityId, args);
             case "addcuboid" -> handleAddCuboid(sender, cityId);
             case "removecuboid" -> handleRemoveCuboid(sender, cityId);
-            case "showcuboids" -> handleShowCuboids(sender, cityId);
+            case "showcuboids" -> handleShowCuboids(sender, cityId, args);
             case "listcuboids" -> handleListCuboids(sender, cityId);
             case "highrise" -> handleHighrise(sender, cityId, args);
             case "station" -> handleStation(sender, cityId, args);
@@ -117,6 +121,9 @@ public class EditCityCommand implements CitySubcommand {
                 return List.of("<new name>");
             }
             return List.of();
+        }
+        if ("showcuboids".equals(action) && args.length == 3) {
+            return List.of("on", "off");
         }
         if ("highrise".equals(action) && args.length == 3) {
             return List.of("true", "false");
@@ -212,6 +219,7 @@ public class EditCityCommand implements CitySubcommand {
                     .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + mode + ").", NamedTextColor.GREEN))
                     .build();
             player.sendMessage(message);
+            SelectionListener.clear(player);
         } catch (IllegalArgumentException ex) {
             player.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
@@ -265,7 +273,7 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
-    private boolean handleShowCuboids(CommandSender sender, String cityId) {
+    private boolean handleShowCuboids(CommandSender sender, String cityId, String[] args) {
         if (!(sender instanceof Player player)) {
             CommandFeedback.sendPlayersOnly(sender);
             return true;
@@ -281,6 +289,30 @@ public class EditCityCommand implements CitySubcommand {
             return true;
         }
 
+        CuboidPreviewTask existing = ACTIVE_CUBOID_PREVIEWS.get(player.getUniqueId());
+
+        Boolean explicitToggle = null;
+        if (args.length >= 3) {
+            explicitToggle = parseBoolean(args[2]);
+            if (explicitToggle == null) {
+                CommandFeedback.sendError(sender, "Showcuboids value must be on/off.");
+                return true;
+            }
+        }
+
+        boolean enable = explicitToggle != null ? explicitToggle : existing == null;
+
+        if (!enable) {
+            if (existing == null) {
+                player.sendMessage(Component.text()
+                        .append(Component.text("Cuboid previews are already disabled.", NamedTextColor.YELLOW))
+                        .build());
+            } else {
+                stopPreview(player, existing, true);
+            }
+            return true;
+        }
+
         if (city.cuboids == null || city.cuboids.isEmpty()) {
             player.sendMessage(Component.text()
                     .append(Component.text("City '", NamedTextColor.RED))
@@ -290,7 +322,7 @@ public class EditCityCommand implements CitySubcommand {
             return true;
         }
 
-        Map<World, List<Location>> edgePoints = new HashMap<>();
+        Map<World, List<Cuboid>> cuboidsByWorld = new HashMap<>();
         boolean missingWorld = false;
         for (Cuboid cuboid : city.cuboids) {
             if (cuboid == null || cuboid.world == null) {
@@ -301,10 +333,10 @@ public class EditCityCommand implements CitySubcommand {
                 missingWorld = true;
                 continue;
             }
-            edgePoints.computeIfAbsent(world, ignored -> new ArrayList<>()).addAll(computeEdgePoints(cuboid, world));
+            cuboidsByWorld.computeIfAbsent(world, ignored -> new ArrayList<>()).add(cuboid);
         }
 
-        if (edgePoints.isEmpty()) {
+        if (cuboidsByWorld.isEmpty()) {
             Component message;
             if (missingWorld) {
                 message = Component.text()
@@ -321,73 +353,22 @@ public class EditCityCommand implements CitySubcommand {
             return true;
         }
 
-        String cityName = city.name;
-        Map<World, Queue<Location>> edgeQueues = new HashMap<>();
-        edgePoints.forEach((world, locations) -> {
-            if (locations != null && !locations.isEmpty()) {
-                edgeQueues.put(world, new ArrayDeque<>(locations));
-            }
-        });
+        if (existing != null) {
+            stopPreview(player, existing, false);
+        }
+
+        CuboidPreviewTask task = new CuboidPreviewTask(player.getUniqueId(), city.name, cuboidsByWorld);
+        task.refreshFor(player.getLocation().getBlockY());
+        ACTIVE_CUBOID_PREVIEWS.put(player.getUniqueId(), task);
+        task.runTaskTimer(cityManager.getPlugin(), 0L, CUBOID_PREVIEW_PERIOD_TICKS);
 
         player.sendMessage(Component.text()
                 .append(Component.text("Showing cuboids for ", NamedTextColor.GREEN))
-                .append(Component.text(cityName, NamedTextColor.GREEN))
-                .append(Component.text("...", NamedTextColor.GREEN))
+                .append(Component.text(city.name, NamedTextColor.GREEN))
+                .append(Component.text(". Use ", NamedTextColor.GREEN))
+                .append(Component.text("/city edit " + city.id + " showcuboids off", NamedTextColor.AQUA))
+                .append(Component.text(" to hide them.", NamedTextColor.GREEN))
                 .build());
-
-        final int periodTicks = 5;
-        final int durationTicks = 20 * 5;
-
-        new BukkitRunnable() {
-            private int elapsed = 0;
-
-            @Override
-            public void run() {
-                if (!player.isOnline()) {
-                    cancel();
-                    return;
-                }
-
-                for (Map.Entry<World, List<Location>> entry : edgePoints.entrySet()) {
-                    World world = entry.getKey();
-                    List<Location> locations = entry.getValue();
-                    Queue<Location> queue = edgeQueues.get(world);
-                    if (locations == null || locations.isEmpty() || queue == null) {
-                        continue;
-                    }
-
-                    if (queue.isEmpty()) {
-                        queue.addAll(locations);
-                        if (queue.isEmpty()) {
-                            continue;
-                        }
-                    }
-
-                    int spawned = 0;
-                    while (spawned < MAX_PARTICLES_PER_TICK && !queue.isEmpty()) {
-                        Location point = queue.poll();
-                        if (point != null) {
-                            world.spawnParticle(Particle.END_ROD, point, 1, 0, 0, 0, 0);
-                            spawned++;
-                        }
-                    }
-
-                    if (queue.isEmpty()) {
-                        queue.addAll(locations);
-                    }
-                }
-
-                elapsed += periodTicks;
-                if (elapsed >= durationTicks) {
-                    player.sendMessage(Component.text()
-                            .append(Component.text("Finished showing cuboids for ", NamedTextColor.GREEN))
-                            .append(Component.text(cityName, NamedTextColor.GREEN))
-                            .append(Component.text(".", NamedTextColor.GREEN))
-                            .build());
-                    cancel();
-                }
-            }
-        }.runTaskTimer(cityManager.getPlugin(), 0L, periodTicks);
 
         return true;
     }
@@ -457,6 +438,33 @@ public class EditCityCommand implements CitySubcommand {
 
         sender.sendMessage(AdventureMessages.joinLines(lines.toArray(Component[]::new)));
         return true;
+    }
+
+    public static void stopShowCuboids(Player player) {
+        if (player == null) {
+            return;
+        }
+        CuboidPreviewTask task = ACTIVE_CUBOID_PREVIEWS.remove(player.getUniqueId());
+        if (task != null) {
+            task.cancel();
+        }
+    }
+
+    private void stopPreview(Player player, CuboidPreviewTask task, boolean notifyPlayer) {
+        if (player == null || task == null) {
+            return;
+        }
+        if (!ACTIVE_CUBOID_PREVIEWS.remove(player.getUniqueId(), task)) {
+            return;
+        }
+        task.cancel();
+        if (notifyPlayer) {
+            player.sendMessage(Component.text()
+                    .append(Component.text("Stopped showing cuboids for ", NamedTextColor.YELLOW))
+                    .append(Component.text(task.getCityName(), NamedTextColor.YELLOW))
+                    .append(Component.text(".", NamedTextColor.YELLOW))
+                    .build());
+        }
     }
 
     private boolean handleHighrise(CommandSender sender, String cityId, String[] args) {
@@ -579,10 +587,11 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
-    private List<Location> computeEdgePoints(Cuboid cuboid, World world) {
+    private List<Location> computeEdgePoints(Cuboid cuboid, World world, int viewerY) {
         var plugin = cityManager.getPlugin();
         int maxParticles = SelectionOutline.resolveMaxOutlineParticles(plugin);
         boolean includeMidpoints = SelectionOutline.resolveSimpleMidpoints(plugin);
+        boolean fullHeight = cuboid != null && cuboid.isFullHeight(world);
         return SelectionOutline.planOutline(
                 world,
                 cuboid.minX,
@@ -592,7 +601,9 @@ public class EditCityCommand implements CitySubcommand {
                 cuboid.maxY,
                 cuboid.maxZ,
                 maxParticles,
-                includeMidpoints
+                includeMidpoints,
+                fullHeight,
+                viewerY
         );
     }
 
@@ -662,5 +673,104 @@ public class EditCityCommand implements CitySubcommand {
     @FunctionalInterface
     private interface StationOperator {
         int apply(int base, int amount);
+    }
+
+    private final class CuboidPreviewTask extends BukkitRunnable {
+        private final UUID playerId;
+        private final String cityName;
+        private final Map<World, List<Cuboid>> cuboidsByWorld;
+        private final Map<World, List<Location>> outlines = new HashMap<>();
+        private final Map<World, Queue<Location>> queues = new HashMap<>();
+        private int lastViewerY = Integer.MIN_VALUE;
+
+        private CuboidPreviewTask(UUID playerId, String cityName, Map<World, List<Cuboid>> cuboidsByWorld) {
+            this.playerId = playerId;
+            this.cityName = cityName;
+            this.cuboidsByWorld = cuboidsByWorld;
+        }
+
+        private String getCityName() {
+            return cityName;
+        }
+
+        private void refreshFor(int viewerY) {
+            rebuild(viewerY);
+        }
+
+        @Override
+        public void run() {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) {
+                cancel();
+                return;
+            }
+
+            int viewerY = player.getLocation().getBlockY();
+            if (viewerY != lastViewerY || outlines.isEmpty()) {
+                rebuild(viewerY);
+            }
+
+            if (outlines.isEmpty()) {
+                return;
+            }
+
+            int spawned = 0;
+            outer:
+            for (Map.Entry<World, Queue<Location>> entry : queues.entrySet()) {
+                World world = entry.getKey();
+                List<Location> locations = outlines.get(world);
+                if (locations == null || locations.isEmpty()) {
+                    continue;
+                }
+
+                Queue<Location> queue = entry.getValue();
+                if (queue == null || queue.isEmpty()) {
+                    queue = new ArrayDeque<>(locations);
+                    queues.put(world, queue);
+                }
+
+                while (!queue.isEmpty()) {
+                    Location point = queue.poll();
+                    if (point != null) {
+                        world.spawnParticle(Particle.END_ROD, point, 1, 0, 0, 0, 0);
+                        spawned++;
+                    }
+                    if (spawned >= MAX_PARTICLES_PER_TICK) {
+                        break outer;
+                    }
+                }
+
+                if (queue.isEmpty()) {
+                    queue.addAll(locations);
+                }
+            }
+        }
+
+        private void rebuild(int viewerY) {
+            outlines.clear();
+            queues.clear();
+            for (Map.Entry<World, List<Cuboid>> entry : cuboidsByWorld.entrySet()) {
+                World world = entry.getKey();
+                List<Cuboid> cuboids = entry.getValue();
+                if (world == null || cuboids == null || cuboids.isEmpty()) {
+                    continue;
+                }
+                List<Location> points = new ArrayList<>();
+                for (Cuboid cuboid : cuboids) {
+                    points.addAll(computeEdgePoints(cuboid, world, viewerY));
+                }
+                if (!points.isEmpty()) {
+                    outlines.put(world, points);
+                    queues.put(world, new ArrayDeque<>(points));
+                }
+            }
+            lastViewerY = viewerY;
+        }
+
+        @Override
+        public synchronized void cancel() throws IllegalStateException {
+            super.cancel();
+            ACTIVE_CUBOID_PREVIEWS.remove(playerId, this);
+        }
     }
 }
