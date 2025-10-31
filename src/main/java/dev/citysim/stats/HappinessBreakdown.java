@@ -23,9 +23,25 @@ public class HappinessBreakdown {
 
     public int total;
 
-    public boolean ghostTown;
+    private boolean ghostTown;
+
+    public boolean isGhostTown() {
+        return ghostTown;
+    }
+
+    public void setGhostTown(boolean ghostTown) {
+        this.ghostTown = ghostTown;
+    }
+
+    public HappinessBreakdown asGhostTown() {
+        setGhostTown(true);
+        return this;
+    }
 
     public String dominantKey() {
+        if (ghostTown) {
+            return "ghost_town";
+        }
         Contribution best = contributions().stream()
                 .max(Comparator.comparingDouble(Contribution::magnitude))
                 .orElse(null);
@@ -43,6 +59,9 @@ public class HappinessBreakdown {
     }
 
     public String pickWeightedMessageKey() {
+        if (ghostTown) {
+            return "ghost_town";
+        }
         List<Contribution> sorted = contributions();
         sorted.sort(Comparator.comparingDouble(Contribution::magnitude).reversed());
 

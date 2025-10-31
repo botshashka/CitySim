@@ -61,8 +61,14 @@ public class TopCommand implements CitySubcommand {
         sb.append("Top cities by ").append(metric.startsWith("pop") ? "population" : "happiness").append(":\n");
         for (int i = 0; i < limit; i++) {
             City city = list.get(i);
-            String happinessDisplay = city.isGhostTown() ? "N/A" : city.happiness + "%";
-            sb.append(String.format("%2d. %s  —  pop %d, happy %s\n", i + 1, city.name, city.population, happinessDisplay));
+            String details;
+            if (city.isGhostTown()) {
+                details = "pop %d".formatted(city.population);
+            } else {
+                String happinessDisplay = city.happiness + "%";
+                details = "pop %d, happy %s".formatted(city.population, happinessDisplay);
+            }
+            sb.append(String.format("%2d. %s  —  %s\n", i + 1, city.name, details));
         }
         player.sendMessage(Component.text(sb.toString(), NamedTextColor.GRAY));
         return true;

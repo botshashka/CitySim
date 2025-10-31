@@ -13,7 +13,7 @@ public final class HappinessBreakdownFormatter {
         if (breakdown == null) {
             return new ContributionLists(List.of(), List.of(), false);
         }
-        if (breakdown.ghostTown) {
+        if (breakdown.isGhostTown()) {
             return new ContributionLists(List.of(), List.of(), true);
         }
         List<ContributionLine> positives = new ArrayList<>();

@@ -214,7 +214,7 @@ public class ScoreboardService {
     private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
         StationCountingMode stationMode = statsService.getStationCountingMode();
         boolean showStations = stationMode != StationCountingMode.DISABLED;
-        boolean ghostTown = city.isGhostTown();
+        boolean ghostTown = breakdown != null && breakdown.isGhostTown();
 
         List<String> raw = new ArrayList<>();
         raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
@@ -226,26 +226,20 @@ public class ScoreboardService {
             raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
         }
 
-        if (mode == Mode.FULL) {
+        if (mode == Mode.FULL && !ghostTown) {
             raw.add(ChatColor.DARK_GRAY + " ");
-            if (ghostTown) {
-                raw.add(ChatColor.GRAY + "Ghost town — no citizens");
-            } else {
-                ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
+            ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
 
-                for (ContributionLine line : contributionLists.positives()) {
+            for (ContributionLine line : contributionLists.positives()) {
+                raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
+            }
+
+            if (!contributionLists.negatives().isEmpty()) {
+                raw.add(ChatColor.DARK_GRAY + " ");
+                for (ContributionLine line : contributionLists.negatives()) {
                     raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
                 }
-
-                if (!contributionLists.negatives().isEmpty()) {
-                    raw.add(ChatColor.DARK_GRAY + " ");
-                    for (ContributionLine line : contributionLists.negatives()) {
-                        raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
-                    }
-                }
             }
-        } else if (ghostTown) {
-            raw.add(ChatColor.GRAY + "Ghost town — no citizens");
         }
 
         return decorateLines(raw);

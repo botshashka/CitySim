@@ -3,6 +3,7 @@ package dev.citysim.cmd.subcommand;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandMessages;
+import dev.citysim.stats.HappinessBreakdown;
 import dev.citysim.stats.HappinessBreakdownFormatter;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.StationCountingMode;
@@ -57,6 +58,12 @@ public class StatsCommand implements CitySubcommand {
             return true;
         }
 
+        var hb = statsService.updateCity(city, true);
+        if (hb == null) {
+            hb = new HappinessBreakdown();
+        }
+        hb.setGhostTown(hb.isGhostTown() || city.isGhostTown() || city.population <= 0);
+
         boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
         String homesLine = "<blue>Homes:</blue> %d/%d".formatted(city.beds, city.population);
         if (showStations) {
@@ -64,22 +71,22 @@ public class StatsCommand implements CitySubcommand {
         }
 
         String safeName = AdventureMessages.escapeMiniMessage(city.name);
-        if (city.isGhostTown()) {
+        if (hb.isGhostTown()) {
             String msg = """
             <gray><b>%s — City stats</b></gray>
             <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
             %s
             <gold>Happiness:</gold> N/A (ghost town)
-            <gray>No citizens currently live here.</gray>
+            %s
             """.formatted(
                     safeName, city.population, city.employed, city.unemployed,
-                    homesLine
+                    homesLine,
+                    hb.dominantMessage()
             );
             player.sendMessage(AdventureMessages.mini(msg));
             return true;
         }
 
-        var hb = statsService.updateCity(city, true);
         ContributionLists contributionLists = StatsFormatting.filterTransitIfHidden(statsService, HappinessBreakdownFormatter.buildContributionLists(hb));
 
         String breakdownLines = StatsFormatting.joinContributionLines(contributionLists.positives(), StatsFormatting::miniMessageLabelFor);

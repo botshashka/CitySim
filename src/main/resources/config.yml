@@ -90,3 +90,7 @@ titles:
       - "Uneasy citizens on edge"
       - "Discontent whispering through blocks"
       - "Morale sliding downhill"
+    ghost_town:
+      - "<gray>Only echoes haunt the avenues</gray>"
+      - "<gray>Boarded windows and silent streets</gray>"
+      - "<gray>Once-bustling blocks lie abandoned</gray>"
