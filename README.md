@@ -1,4 +1,4 @@
-# CitySim (Paper 1.21.x) — v0.5.0
+# CitySim (Paper 1.21.x) — v0.5.1
 SimCity-like city stats for villagers (Paper).
 
 ## What it does
@@ -61,9 +61,9 @@ java -version  # should report a Java 21 runtime
 ## Deploy
 - Stop your server.
 - Delete any older CitySim jars from `plugins/`.
-- Copy `build/libs/citysim-paper-0.5.0.jar` to `plugins/`.
+- Copy `build/libs/CitySim-0.5.1.jar` to `plugins/`.
 - Start the server.
-- `/version CitySim` should show `0.5.0`.
+- `/version CitySim` should show `0.5.1`.
 
 ## Commands
 ```text
