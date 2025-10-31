@@ -76,7 +76,7 @@ public class StatsCommand implements CitySubcommand {
             <white><b>%s — City stats</b></white>
             <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
             %s
-            <gold>Happiness:</gold> N/A (ghost town)
+            <gold>Happiness:</gold> N/A (awaiting residents)
             %s
             """).formatted(
                     safeName, city.population, city.employed, city.unemployed,
