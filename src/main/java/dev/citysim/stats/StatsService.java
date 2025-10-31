@@ -370,12 +370,11 @@ public class StatsService {
                                 if (!sampledColumns.add(columnKey)) {
                                     continue;
                                 }
-                                int y = world.getHighestBlockYAt(x, z);
-                                org.bukkit.block.Block top = world.getBlockAt(x, y, z);
-                                if (top.isLiquid()) {
+                                Integer blockLight = sampleSurfaceColumnBlockLight(world, x, z);
+                                if (blockLight == null) {
                                     continue;
                                 }
-                                residentialLightSum += top.getLightLevel();
+                                residentialLightSum += blockLight;
                                 residentialSamples++;
                             }
                         }
@@ -399,21 +398,19 @@ public class StatsService {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
                     if (city.highrise) {
                         for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
-                            lightSum += w.getBlockAt(x, y, z).getLightLevel();
+                            lightSum += w.getBlockAt(x, y, z).getLightFromBlocks();
                             samples++;
                         }
                         if ((c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
-                            lightSum += w.getBlockAt(x, c.maxY, z).getLightLevel();
+                            lightSum += w.getBlockAt(x, c.maxY, z).getLightFromBlocks();
                             samples++;
                         }
                     } else {
-                        int y = w.getHighestBlockYAt(x, z);
-                        org.bukkit.block.Block top = w.getBlockAt(x, y, z);
-                        if (top.isLiquid()) {
+                        Integer blockLight = sampleSurfaceColumnBlockLight(w, x, z);
+                        if (blockLight == null) {
                             continue;
                         }
-                        int light = top.getLightLevel();
-                        lightSum += light;
+                        lightSum += blockLight;
                         samples++;
                     }
                 }
@@ -557,6 +554,43 @@ public class StatsService {
         }
 
         return ratioSurface(city, 6, natureTest);
+    }
+
+    private Integer sampleSurfaceColumnBlockLight(World world, int x, int z) {
+        if (world == null) {
+            return null;
+        }
+
+        int highestY = world.getHighestBlockYAt(x, z);
+        if (highestY < world.getMinHeight()) {
+            return null;
+        }
+
+        org.bukkit.block.Block surfaceBlock = world.getBlockAt(x, highestY, z);
+        if (surfaceBlock.isLiquid()) {
+            return null;
+        }
+
+        int maxHeight = world.getMaxHeight();
+        int sampleStartY = highestY + 1;
+        if (sampleStartY >= maxHeight) {
+            return (int) surfaceBlock.getLightFromBlocks();
+        }
+
+        org.bukkit.block.Block sampleBlock = null;
+        for (int y = sampleStartY; y < maxHeight; y++) {
+            org.bukkit.block.Block candidate = world.getBlockAt(x, y, z);
+            if (candidate.getType().isAir()) {
+                sampleBlock = candidate;
+                break;
+            }
+        }
+
+        if (sampleBlock == null) {
+            sampleBlock = surfaceBlock;
+        }
+
+        return (int) sampleBlock.getLightFromBlocks();
     }
 
     private record PollutionStats(double ratio, int blockCount) {}
