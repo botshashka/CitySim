@@ -45,10 +45,10 @@ public class EditCityCommand implements CitySubcommand {
 
     private static final List<Component> HELP = List.of(
             CommandMessages.help("/city edit <cityId> name <new name>"),
-            CommandMessages.help("/city edit <cityId> addcuboid"),
-            CommandMessages.help("/city edit <cityId> removecuboid"),
-            CommandMessages.help("/city edit <cityId> showcuboids [on|off]"),
-            CommandMessages.help("/city edit <cityId> listcuboids"),
+            CommandMessages.help("/city edit <cityId> cuboid add"),
+            CommandMessages.help("/city edit <cityId> cuboid remove"),
+            CommandMessages.help("/city edit <cityId> cuboid show [on|off]"),
+            CommandMessages.help("/city edit <cityId> cuboid list"),
             CommandMessages.help("/city edit <cityId> highrise <true|false>"),
             CommandMessages.help("/city edit <cityId> station <add|remove|set|clear> [amount]")
     );
@@ -97,14 +97,15 @@ public class EditCityCommand implements CitySubcommand {
         String action = args[1].toLowerCase(Locale.ROOT);
         return switch (action) {
             case "name" -> handleRename(sender, cityId, args);
-            case "addcuboid" -> handleAddCuboid(sender, cityId);
-            case "removecuboid" -> handleRemoveCuboid(sender, cityId);
-            case "showcuboids" -> handleShowCuboids(sender, cityId, args);
-            case "listcuboids" -> handleListCuboids(sender, cityId);
+            case "cuboid" -> handleCuboid(sender, cityId, args);
+            case "addcuboid" -> handleLegacyCuboid(sender, cityId, "add", args);
+            case "removecuboid" -> handleLegacyCuboid(sender, cityId, "remove", args);
+            case "showcuboids" -> handleLegacyCuboid(sender, cityId, "show", args);
+            case "listcuboids" -> handleLegacyCuboid(sender, cityId, "list", args);
             case "highrise" -> handleHighrise(sender, cityId, args);
             case "station" -> handleStation(sender, cityId, args);
             default -> {
-                CommandFeedback.sendError(sender, "Unknown edit action. Use name, addcuboid, removecuboid, showcuboids, listcuboids, highrise, or station.");
+                CommandFeedback.sendError(sender, "Unknown edit action. Use name, cuboid, highrise, or station.");
                 yield true;
             }
         };
@@ -116,7 +117,7 @@ public class EditCityCommand implements CitySubcommand {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         if (args.length == 2) {
-            return List.of("name", "addcuboid", "removecuboid", "showcuboids", "listcuboids", "highrise", "station");
+            return List.of("name", "cuboid", "highrise", "station");
         }
 
         String action = args[1].toLowerCase(Locale.ROOT);
@@ -126,8 +127,17 @@ public class EditCityCommand implements CitySubcommand {
             }
             return List.of();
         }
-        if ("showcuboids".equals(action) && args.length == 3) {
-            return List.of("on", "off");
+        if ("cuboid".equals(action)) {
+            if (args.length == 3) {
+                return List.of("add", "remove", "list", "show");
+            }
+            if (args.length == 4) {
+                String sub = args[2].toLowerCase(Locale.ROOT);
+                if ("show".equals(sub)) {
+                    return List.of("on", "off");
+                }
+            }
+            return List.of();
         }
         if ("highrise".equals(action) && args.length == 3) {
             return List.of("true", "false");
@@ -144,6 +154,44 @@ public class EditCityCommand implements CitySubcommand {
             }
         }
         return List.of();
+    }
+
+    private boolean handleCuboid(CommandSender sender, String cityId, String[] args) {
+        if (args.length < 3) {
+            sendEditUsage(sender);
+            return true;
+        }
+
+        String subAction = args[2].toLowerCase(Locale.ROOT);
+        return switch (subAction) {
+            case "add" -> handleCuboidAdd(sender, cityId);
+            case "remove" -> handleRemoveCuboid(sender, cityId);
+            case "list" -> handleListCuboids(sender, cityId);
+            case "show" -> handleShowCuboids(sender, cityId, args.length >= 4 ? args[3] : null);
+            default -> {
+                CommandFeedback.sendError(sender, "Unknown cuboid action. Use add, remove, list, or show.");
+                yield true;
+            }
+        };
+    }
+
+    private boolean handleLegacyCuboid(CommandSender sender, String cityId, String legacyAction, String[] args) {
+        String replacement = switch (legacyAction) {
+            case "add" -> "add";
+            case "remove" -> "remove";
+            case "list" -> "list";
+            case "show" -> "show";
+            default -> legacyAction;
+        };
+        CommandFeedback.sendWarning(sender, "This command is deprecated. Use /city edit " + cityId + " cuboid " + replacement + " instead.");
+
+        return switch (legacyAction) {
+            case "add" -> handleCuboidAdd(sender, cityId);
+            case "remove" -> handleRemoveCuboid(sender, cityId);
+            case "list" -> handleListCuboids(sender, cityId);
+            case "show" -> handleShowCuboids(sender, cityId, args.length >= 3 ? args[2] : null);
+            default -> true;
+        };
     }
 
     private boolean handleRename(CommandSender sender, String cityId, String[] args) {
@@ -173,7 +221,7 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
-    private boolean handleAddCuboid(CommandSender sender, String cityId) {
+    public boolean handleCuboidAdd(CommandSender sender, String cityId) {
         if (!(sender instanceof Player player)) {
             CommandFeedback.sendPlayersOnly(sender);
             return true;
@@ -279,7 +327,7 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
-    private boolean handleShowCuboids(CommandSender sender, String cityId, String[] args) {
+    private boolean handleShowCuboids(CommandSender sender, String cityId, String explicitToggle) {
         if (!(sender instanceof Player player)) {
             CommandFeedback.sendPlayersOnly(sender);
             return true;
@@ -297,16 +345,16 @@ public class EditCityCommand implements CitySubcommand {
 
         CuboidPreviewTask existing = ACTIVE_CUBOID_PREVIEWS.get(player.getUniqueId());
 
-        Boolean explicitToggle = null;
-        if (args.length >= 3) {
-            explicitToggle = parseBoolean(args[2]);
-            if (explicitToggle == null) {
+        Boolean explicitToggleValue = null;
+        if (explicitToggle != null) {
+            explicitToggleValue = parseBoolean(explicitToggle);
+            if (explicitToggleValue == null) {
                 CommandFeedback.sendError(sender, "Showcuboids value must be on/off.");
                 return true;
             }
         }
 
-        boolean enable = explicitToggle != null ? explicitToggle : existing == null;
+        boolean enable = explicitToggleValue != null ? explicitToggleValue : existing == null;
 
         if (!enable) {
             if (existing == null) {
@@ -365,7 +413,7 @@ public class EditCityCommand implements CitySubcommand {
                 .append(Component.text("Showing cuboids for ", NamedTextColor.GREEN))
                 .append(Component.text(city.name, NamedTextColor.GREEN))
                 .append(Component.text(". Use ", NamedTextColor.GREEN))
-                .append(Component.text("/city edit " + city.id + " showcuboids off", NamedTextColor.AQUA))
+                .append(Component.text("/city edit " + city.id + " cuboid show off", NamedTextColor.AQUA))
                 .append(Component.text(" to hide them.", NamedTextColor.GREEN))
                 .build());
 

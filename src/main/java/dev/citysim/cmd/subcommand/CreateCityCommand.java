@@ -119,11 +119,11 @@ public class CreateCityCommand implements CitySubcommand {
                 Component details = Component.text()
                         .append(Component.text(" with an initial cuboid (", NamedTextColor.GREEN))
                         .append(Component.text(pendingWidth + "×" + pendingLength + "×" + pendingHeight, NamedTextColor.GREEN))
-                        .append(Component.text(", mode: " + pendingMode + "). Use /city edit " + created.id + " addcuboid to add more areas.", NamedTextColor.GREEN))
+                        .append(Component.text(", mode: " + pendingMode + "). Use /city edit " + created.id + " cuboid add or /city expand " + created.id + " to add more areas.", NamedTextColor.GREEN))
                         .build();
                 sender.sendMessage(base.append(details));
             } else {
-                Component details = Component.text(". Use /city wand and /city edit " + created.id + " addcuboid to define its area.", NamedTextColor.GREEN);
+                Component details = Component.text(". Use /city wand and /city edit " + created.id + " cuboid add (or /city expand " + created.id + ") to define its area.", NamedTextColor.GREEN);
                 sender.sendMessage(base.append(details));
             }
             if (pendingCuboid != null && selectionOwner != null) {
