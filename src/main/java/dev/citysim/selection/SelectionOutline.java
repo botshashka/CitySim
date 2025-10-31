@@ -368,27 +368,76 @@ public final class SelectionOutline {
         if (world == null) {
             return;
         }
+        if (offsetY && minY < maxY) {
+            double minXEdge = minX - EDGE_OFFSET;
+            double maxXEdge = maxX + 1 + EDGE_OFFSET;
+            double minYEdge = minY - EDGE_OFFSET;
+            double maxYEdge = maxY + 1 + EDGE_OFFSET;
+            double minZEdge = minZ - EDGE_OFFSET;
+            double maxZEdge = maxZ + 1 + EDGE_OFFSET;
+
+            double[] xCenters = centers(minX, maxX);
+            double[] yCenters = centers(minY, maxY);
+            double[] zCenters = centers(minZ, maxZ);
+            double[] xEdgesAll = edgesAll(minX, maxX);
+            double[] yEdgesAll = edgesAll(minY, maxY);
+            double[] zEdgesAll = edgesAll(minZ, maxZ);
+
+            if (x == minX) {
+                addFacePoints(points, world, Axis.X, minXEdge, yCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.X, minXEdge, yEdgesAll, zCenters);
+            }
+            if (x == maxX) {
+                addFacePoints(points, world, Axis.X, maxXEdge, yCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.X, maxXEdge, yEdgesAll, zCenters);
+            }
+            if (y == minY) {
+                addFacePoints(points, world, Axis.Y, minYEdge, xCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.Y, minYEdge, xEdgesAll, zCenters);
+            }
+            if (y == maxY) {
+                addFacePoints(points, world, Axis.Y, maxYEdge, xCenters, zEdgesAll);
+                addFacePoints(points, world, Axis.Y, maxYEdge, xEdgesAll, zCenters);
+            }
+            if (z == minZ) {
+                addFacePoints(points, world, Axis.Z, minZEdge, xEdgesAll, yCenters);
+                addFacePoints(points, world, Axis.Z, minZEdge, xCenters, yEdgesAll);
+            }
+            if (z == maxZ) {
+                addFacePoints(points, world, Axis.Z, maxZEdge, xEdgesAll, yCenters);
+                addFacePoints(points, world, Axis.Z, maxZEdge, xCenters, yEdgesAll);
+            }
+            return;
+        }
+
         double[] xEdges = axisEdges(x, minX, maxX);
         double[] yEdges = offsetY ? axisEdges(y, minY, maxY) : new double[]{y + 0.5};
         double[] zEdges = axisEdges(z, minZ, maxZ);
 
+        double minXEdge = lowerEdge(xEdges);
+        double maxXEdge = upperEdge(xEdges);
+        double minYEdge = lowerEdge(yEdges);
+        double maxYEdge = upperEdge(yEdges);
+        double minZEdge = lowerEdge(zEdges);
+        double maxZEdge = upperEdge(zEdges);
+
         if (x == minX) {
-            addFacePoints(points, world, Axis.X, xEdges[0], yEdges, zEdges);
+            addFacePoints(points, world, Axis.X, minXEdge, yEdges, zEdges);
         }
         if (x == maxX) {
-            addFacePoints(points, world, Axis.X, xEdges[1], yEdges, zEdges);
+            addFacePoints(points, world, Axis.X, maxXEdge, yEdges, zEdges);
         }
         if (offsetY && y == minY) {
-            addFacePoints(points, world, Axis.Y, yEdges[0], xEdges, zEdges);
+            addFacePoints(points, world, Axis.Y, minYEdge, xEdges, zEdges);
         }
         if (offsetY && y == maxY) {
-            addFacePoints(points, world, Axis.Y, yEdges[yEdges.length - 1], xEdges, zEdges);
+            addFacePoints(points, world, Axis.Y, maxYEdge, xEdges, zEdges);
         }
         if (z == minZ) {
-            addFacePoints(points, world, Axis.Z, zEdges[0], xEdges, yEdges);
+            addFacePoints(points, world, Axis.Z, minZEdge, xEdges, yEdges);
         }
         if (z == maxZ) {
-            addFacePoints(points, world, Axis.Z, zEdges[zEdges.length - 1], xEdges, yEdges);
+            addFacePoints(points, world, Axis.Z, maxZEdge, xEdges, yEdges);
         }
     }
 
@@ -406,23 +455,77 @@ public final class SelectionOutline {
         double[] yEdges = offsetY ? axisEdges(y, minY, maxY) : new double[]{y + 0.5};
         double[] xEdges = axisEdges(x, minX, maxX);
         double[] zEdges = axisEdges(z, minZ, maxZ);
-        double xCoord = xEdges.length > 0 ? xEdges[0] : x + 0.5;
-        double yCoord = yEdges.length > 0 ? yEdges[0] : y + 0.5;
-        double zCoord = zEdges.length > 0 ? zEdges[0] : z + 0.5;
+        double xCoord = selectEdgeCoordinate(x, minX, maxX, xEdges, x + 0.5);
+        double yCoord = selectEdgeCoordinate(y, minY, maxY, yEdges, y + 0.5);
+        double zCoord = selectEdgeCoordinate(z, minZ, maxZ, zEdges, z + 0.5);
         return new Location(world, xCoord, yCoord, zCoord);
     }
 
     private static double[] axisEdges(int coordinate, int min, int max) {
-        double lower;
-        double upper;
         if (min == max) {
-            lower = coordinate - EDGE_OFFSET;
-            upper = coordinate + 1 + EDGE_OFFSET;
-        } else {
-            lower = coordinate == min ? coordinate - EDGE_OFFSET : coordinate;
-            upper = coordinate == max ? coordinate + 1 + EDGE_OFFSET : coordinate + 1;
+            return new double[]{coordinate - EDGE_OFFSET, coordinate + 1 + EDGE_OFFSET};
         }
-        return new double[]{lower, upper};
+        if (coordinate == min) {
+            return new double[]{coordinate - EDGE_OFFSET};
+        }
+        if (coordinate == max) {
+            return new double[]{coordinate + 1 + EDGE_OFFSET};
+        }
+        return new double[]{coordinate, coordinate + 1};
+    }
+
+    private static double lowerEdge(double[] edges) {
+        return edges[0];
+    }
+
+    private static double upperEdge(double[] edges) {
+        return edges[edges.length - 1];
+    }
+
+    private static double selectEdgeCoordinate(int coordinate,
+                                               int min,
+                                               int max,
+                                               double[] edges,
+                                               double fallback) {
+        if (edges.length == 0) {
+            return fallback;
+        }
+        if (coordinate == min) {
+            return lowerEdge(edges);
+        }
+        if (coordinate == max) {
+            return upperEdge(edges);
+        }
+        if (edges.length == 1) {
+            return edges[0];
+        }
+        return fallback;
+    }
+
+    private static double[] centers(int min, int max) {
+        if (min > max) {
+            return new double[0];
+        }
+        int length = max - min + 1;
+        double[] values = new double[length];
+        for (int i = 0; i < length; i++) {
+            values[i] = min + i + 0.5;
+        }
+        return values;
+    }
+
+    private static double[] edgesAll(int min, int max) {
+        if (min > max) {
+            return new double[0];
+        }
+        int interior = Math.max(0, max - min);
+        double[] values = new double[interior + 2];
+        values[0] = min - EDGE_OFFSET;
+        for (int i = 1; i <= interior; i++) {
+            values[i] = min + i;
+        }
+        values[values.length - 1] = max + 1 + EDGE_OFFSET;
+        return values;
     }
 
     private static void addFacePoints(List<Location> points,
