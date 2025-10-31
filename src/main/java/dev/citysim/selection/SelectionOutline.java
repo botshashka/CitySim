@@ -60,12 +60,22 @@ public final class SelectionOutline {
         if (fullHeight) {
             int minWorldY = world.getMinHeight();
             int maxWorldY = world.getMaxHeight() - 1;
-            return generateEdgeOutline(world, minX, minWorldY, minZ, maxX, maxWorldY, maxZ, maxParticles);
+            int clampedViewerY = clamp(viewerY, minWorldY, maxWorldY);
+            return generateEdgeOutline(world,
+                    minX,
+                    minWorldY,
+                    minZ,
+                    maxX,
+                    maxWorldY,
+                    maxZ,
+                    maxParticles,
+                    false,
+                    new int[]{clampedViewerY});
         }
         if (minY == maxY) {
             return generateHorizontalSlice(world, minX, minZ, maxX, maxZ, minY, maxParticles);
         }
-        return generateEdgeOutline(world, minX, minY, minZ, maxX, maxY, maxZ, maxParticles);
+        return generateEdgeOutline(world, minX, minY, minZ, maxX, maxY, maxZ, maxParticles, true, null);
     }
 
     private static List<Location> limitPoints(List<Location> points, int maxParticles) {
@@ -139,7 +149,9 @@ public final class SelectionOutline {
                                                       int maxX,
                                                       int maxY,
                                                       int maxZ,
-                                                      int maxParticles) {
+                                                      int maxParticles,
+                                                      boolean offsetY,
+                                                      int[] forcedY) {
         List<Location> points = new ArrayList<>();
         if (world == null || minX > maxX || minY > maxY || minZ > maxZ) {
             return points;
@@ -155,7 +167,16 @@ public final class SelectionOutline {
             }
         }
 
-        EdgeEmissionContext context = new EdgeEmissionContext(world, minX, minY, minZ, maxX, maxY, maxZ, samplesPerEdge);
+        EdgeEmissionContext context = new EdgeEmissionContext(world,
+                minX,
+                minY,
+                minZ,
+                maxX,
+                maxY,
+                maxZ,
+                samplesPerEdge,
+                offsetY,
+                normalizeForcedY(forcedY, minY, maxY));
         EDGE_CONTEXT.set(context);
         try {
             emitEdges(points, world, minX, minY, minZ, maxX, maxY, maxZ);
@@ -165,10 +186,29 @@ public final class SelectionOutline {
         }
 
         if (maxParticles > 0 && points.size() > maxParticles) {
-            return limitEdgePoints(points, maxParticles, world, minX, maxX, minY, maxY, minZ, maxZ);
+            return limitEdgePoints(points, maxParticles, world, minX, maxX, minY, maxY, minZ, maxZ, offsetY);
         }
 
         return points;
+    }
+
+    private static int[] normalizeForcedY(int[] forcedY, int minY, int maxY) {
+        if (forcedY == null || forcedY.length == 0 || minY > maxY) {
+            return new int[0];
+        }
+        List<Integer> normalized = new ArrayList<>(forcedY.length);
+        for (int value : forcedY) {
+            int clamped = clamp(value, minY, maxY);
+            if (!normalized.contains(clamped)) {
+                normalized.add(clamped);
+            }
+        }
+        Collections.sort(normalized);
+        int[] result = new int[normalized.size()];
+        for (int i = 0; i < normalized.size(); i++) {
+            result[i] = normalized.get(i);
+        }
+        return result;
     }
 
     private static List<Location> limitEdgePoints(List<Location> points,
@@ -179,7 +219,8 @@ public final class SelectionOutline {
                                                   int minY,
                                                   int maxY,
                                                   int minZ,
-                                                  int maxZ) {
+                                                  int maxZ,
+                                                  boolean offsetY) {
         if (points.isEmpty() || maxParticles <= 0 || points.size() <= maxParticles) {
             return points;
         }
@@ -197,7 +238,7 @@ public final class SelectionOutline {
                     if (limited.size() >= maxParticles) {
                         break;
                     }
-                    Location corner = outlineLocation(world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, false);
+                    Location corner = outlineLocation(world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, offsetY);
                     if (corner != null && added.add(corner)) {
                         limited.add(corner);
                     }
@@ -253,6 +294,9 @@ public final class SelectionOutline {
         for (int[] edge : edges) {
             double step = context.stepFor(edge[0], edge[1], edge[2], edge[3], edge[4], edge[5]);
             emitLine(points, world, edge[0], edge[1], edge[2], edge[3], edge[4], edge[5], step);
+            if (edge[0] == edge[3] && edge[2] == edge[5]) {
+                context.ensureForcedSamples(points, edge[0], edge[2]);
+            }
         }
     }
 
@@ -341,6 +385,8 @@ public final class SelectionOutline {
         private final int maxY;
         private final int maxZ;
         private final int samplesPerEdge;
+        private final boolean offsetY;
+        private final int[] forcedY;
         private final Set<EdgeSampleKey> emitted = new HashSet<>();
 
         private EdgeEmissionContext(World world,
@@ -350,7 +396,9 @@ public final class SelectionOutline {
                                     int maxX,
                                     int maxY,
                                     int maxZ,
-                                    int samplesPerEdge) {
+                                    int samplesPerEdge,
+                                    boolean offsetY,
+                                    int[] forcedY) {
             this.world = world;
             this.minX = minX;
             this.minY = minY;
@@ -359,6 +407,8 @@ public final class SelectionOutline {
             this.maxY = maxY;
             this.maxZ = maxZ;
             this.samplesPerEdge = samplesPerEdge;
+            this.offsetY = offsetY;
+            this.forcedY = forcedY;
         }
 
         private double stepFor(int x1, int y1, int z1, int x2, int y2, int z2) {
@@ -391,9 +441,22 @@ public final class SelectionOutline {
             if (!emitted.add(key)) {
                 return;
             }
-            Location location = outlineLocation(world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, false);
+            Location location = outlineLocation(world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, offsetY);
             if (location != null) {
                 points.add(location);
+            }
+        }
+
+        private boolean hasForcedY() {
+            return forcedY.length > 0;
+        }
+
+        private void ensureForcedSamples(List<Location> points, int x, int z) {
+            if (!hasForcedY()) {
+                return;
+            }
+            for (int forced : forcedY) {
+                addSample(points, x, forced, z);
             }
         }
     }
