@@ -35,6 +35,7 @@ public class CityScanJob {
     private int bedY;
     private int bedZ;
     private boolean bedInitialized = false;
+    private final Set<City.ChunkPosition> residentialBedChunks = new LinkedHashSet<>();
 
     private Stage stage = Stage.ENTITY_SCAN;
     private boolean cancelled = false;
@@ -203,6 +204,7 @@ public class CityScanJob {
                 Material type = world.getBlockAt(bedX, bedY, bedZ).getType();
                 if (isBed(type)) {
                     bedHalfCount++;
+                    residentialBedChunks.add(new City.ChunkPosition(worldName, chunkX, chunkZ));
                 }
                 processed++;
                 if (!advanceBedCursor(cuboid)) {
@@ -244,6 +246,7 @@ public class CityScanJob {
         city.employed = employed;
         city.unemployed = unemployed;
         city.beds = beds;
+        city.setResidentialChunks(residentialBedChunks);
 
         trainCartsStationCount = callbacks.refreshStationCount(city);
 

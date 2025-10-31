@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Level;
 
 public class StatsService {
@@ -335,14 +336,59 @@ public class StatsService {
     }
 
     private double averageSurfaceLight(City city) {
-        int samples = 0, lightSum = 0;
+        final int step = 8;
+        if (!city.highrise) {
+            Set<City.ChunkPosition> residentialChunks = city.getResidentialChunks();
+            if (residentialChunks != null && !residentialChunks.isEmpty()) {
+                int residentialSamples = 0;
+                int residentialLightSum = 0;
+                for (City.ChunkPosition chunkPos : residentialChunks) {
+                    World world = Bukkit.getWorld(chunkPos.world());
+                    if (world == null) {
+                        continue;
+                    }
+                    int chunkMinX = chunkPos.x() << 4;
+                    int chunkMaxX = chunkMinX + 15;
+                    int chunkMinZ = chunkPos.z() << 4;
+                    int chunkMaxZ = chunkMinZ + 15;
+                    for (Cuboid cuboid : city.cuboids) {
+                        if (cuboid == null || cuboid.world == null || !cuboid.world.equals(chunkPos.world())) {
+                            continue;
+                        }
+                        int minX = Math.max(cuboid.minX, chunkMinX);
+                        int maxX = Math.min(cuboid.maxX, chunkMaxX);
+                        int minZ = Math.max(cuboid.minZ, chunkMinZ);
+                        int maxZ = Math.min(cuboid.maxZ, chunkMaxZ);
+                        if (minX > maxX || minZ > maxZ) {
+                            continue;
+                        }
+                        for (int x = minX; x <= maxX; x += step) {
+                            for (int z = minZ; z <= maxZ; z += step) {
+                                int y = world.getHighestBlockYAt(x, z);
+                                org.bukkit.block.Block top = world.getBlockAt(x, y, z);
+                                if (top.isLiquid()) {
+                                    continue;
+                                }
+                                residentialLightSum += top.getLightLevel();
+                                residentialSamples++;
+                            }
+                        }
+                    }
+                }
+                if (residentialSamples > 0) {
+                    return (double) residentialLightSum / residentialSamples;
+                }
+            }
+        }
+
+        int samples = 0;
+        int lightSum = 0;
         for (Cuboid c : city.cuboids) {
             if (c == null || c.world == null) {
                 continue;
             }
             World w = Bukkit.getWorld(c.world);
             if (w == null) continue;
-            int step = 8;
             for (int x = c.minX; x <= c.maxX; x += step) {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
                     if (city.highrise) {

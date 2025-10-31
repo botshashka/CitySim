@@ -7,6 +7,8 @@ updates:
   max_cities_per_tick: 1        # How many city scans to start/process each tick
   max_entity_chunks_per_tick: 2 # Loaded chunks checked per active city scan each tick
   max_bed_blocks_per_tick: 2048 # Block lookups for bed counting per tick
+  # Lighting samples for non-high-rise cities focus on parcels with beds; high-rises
+  # continue to scan their full claimed volume because interior light drives happiness.
 
 stations:
   counting_mode: manual # manual, traincarts, or disabled

@@ -3,7 +3,11 @@ package dev.citysim.city;
 import dev.citysim.stats.HappinessBreakdown;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class City {
     public String id;
@@ -22,6 +26,7 @@ public class City {
     public transient HappinessBreakdown happinessBreakdown = null;
 
     public transient BlockScanCache blockScanCache = null;
+    private transient Set<ChunkPosition> residentialChunks = new LinkedHashSet<>();
 
     public boolean highrise = false;
 
@@ -50,6 +55,19 @@ public class City {
     public void invalidateBlockScanCache() {
         blockScanCache = null;
         happinessBreakdown = null;
+        residentialChunks.clear();
+    }
+
+    public void setResidentialChunks(Collection<ChunkPosition> chunkPositions) {
+        LinkedHashSet<ChunkPosition> updated = new LinkedHashSet<>();
+        if (chunkPositions != null) {
+            updated.addAll(chunkPositions);
+        }
+        residentialChunks = updated;
+    }
+
+    public Set<ChunkPosition> getResidentialChunks() {
+        return Collections.unmodifiableSet(residentialChunks);
     }
 
     public static class BlockScanCache {
@@ -60,5 +78,8 @@ public class City {
         public int pollutingBlocks;
         public double overcrowdingPenalty;
         public long timestamp;
+    }
+
+    public record ChunkPosition(String world, int x, int z) {
     }
 }
