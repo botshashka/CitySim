@@ -103,12 +103,12 @@ for tweaking:
 
 ## Integrations
 
-### TrainCarts station sync
-CitySim can keep the transit stat in step with the TrainCarts rail network. Set `stations.counting_mode: traincarts` in
-`config.yml` to enable the integration. When this mode is active, the plugin scans the `[station]` signs that fall inside each
+### [TrainCarts](https://modrinth.com/plugin/traincarts) station sync
+CitySim can keep the transit stat in step with your TrainCarts rail network. Set `stations.counting_mode: traincarts` in
+`config.yml` to enable the integration. When this mode is active, the plugin scans the `station` signs that fall inside each
 city’s cuboids and updates the station total automatically. Manual `/city edit <cityId> station ...` commands are disabled in
 this mode so the TrainCarts counts stay authoritative, and CitySim refreshes the totals whenever TrainCarts is enabled, reloaded,
 or disabled.
 
-**Requirements:** Install both TrainCarts and Vault before switching the counting mode. CitySim relies on Vault being loaded to
+**Requirements:** Install both [TrainCarts](https://modrinth.com/plugin/traincarts) and [Vault](https://modrinth.com/plugin/vaultunlocked) before switching the counting mode. CitySim relies on Vault being loaded to
 bootstrap the integration; if either plugin is missing, it falls back to manual station counts until they are present.
