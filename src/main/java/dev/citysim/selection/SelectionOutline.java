@@ -151,44 +151,87 @@ public final class SelectionOutline {
         int[] xCorners = axisValues(minX, maxX);
         int[] zCorners = axisValues(minZ, maxZ);
         int height = Math.max(1, maxY - minY + 1);
-        int columnHeight = Math.min(4, height);
-        int highestFromColumn = Math.min(maxY, minY + columnHeight - 1);
+        int columnHeight = Math.min(6, height);
+        int maxColumnStart = Math.max(minY, maxY - columnHeight + 1);
+        int centerColumnStart = clamp(minY + (height / 2) - (columnHeight / 2), minY, maxColumnStart);
 
-        for (int x : xCorners) {
-            for (int z : zCorners) {
-                for (int y = minY; y <= highestFromColumn; y++) {
-                    points.add(center(world, x, y, z));
-                }
-                if (highestFromColumn < maxY) {
-                    points.add(center(world, x, maxY, z));
+        List<Integer> columnStarts = new ArrayList<>();
+        addIfAbsent(columnStarts, centerColumnStart);
+        addIfAbsent(columnStarts, minY);
+        addIfAbsent(columnStarts, maxColumnStart);
+
+        for (int startY : columnStarts) {
+            int topY = Math.min(maxY, startY + columnHeight - 1);
+            for (int x : xCorners) {
+                for (int z : zCorners) {
+                    for (int y = startY; y <= topY; y++) {
+                        addPoint(points, center(world, x, y, z));
+                    }
                 }
             }
         }
 
         if (includeMidpoints) {
+            int midX = minX + (maxX - minX) / 2;
+            int midZ = minZ + (maxZ - minZ) / 2;
+            int midY = minY + (maxY - minY) / 2;
+
+            List<Integer> sampleYs = new ArrayList<>();
+            addIfAbsent(sampleYs, clamp(midY, minY, maxY));
+            addIfAbsent(sampleYs, clamp(centerColumnStart, minY, maxY));
+            addIfAbsent(sampleYs, clamp(Math.min(maxY, centerColumnStart + columnHeight - 1), minY, maxY));
+            addIfAbsent(sampleYs, minY);
+            addIfAbsent(sampleYs, maxY);
+
             if (maxX > minX) {
-                int midX = minX + (maxX - minX) / 2;
-                for (int z : zCorners) {
-                    points.add(center(world, midX, minY, z));
-                    if (maxY > minY) {
-                        points.add(center(world, midX, maxY, z));
+                int[] xSamples = axisInteriorSamples(minX, maxX);
+                for (int sampleX : xSamples) {
+                    for (int sampleY : sampleYs) {
+                        int y = clamp(sampleY, minY, maxY);
+                        for (int z : zCorners) {
+                            addPoint(points, center(world, sampleX, y, z));
+                        }
                     }
                 }
             }
+
             if (maxZ > minZ) {
-                int midZ = minZ + (maxZ - minZ) / 2;
-                for (int x : xCorners) {
-                    points.add(center(world, x, minY, midZ));
-                    if (maxY > minY) {
-                        points.add(center(world, x, maxY, midZ));
+                int[] zSamples = axisInteriorSamples(minZ, maxZ);
+                for (int sampleZ : zSamples) {
+                    for (int sampleY : sampleYs) {
+                        int y = clamp(sampleY, minY, maxY);
+                        for (int x : xCorners) {
+                            addPoint(points, center(world, x, y, sampleZ));
+                        }
                     }
                 }
             }
+
+            if (maxX > minX) {
+                for (int sampleY : sampleYs) {
+                    int y = clamp(sampleY, minY, maxY);
+                    addPoint(points, center(world, midX, y, minZ));
+                    if (minZ != maxZ) {
+                        addPoint(points, center(world, midX, y, maxZ));
+                    }
+                }
+            }
+
+            if (maxZ > minZ) {
+                for (int sampleY : sampleYs) {
+                    int y = clamp(sampleY, minY, maxY);
+                    addPoint(points, center(world, minX, y, midZ));
+                    if (minX != maxX) {
+                        addPoint(points, center(world, maxX, y, midZ));
+                    }
+                }
+            }
+
             if (maxY > minY) {
-                int midY = minY + (maxY - minY) / 2;
+                int clampedMidY = clamp(midY, minY, maxY);
                 for (int x : xCorners) {
                     for (int z : zCorners) {
-                        points.add(center(world, x, midY, z));
+                        addPoint(points, center(world, x, clampedMidY, z));
                     }
                 }
             }
@@ -202,6 +245,57 @@ public final class SelectionOutline {
             return new int[]{min};
         }
         return new int[]{min, max};
+    }
+
+    private static int[] axisInteriorSamples(int min, int max) {
+        int distance = max - min;
+        if (distance <= 1) {
+            return new int[0];
+        }
+        List<Integer> samples = new ArrayList<>();
+        addAxisSample(samples, min, max, fractionSample(min, distance, 0.5));
+        addAxisSample(samples, min, max, fractionSample(min, distance, 0.25));
+        addAxisSample(samples, min, max, fractionSample(min, distance, 0.75));
+        int[] result = new int[samples.size()];
+        for (int i = 0; i < samples.size(); i++) {
+            result[i] = samples.get(i);
+        }
+        return result;
+    }
+
+    private static int fractionSample(int min, int distance, double fraction) {
+        return min + (int) Math.round(distance * fraction);
+    }
+
+    private static void addAxisSample(List<Integer> samples, int min, int max, int candidate) {
+        if (candidate <= min || candidate >= max) {
+            return;
+        }
+        if (!samples.contains(candidate)) {
+            samples.add(candidate);
+        }
+    }
+
+    private static void addIfAbsent(List<Integer> values, int value) {
+        if (!values.contains(value)) {
+            values.add(value);
+        }
+    }
+
+    private static void addPoint(List<Location> points, Location location) {
+        if (!points.contains(location)) {
+            points.add(location);
+        }
+    }
+
+    private static int clamp(int value, int min, int max) {
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
     }
 
     private static Location center(World world, int x, int y, int z) {

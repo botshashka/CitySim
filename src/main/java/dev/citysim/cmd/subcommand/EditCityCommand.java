@@ -212,6 +212,7 @@ public class EditCityCommand implements CitySubcommand {
                     .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + mode + ").", NamedTextColor.GREEN))
                     .build();
             player.sendMessage(message);
+            SelectionListener.clear(player);
         } catch (IllegalArgumentException ex) {
             player.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
