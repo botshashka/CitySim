@@ -375,7 +375,7 @@ public class StatsService {
                                 if (top.isLiquid()) {
                                     continue;
                                 }
-                                residentialLightSum += top.getLightLevel();
+                                residentialLightSum += top.getLightFromBlocks();
                                 residentialSamples++;
                             }
                         }
@@ -399,11 +399,11 @@ public class StatsService {
                 for (int z = c.minZ; z <= c.maxZ; z += step) {
                     if (city.highrise) {
                         for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
-                            lightSum += w.getBlockAt(x, y, z).getLightLevel();
+                            lightSum += w.getBlockAt(x, y, z).getLightFromBlocks();
                             samples++;
                         }
                         if ((c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
-                            lightSum += w.getBlockAt(x, c.maxY, z).getLightLevel();
+                            lightSum += w.getBlockAt(x, c.maxY, z).getLightFromBlocks();
                             samples++;
                         }
                     } else {
@@ -412,7 +412,7 @@ public class StatsService {
                         if (top.isLiquid()) {
                             continue;
                         }
-                        int light = top.getLightLevel();
+                        int light = top.getLightFromBlocks();
                         lightSum += light;
                         samples++;
                     }
