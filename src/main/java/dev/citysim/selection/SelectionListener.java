@@ -21,7 +21,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SelectionListener implements Listener {
-    public static final Material WAND = Material.STICK;
+    public static final Material WAND = Material.GOLDEN_AXE;
     public static final Map<UUID, SelectionState> selections = new ConcurrentHashMap<>();
     private static final long PREVIEW_TASK_PERIOD_TICKS = 10L;
 
