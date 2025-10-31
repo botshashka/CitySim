@@ -59,8 +59,23 @@ public final class SelectionOutline {
         if (fullHeight) {
             int minWorldY = world.getMinHeight();
             int maxWorldY = world.getMaxHeight() - 1;
-            int targetY = clamp(viewerY, minWorldY, maxWorldY);
-            return generateHorizontalSlice(world, minX, minZ, maxX, maxZ, targetY, maxParticles);
+            int clampedViewerY = clamp(viewerY, minWorldY, maxWorldY);
+            List<Location> outline = generateFullHeightColumns(
+                    world,
+                    minX,
+                    minWorldY,
+                    minZ,
+                    maxX,
+                    maxWorldY,
+                    maxZ,
+                    includeMidpoints,
+                    clampedViewerY,
+                    maxParticles
+            );
+            if (maxParticles > 0 && outline.size() > maxParticles) {
+                return limitPoints(outline, maxParticles);
+            }
+            return outline;
         }
         if (maxParticles <= 0) {
             return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
@@ -70,6 +85,88 @@ public final class SelectionOutline {
             return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
         }
         return generateFullOutline(world, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private static List<Location> limitPoints(List<Location> points, int maxParticles) {
+        if (points.isEmpty() || maxParticles <= 0 || points.size() <= maxParticles) {
+            return points;
+        }
+        int stride = Math.max(1, (int) Math.ceil(points.size() / (double) maxParticles));
+        List<Location> limited = new ArrayList<>(Math.min(points.size(), maxParticles));
+        for (int i = 0; i < points.size(); i += stride) {
+            limited.add(points.get(i));
+        }
+        Location last = points.get(points.size() - 1);
+        if (!limited.contains(last)) {
+            limited.add(last);
+        }
+        return limited;
+    }
+
+    private static List<Location> generateFullHeightColumns(World world,
+                                                            int minX,
+                                                            int minY,
+                                                            int minZ,
+                                                            int maxX,
+                                                            int maxY,
+                                                            int maxZ,
+                                                            boolean includeMidpoints,
+                                                            int viewerY,
+                                                            int maxParticles) {
+        List<Location> points = new ArrayList<>();
+        if (world == null || minX > maxX || minZ > maxZ) {
+            return points;
+        }
+
+        List<Integer> ySamples = new ArrayList<>();
+        int height = Math.max(1, maxY - minY + 1);
+        int targetSamples = Math.min(6, height);
+        for (int i = 0; i < targetSamples; i++) {
+            double fraction = targetSamples == 1 ? 0d : (double) i / (targetSamples - 1);
+            int sampleY = minY + (int) Math.round(fraction * (maxY - minY));
+            addIfAbsent(ySamples, clamp(sampleY, minY, maxY));
+        }
+        addIfAbsent(ySamples, clamp(viewerY, minY, maxY));
+        Collections.sort(ySamples);
+
+        List<int[]> columns = new ArrayList<>();
+        addColumn(columns, minX, minZ);
+        addColumn(columns, maxX, minZ);
+        addColumn(columns, minX, maxZ);
+        addColumn(columns, maxX, maxZ);
+
+        if (includeMidpoints) {
+            int midX = minX + (maxX - minX) / 2;
+            int midZ = minZ + (maxZ - minZ) / 2;
+            addColumn(columns, midX, minZ);
+            addColumn(columns, midX, maxZ);
+            addColumn(columns, minX, midZ);
+            addColumn(columns, maxX, midZ);
+            addColumn(columns, midX, midZ);
+        }
+
+        for (int[] column : columns) {
+            int columnX = column[0];
+            int columnZ = column[1];
+            for (int sampleY : ySamples) {
+                Location location = outlineLocation(world, columnX, sampleY, columnZ, minX, maxX, minY, maxY, minZ, maxZ, false);
+                addPoint(points, location);
+                if (maxParticles > 0 && points.size() >= maxParticles) {
+                    return points;
+                }
+            }
+        }
+
+        return points;
+    }
+
+    private static void addColumn(List<int[]> columns, int x, int z) {
+        for (int[] column : columns) {
+            if (column[0] == x && column[1] == z) {
+                return;
+            }
+        }
+        columns.add(new int[]{x, z});
     }
 
     private static List<Location> generateHorizontalSlice(World world,
