@@ -49,8 +49,11 @@ public final class SelectionOutline {
         if (world == null) {
             return Collections.emptyList();
         }
+        if (maxParticles <= 0) {
+            return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
+        }
         long estimate = estimateFullOutlineParticles(minX, minY, minZ, maxX, maxY, maxZ);
-        if (maxParticles > 0 && estimate > maxParticles) {
+        if (estimate > maxParticles) {
             return generateSimplifiedOutline(world, minX, minY, minZ, maxX, maxY, maxZ, includeMidpoints);
         }
         return generateFullOutline(world, minX, minY, minZ, maxX, maxY, maxZ);
