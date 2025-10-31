@@ -368,15 +368,27 @@ public final class SelectionOutline {
         if (world == null) {
             return;
         }
-        double[] xCoords = outlineCoordinates(x, minX, maxX);
-        double[] yCoords = offsetY ? outlineCoordinates(y, minY, maxY) : new double[]{y + 0.5};
-        double[] zCoords = outlineCoordinates(z, minZ, maxZ);
-        for (double xCoord : xCoords) {
-            for (double yCoord : yCoords) {
-                for (double zCoord : zCoords) {
-                    addPoint(points, new Location(world, xCoord, yCoord, zCoord));
-                }
-            }
+        double[] xEdges = axisEdges(x, minX, maxX);
+        double[] yEdges = offsetY ? axisEdges(y, minY, maxY) : new double[]{y + 0.5};
+        double[] zEdges = axisEdges(z, minZ, maxZ);
+
+        if (x == minX) {
+            addFacePoints(points, world, Axis.X, xEdges[0], yEdges, zEdges);
+        }
+        if (x == maxX) {
+            addFacePoints(points, world, Axis.X, xEdges[1], yEdges, zEdges);
+        }
+        if (offsetY && y == minY) {
+            addFacePoints(points, world, Axis.Y, yEdges[0], xEdges, zEdges);
+        }
+        if (offsetY && y == maxY) {
+            addFacePoints(points, world, Axis.Y, yEdges[yEdges.length - 1], xEdges, zEdges);
+        }
+        if (z == minZ) {
+            addFacePoints(points, world, Axis.Z, zEdges[0], xEdges, yEdges);
+        }
+        if (z == maxZ) {
+            addFacePoints(points, world, Axis.Z, zEdges[zEdges.length - 1], xEdges, yEdges);
         }
     }
 
@@ -391,26 +403,59 @@ public final class SelectionOutline {
                                             int minZ,
                                             int maxZ,
                                             boolean offsetY) {
-        double[] yCoords = offsetY ? outlineCoordinates(y, minY, maxY) : new double[]{y + 0.5};
-        double[] xCoords = outlineCoordinates(x, minX, maxX);
-        double[] zCoords = outlineCoordinates(z, minZ, maxZ);
-        double xCoord = xCoords.length > 0 ? xCoords[0] : x + 0.5;
-        double yCoord = yCoords.length > 0 ? yCoords[0] : y + 0.5;
-        double zCoord = zCoords.length > 0 ? zCoords[0] : z + 0.5;
+        double[] yEdges = offsetY ? axisEdges(y, minY, maxY) : new double[]{y + 0.5};
+        double[] xEdges = axisEdges(x, minX, maxX);
+        double[] zEdges = axisEdges(z, minZ, maxZ);
+        double xCoord = xEdges.length > 0 ? xEdges[0] : x + 0.5;
+        double yCoord = yEdges.length > 0 ? yEdges[0] : y + 0.5;
+        double zCoord = zEdges.length > 0 ? zEdges[0] : z + 0.5;
         return new Location(world, xCoord, yCoord, zCoord);
     }
 
-    private static double[] outlineCoordinates(int coordinate, int min, int max) {
+    private static double[] axisEdges(int coordinate, int min, int max) {
+        double lower;
+        double upper;
         if (min == max) {
-            return new double[]{coordinate - EDGE_OFFSET, coordinate + 1 + EDGE_OFFSET};
+            lower = coordinate - EDGE_OFFSET;
+            upper = coordinate + 1 + EDGE_OFFSET;
+        } else {
+            lower = coordinate == min ? coordinate - EDGE_OFFSET : coordinate;
+            upper = coordinate == max ? coordinate + 1 + EDGE_OFFSET : coordinate + 1;
         }
-        if (coordinate == min) {
-            return new double[]{coordinate - EDGE_OFFSET};
+        return new double[]{lower, upper};
+    }
+
+    private static void addFacePoints(List<Location> points,
+                                      World world,
+                                      Axis axis,
+                                      double fixedCoord,
+                                      double[] firstEdges,
+                                      double[] secondEdges) {
+        for (double first : firstEdges) {
+            for (double second : secondEdges) {
+                Location location;
+                switch (axis) {
+                    case X:
+                        location = new Location(world, fixedCoord, first, second);
+                        break;
+                    case Y:
+                        location = new Location(world, first, fixedCoord, second);
+                        break;
+                    case Z:
+                        location = new Location(world, first, second, fixedCoord);
+                        break;
+                    default:
+                        continue;
+                }
+                addPoint(points, location);
+            }
         }
-        if (coordinate == max) {
-            return new double[]{coordinate + 1 + EDGE_OFFSET};
-        }
-        return new double[]{coordinate + 0.5};
+    }
+
+    private enum Axis {
+        X,
+        Y,
+        Z
     }
 
     private static int clamp(int value, int min, int max) {
