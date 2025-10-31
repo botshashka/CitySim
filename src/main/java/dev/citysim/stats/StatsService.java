@@ -188,11 +188,11 @@ public class StatsService {
         cancelActiveJob(city);
         HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
         if (result != null) {
-            result.ghostTown = city.isGhostTown();
+            result.setGhostTown(city.isGhostTown() || result.isGhostTown());
             return result;
         }
         HappinessBreakdown fallback = new HappinessBreakdown();
-        fallback.ghostTown = city.isGhostTown();
+        fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
         return fallback;
     }
 
@@ -208,7 +208,7 @@ public class StatsService {
             return new HappinessBreakdown();
         }
         if (city.happinessBreakdown != null && city.blockScanCache != null) {
-            city.happinessBreakdown.ghostTown = city.isGhostTown();
+            city.happinessBreakdown.setGhostTown(city.isGhostTown() || city.population <= 0);
             return city.happinessBreakdown;
         }
         City.BlockScanCache metrics = city.blockScanCache;
@@ -220,11 +220,11 @@ public class StatsService {
         }
         requestCityUpdate(city, true, "compute happiness breakdown");
         if (city.happinessBreakdown != null) {
-            city.happinessBreakdown.ghostTown = city.isGhostTown();
+            city.happinessBreakdown.setGhostTown(city.isGhostTown() || city.population <= 0);
             return city.happinessBreakdown;
         }
         HappinessBreakdown fallback = new HappinessBreakdown();
-        fallback.ghostTown = city.isGhostTown();
+        fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
         return fallback;
     }
 

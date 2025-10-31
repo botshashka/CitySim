@@ -114,7 +114,7 @@ public class TitleService implements Listener {
             lastShownTick.put(player.getUniqueId(), serverTick);
 
             HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(current);
-            String key = breakdown.pickWeightedMessageKey();
+            String key = breakdown.isGhostTown() ? "ghost_town" : breakdown.pickWeightedMessageKey();
 
             Component title = Component.text(current.name)
                     .color(NamedTextColor.GOLD)

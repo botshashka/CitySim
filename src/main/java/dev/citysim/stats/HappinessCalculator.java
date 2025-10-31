@@ -24,9 +24,23 @@ public class HappinessCalculator {
 
     public HappinessBreakdown calculate(City city, City.BlockScanCache metrics) {
         HappinessBreakdown hb = new HappinessBreakdown();
-        hb.ghostTown = city != null && city.isGhostTown();
         int pop = city.population;
         int employed = city.employed;
+        boolean ghostByPopulation = pop <= 0;
+        boolean flaggedGhostTown = city.isGhostTown();
+        hb.setGhostTown(flaggedGhostTown || ghostByPopulation);
+
+        if (hb.isGhostTown()) {
+            hb.lightPoints = 0.0;
+            hb.employmentPoints = 0.0;
+            hb.overcrowdingPenalty = 0.0;
+            hb.naturePoints = 0.0;
+            hb.pollutionPenalty = 0.0;
+            hb.housingPoints = 0.0;
+            hb.transitPoints = 0.0;
+            hb.total = 0;
+            return hb;
+        }
 
         double lightScore = metrics.light;
         double lightScoreNormalized = (lightScore - lightNeutral) / lightNeutral;
