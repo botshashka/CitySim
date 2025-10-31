@@ -7,7 +7,10 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class SelectionOutline {
     public static final String MAX_OUTLINE_PARTICLES_PATH = "selection.max_outline_particles";
@@ -159,6 +162,7 @@ public final class SelectionOutline {
                                                       int maxY,
                                                       int maxZ) {
         List<Location> points = new ArrayList<>();
+        FaceTracker faceTracker = new FaceTracker();
         int[] xCorners = axisValues(minX, maxX);
         int[] yCorners = axisValues(minY, maxY);
         int[] zCorners = axisValues(minZ, maxZ);
@@ -166,7 +170,7 @@ public final class SelectionOutline {
         for (int x : xCorners) {
             for (int y : yCorners) {
                 for (int z : zCorners) {
-                    addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                    addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                 }
             }
         }
@@ -175,7 +179,7 @@ public final class SelectionOutline {
             for (int x = minX + 1; x <= maxX - 1; x++) {
                 for (int y : yCorners) {
                     for (int z : zCorners) {
-                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -185,7 +189,7 @@ public final class SelectionOutline {
             for (int z = minZ + 1; z <= maxZ - 1; z++) {
                 for (int x : xCorners) {
                     for (int y : yCorners) {
-                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -195,7 +199,7 @@ public final class SelectionOutline {
             for (int y = minY + 1; y <= maxY - 1; y++) {
                 for (int x : xCorners) {
                     for (int z : zCorners) {
-                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -213,6 +217,7 @@ public final class SelectionOutline {
                                                             int maxZ,
                                                             boolean includeMidpoints) {
         List<Location> points = new ArrayList<>();
+        FaceTracker faceTracker = new FaceTracker();
         int[] xCorners = axisValues(minX, maxX);
         int[] zCorners = axisValues(minZ, maxZ);
         int height = Math.max(1, maxY - minY + 1);
@@ -230,7 +235,7 @@ public final class SelectionOutline {
             for (int x : xCorners) {
                 for (int z : zCorners) {
                     for (int y = startY; y <= topY; y++) {
-                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -254,7 +259,7 @@ public final class SelectionOutline {
                     for (int sampleY : sampleYs) {
                         int y = clamp(sampleY, minY, maxY);
                         for (int z : zCorners) {
-                            addOutlinePoints(points, world, sampleX, y, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                            addOutlinePoints(points, world, sampleX, y, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                         }
                     }
                 }
@@ -266,7 +271,7 @@ public final class SelectionOutline {
                     for (int sampleY : sampleYs) {
                         int y = clamp(sampleY, minY, maxY);
                         for (int x : xCorners) {
-                            addOutlinePoints(points, world, x, y, sampleZ, minX, maxX, minY, maxY, minZ, maxZ, true);
+                            addOutlinePoints(points, world, x, y, sampleZ, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                         }
                     }
                 }
@@ -275,9 +280,9 @@ public final class SelectionOutline {
             if (maxX > minX) {
                 for (int sampleY : sampleYs) {
                     int y = clamp(sampleY, minY, maxY);
-                    addOutlinePoints(points, world, midX, y, minZ, minX, maxX, minY, maxY, minZ, maxZ, true);
+                    addOutlinePoints(points, world, midX, y, minZ, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     if (minZ != maxZ) {
-                        addOutlinePoints(points, world, midX, y, maxZ, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, midX, y, maxZ, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -285,9 +290,9 @@ public final class SelectionOutline {
             if (maxZ > minZ) {
                 for (int sampleY : sampleYs) {
                     int y = clamp(sampleY, minY, maxY);
-                    addOutlinePoints(points, world, minX, y, midZ, minX, maxX, minY, maxY, minZ, maxZ, true);
+                    addOutlinePoints(points, world, minX, y, midZ, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     if (minX != maxX) {
-                        addOutlinePoints(points, world, maxX, y, midZ, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, maxX, y, midZ, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -296,7 +301,7 @@ public final class SelectionOutline {
                 int clampedMidY = clamp(midY, minY, maxY);
                 for (int x : xCorners) {
                     for (int z : zCorners) {
-                        addOutlinePoints(points, world, x, clampedMidY, z, minX, maxX, minY, maxY, minZ, maxZ, true);
+                        addOutlinePoints(points, world, x, clampedMidY, z, minX, maxX, minY, maxY, minZ, maxZ, true, faceTracker);
                     }
                 }
             }
@@ -365,6 +370,22 @@ public final class SelectionOutline {
                                          int minZ,
                                          int maxZ,
                                          boolean offsetY) {
+        addOutlinePoints(points, world, x, y, z, minX, maxX, minY, maxY, minZ, maxZ, offsetY, null);
+    }
+
+    private static void addOutlinePoints(List<Location> points,
+                                         World world,
+                                         int x,
+                                         int y,
+                                         int z,
+                                         int minX,
+                                         int maxX,
+                                         int minY,
+                                         int maxY,
+                                         int minZ,
+                                         int maxZ,
+                                         boolean offsetY,
+                                         FaceTracker faceTracker) {
         if (world == null) {
             return;
         }
@@ -376,36 +397,65 @@ public final class SelectionOutline {
             double minZEdge = minZ - EDGE_OFFSET;
             double maxZEdge = maxZ + 1 + EDGE_OFFSET;
 
-            double[] xCenters = centers(minX, maxX);
-            double[] yCenters = centers(minY, maxY);
-            double[] zCenters = centers(minZ, maxZ);
-            double[] xEdgesAll = edgesAll(minX, maxX);
-            double[] yEdgesAll = edgesAll(minY, maxY);
-            double[] zEdgesAll = edgesAll(minZ, maxZ);
-
             if (x == minX) {
-                addFacePoints(points, world, Axis.X, minXEdge, yCenters, zEdgesAll);
-                addFacePoints(points, world, Axis.X, minXEdge, yEdgesAll, zCenters);
+                if (shouldEmitFace(faceTracker, Axis.X, minXEdge)) {
+                    double[] yCenters = centers(minY, maxY);
+                    double[] zEdgesAll = edgesAll(minZ, maxZ);
+                    double[] yEdgesAll = edgesAll(minY, maxY);
+                    double[] zCenters = centers(minZ, maxZ);
+                    addFacePoints(points, world, Axis.X, minXEdge, yCenters, zEdgesAll);
+                    addFacePoints(points, world, Axis.X, minXEdge, yEdgesAll, zCenters);
+                }
             }
             if (x == maxX) {
-                addFacePoints(points, world, Axis.X, maxXEdge, yCenters, zEdgesAll);
-                addFacePoints(points, world, Axis.X, maxXEdge, yEdgesAll, zCenters);
+                if (shouldEmitFace(faceTracker, Axis.X, maxXEdge)) {
+                    double[] yCenters = centers(minY, maxY);
+                    double[] zEdgesAll = edgesAll(minZ, maxZ);
+                    double[] yEdgesAll = edgesAll(minY, maxY);
+                    double[] zCenters = centers(minZ, maxZ);
+                    addFacePoints(points, world, Axis.X, maxXEdge, yCenters, zEdgesAll);
+                    addFacePoints(points, world, Axis.X, maxXEdge, yEdgesAll, zCenters);
+                }
             }
             if (y == minY) {
-                addFacePoints(points, world, Axis.Y, minYEdge, xCenters, zEdgesAll);
-                addFacePoints(points, world, Axis.Y, minYEdge, xEdgesAll, zCenters);
+                if (shouldEmitFace(faceTracker, Axis.Y, minYEdge)) {
+                    double[] xCenters = centers(minX, maxX);
+                    double[] zEdgesAll = edgesAll(minZ, maxZ);
+                    double[] xEdgesAll = edgesAll(minX, maxX);
+                    double[] zCenters = centers(minZ, maxZ);
+                    addFacePoints(points, world, Axis.Y, minYEdge, xCenters, zEdgesAll);
+                    addFacePoints(points, world, Axis.Y, minYEdge, xEdgesAll, zCenters);
+                }
             }
             if (y == maxY) {
-                addFacePoints(points, world, Axis.Y, maxYEdge, xCenters, zEdgesAll);
-                addFacePoints(points, world, Axis.Y, maxYEdge, xEdgesAll, zCenters);
+                if (shouldEmitFace(faceTracker, Axis.Y, maxYEdge)) {
+                    double[] xCenters = centers(minX, maxX);
+                    double[] zEdgesAll = edgesAll(minZ, maxZ);
+                    double[] xEdgesAll = edgesAll(minX, maxX);
+                    double[] zCenters = centers(minZ, maxZ);
+                    addFacePoints(points, world, Axis.Y, maxYEdge, xCenters, zEdgesAll);
+                    addFacePoints(points, world, Axis.Y, maxYEdge, xEdgesAll, zCenters);
+                }
             }
             if (z == minZ) {
-                addFacePoints(points, world, Axis.Z, minZEdge, xEdgesAll, yCenters);
-                addFacePoints(points, world, Axis.Z, minZEdge, xCenters, yEdgesAll);
+                if (shouldEmitFace(faceTracker, Axis.Z, minZEdge)) {
+                    double[] xEdgesAll = edgesAll(minX, maxX);
+                    double[] yCenters = centers(minY, maxY);
+                    double[] xCenters = centers(minX, maxX);
+                    double[] yEdgesAll = edgesAll(minY, maxY);
+                    addFacePoints(points, world, Axis.Z, minZEdge, xEdgesAll, yCenters);
+                    addFacePoints(points, world, Axis.Z, minZEdge, xCenters, yEdgesAll);
+                }
             }
             if (z == maxZ) {
-                addFacePoints(points, world, Axis.Z, maxZEdge, xEdgesAll, yCenters);
-                addFacePoints(points, world, Axis.Z, maxZEdge, xCenters, yEdgesAll);
+                if (shouldEmitFace(faceTracker, Axis.Z, maxZEdge)) {
+                    double[] xEdgesAll = edgesAll(minX, maxX);
+                    double[] yCenters = centers(minY, maxY);
+                    double[] xCenters = centers(minX, maxX);
+                    double[] yEdgesAll = edgesAll(minY, maxY);
+                    addFacePoints(points, world, Axis.Z, maxZEdge, xEdgesAll, yCenters);
+                    addFacePoints(points, world, Axis.Z, maxZEdge, xCenters, yEdgesAll);
+                }
             }
             return;
         }
@@ -439,6 +489,10 @@ public final class SelectionOutline {
         if (z == maxZ) {
             addFacePoints(points, world, Axis.Z, maxZEdge, xEdges, yEdges);
         }
+    }
+
+    private static boolean shouldEmitFace(FaceTracker tracker, Axis axis, double coordinate) {
+        return tracker == null || tracker.markIfNew(axis, coordinate);
     }
 
     private static Location outlineLocation(World world,
@@ -528,6 +582,10 @@ public final class SelectionOutline {
         return values;
     }
 
+    private static double quantize(double v) {
+        return Math.rint(v * 1_000_000.0) / 1_000_000.0;
+    }
+
     private static void addFacePoints(List<Location> points,
                                       World world,
                                       Axis axis,
@@ -552,6 +610,20 @@ public final class SelectionOutline {
                 }
                 addPoint(points, location);
             }
+        }
+    }
+
+    private static final class FaceTracker {
+        private final EnumMap<Axis, Set<Double>> processed = new EnumMap<>(Axis.class);
+
+        boolean markIfNew(Axis axis, double coordinate) {
+            Set<Double> coordinates = processed.computeIfAbsent(axis, ignored -> new HashSet<>());
+            double quantized = quantize(coordinate);
+            if (coordinates.contains(quantized)) {
+                return false;
+            }
+            coordinates.add(quantized);
+            return true;
         }
     }
 
