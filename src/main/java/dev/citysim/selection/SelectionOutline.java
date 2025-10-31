@@ -390,73 +390,36 @@ public final class SelectionOutline {
             return;
         }
         if (offsetY && minY < maxY) {
+            if (!(x == minX && y == minY && z == minZ)) {
+                return;
+            }
             double minXEdge = minX - EDGE_OFFSET;
             double maxXEdge = maxX + 1 + EDGE_OFFSET;
             double minYEdge = minY - EDGE_OFFSET;
             double maxYEdge = maxY + 1 + EDGE_OFFSET;
             double minZEdge = minZ - EDGE_OFFSET;
             double maxZEdge = maxZ + 1 + EDGE_OFFSET;
+            double[] xCenters = centers(minX, maxX);
+            double[] yCenters = centers(minY, maxY);
+            double[] zCenters = centers(minZ, maxZ);
+            double[] xPerim = new double[]{minXEdge, maxXEdge};
+            double[] yPerim = new double[]{minYEdge, maxYEdge};
+            double[] zPerim = new double[]{minZEdge, maxZEdge};
 
-            if (x == minX) {
-                if (shouldEmitFace(faceTracker, Axis.X, minXEdge)) {
-                    double[] yCenters = centers(minY, maxY);
-                    double[] zEdgesAll = edgesAll(minZ, maxZ);
-                    double[] yEdgesAll = edgesAll(minY, maxY);
-                    double[] zCenters = centers(minZ, maxZ);
-                    addFacePoints(points, world, Axis.X, minXEdge, yCenters, zEdgesAll);
-                    addFacePoints(points, world, Axis.X, minXEdge, yEdgesAll, zCenters);
-                }
-            }
-            if (x == maxX) {
-                if (shouldEmitFace(faceTracker, Axis.X, maxXEdge)) {
-                    double[] yCenters = centers(minY, maxY);
-                    double[] zEdgesAll = edgesAll(minZ, maxZ);
-                    double[] yEdgesAll = edgesAll(minY, maxY);
-                    double[] zCenters = centers(minZ, maxZ);
-                    addFacePoints(points, world, Axis.X, maxXEdge, yCenters, zEdgesAll);
-                    addFacePoints(points, world, Axis.X, maxXEdge, yEdgesAll, zCenters);
-                }
-            }
-            if (y == minY) {
-                if (shouldEmitFace(faceTracker, Axis.Y, minYEdge)) {
-                    double[] xCenters = centers(minX, maxX);
-                    double[] zEdgesAll = edgesAll(minZ, maxZ);
-                    double[] xEdgesAll = edgesAll(minX, maxX);
-                    double[] zCenters = centers(minZ, maxZ);
-                    addFacePoints(points, world, Axis.Y, minYEdge, xCenters, zEdgesAll);
-                    addFacePoints(points, world, Axis.Y, minYEdge, xEdgesAll, zCenters);
-                }
-            }
-            if (y == maxY) {
-                if (shouldEmitFace(faceTracker, Axis.Y, maxYEdge)) {
-                    double[] xCenters = centers(minX, maxX);
-                    double[] zEdgesAll = edgesAll(minZ, maxZ);
-                    double[] xEdgesAll = edgesAll(minX, maxX);
-                    double[] zCenters = centers(minZ, maxZ);
-                    addFacePoints(points, world, Axis.Y, maxYEdge, xCenters, zEdgesAll);
-                    addFacePoints(points, world, Axis.Y, maxYEdge, xEdgesAll, zCenters);
-                }
-            }
-            if (z == minZ) {
-                if (shouldEmitFace(faceTracker, Axis.Z, minZEdge)) {
-                    double[] xEdgesAll = edgesAll(minX, maxX);
-                    double[] yCenters = centers(minY, maxY);
-                    double[] xCenters = centers(minX, maxX);
-                    double[] yEdgesAll = edgesAll(minY, maxY);
-                    addFacePoints(points, world, Axis.Z, minZEdge, xEdgesAll, yCenters);
-                    addFacePoints(points, world, Axis.Z, minZEdge, xCenters, yEdgesAll);
-                }
-            }
-            if (z == maxZ) {
-                if (shouldEmitFace(faceTracker, Axis.Z, maxZEdge)) {
-                    double[] xEdgesAll = edgesAll(minX, maxX);
-                    double[] yCenters = centers(minY, maxY);
-                    double[] xCenters = centers(minX, maxX);
-                    double[] yEdgesAll = edgesAll(minY, maxY);
-                    addFacePoints(points, world, Axis.Z, maxZEdge, xEdgesAll, yCenters);
-                    addFacePoints(points, world, Axis.Z, maxZEdge, xCenters, yEdgesAll);
-                }
-            }
+            addFacePoints(points, world, Axis.X, minXEdge, yCenters, zPerim);
+            addFacePoints(points, world, Axis.X, minXEdge, yPerim, zCenters);
+            addFacePoints(points, world, Axis.X, maxXEdge, yCenters, zPerim);
+            addFacePoints(points, world, Axis.X, maxXEdge, yPerim, zCenters);
+
+            addFacePoints(points, world, Axis.Z, minZEdge, xPerim, yCenters);
+            addFacePoints(points, world, Axis.Z, minZEdge, xCenters, yPerim);
+            addFacePoints(points, world, Axis.Z, maxZEdge, xPerim, yCenters);
+            addFacePoints(points, world, Axis.Z, maxZEdge, xCenters, yPerim);
+
+            addFacePoints(points, world, Axis.Y, minYEdge, xCenters, zPerim);
+            addFacePoints(points, world, Axis.Y, minYEdge, xPerim, zCenters);
+            addFacePoints(points, world, Axis.Y, maxYEdge, xCenters, zPerim);
+            addFacePoints(points, world, Axis.Y, maxYEdge, xPerim, zCenters);
             return;
         }
 
@@ -566,24 +529,6 @@ public final class SelectionOutline {
             values[i] = min + i + 0.5;
         }
         return values;
-    }
-
-    private static double[] edgesAll(int min, int max) {
-        if (min > max) {
-            return new double[0];
-        }
-        int interior = Math.max(0, max - min);
-        double[] values = new double[interior + 2];
-        values[0] = min - EDGE_OFFSET;
-        for (int i = 1; i <= interior; i++) {
-            values[i] = min + i;
-        }
-        values[values.length - 1] = max + 1 + EDGE_OFFSET;
-        return values;
-    }
-
-    private static double quantize(double v) {
-        return Math.rint(v * 1_000_000.0) / 1_000_000.0;
     }
 
     private static void addFacePoints(List<Location> points,
