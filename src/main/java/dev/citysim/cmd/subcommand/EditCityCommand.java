@@ -212,6 +212,7 @@ public class EditCityCommand implements CitySubcommand {
                     .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + mode + ").", NamedTextColor.GREEN))
                     .build();
             player.sendMessage(message);
+            SelectionListener.clear(player);
         } catch (IllegalArgumentException ex) {
             player.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
@@ -290,6 +291,7 @@ public class EditCityCommand implements CitySubcommand {
             return true;
         }
 
+        int viewerY = player.getLocation().getBlockY();
         Map<World, List<Location>> edgePoints = new HashMap<>();
         boolean missingWorld = false;
         for (Cuboid cuboid : city.cuboids) {
@@ -301,7 +303,8 @@ public class EditCityCommand implements CitySubcommand {
                 missingWorld = true;
                 continue;
             }
-            edgePoints.computeIfAbsent(world, ignored -> new ArrayList<>()).addAll(computeEdgePoints(cuboid, world));
+            edgePoints.computeIfAbsent(world, ignored -> new ArrayList<>())
+                    .addAll(computeEdgePoints(cuboid, world, viewerY));
         }
 
         if (edgePoints.isEmpty()) {
@@ -579,10 +582,11 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
-    private List<Location> computeEdgePoints(Cuboid cuboid, World world) {
+    private List<Location> computeEdgePoints(Cuboid cuboid, World world, int viewerY) {
         var plugin = cityManager.getPlugin();
         int maxParticles = SelectionOutline.resolveMaxOutlineParticles(plugin);
         boolean includeMidpoints = SelectionOutline.resolveSimpleMidpoints(plugin);
+        boolean fullHeight = cuboid != null && cuboid.isFullHeight(world);
         return SelectionOutline.planOutline(
                 world,
                 cuboid.minX,
@@ -592,7 +596,9 @@ public class EditCityCommand implements CitySubcommand {
                 cuboid.maxY,
                 cuboid.maxZ,
                 maxParticles,
-                includeMidpoints
+                includeMidpoints,
+                fullHeight,
+                viewerY
         );
     }
 

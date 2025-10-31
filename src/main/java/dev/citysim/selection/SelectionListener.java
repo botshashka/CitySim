@@ -71,7 +71,7 @@ public class SelectionListener implements Listener {
             block.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, block.getLocation().add(0.5, 1, 0.5), 20, 0.4, 0.4, 0.4, 0.01);
         }
 
-        updateSelectionPreview(sel);
+        updateSelectionPreview(p, sel);
     }
 
     @EventHandler
@@ -96,7 +96,7 @@ public class SelectionListener implements Listener {
         player.sendActionBar(Component.text(sb.toString(), NamedTextColor.YELLOW));
     }
 
-    private void updateSelectionPreview(SelectionState sel) {
+    private void updateSelectionPreview(Player player, SelectionState sel) {
         sel.cancelPreview();
         if (!sel.ready()) {
             return;
@@ -105,20 +105,26 @@ public class SelectionListener implements Listener {
         sel.previewTask = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!sel.ready() || sel.world == null) {
+                if (!sel.ready() || sel.world == null || !player.isOnline()) {
                     cancel();
                     sel.previewTask = null;
                     return;
                 }
                 SelectionBounds bounds = SelectionBounds.from(sel);
-                drawSelectionParticles(sel.world, bounds);
+                drawSelectionParticles(player, sel, bounds);
             }
         }.runTaskTimer(plugin, 0L, PREVIEW_TASK_PERIOD_TICKS);
     }
 
-    private void drawSelectionParticles(World world, SelectionBounds bounds) {
+    private void drawSelectionParticles(Player player, SelectionState sel, SelectionBounds bounds) {
+        World world = bounds == null ? null : sel.world;
+        if (world == null || player.getWorld() != world) {
+            return;
+        }
         int maxParticles = SelectionOutline.resolveMaxOutlineParticles(plugin);
         boolean includeMidpoints = SelectionOutline.resolveSimpleMidpoints(plugin);
+        boolean fullHeight = sel.yMode == SelectionState.YMode.FULL;
+        int viewerY = player.getLocation().getBlockY();
         for (Location location : SelectionOutline.planOutline(
                 world,
                 bounds.minX,
@@ -128,7 +134,9 @@ public class SelectionListener implements Listener {
                 bounds.maxY,
                 bounds.maxZ,
                 maxParticles,
-                includeMidpoints)) {
+                includeMidpoints,
+                fullHeight,
+                viewerY)) {
             world.spawnParticle(Particle.HAPPY_VILLAGER, location, 1, 0, 0, 0, 0);
         }
     }
