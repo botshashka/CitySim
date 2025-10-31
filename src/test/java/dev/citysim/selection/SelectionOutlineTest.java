@@ -65,6 +65,38 @@ class SelectionOutlineTest {
         assertTrue(limitedPoints <= 10, "Expected outline to respect max particle limit, but got " + limitedPoints);
     }
 
+    @Test
+    void fullHeightPreviewSpansWorldVerticalRange() {
+        World world = createWorldStub("world", -64, 320);
+
+        List<Location> outline = SelectionOutline.planOutline(
+                world,
+                5,
+                70,
+                5,
+                10,
+                80,
+                10,
+                1500,
+                false,
+                true,
+                75
+        );
+
+        assertFalse(outline.isEmpty(), "Expected outline points to be generated");
+        double minOutlineY = outline.stream()
+                .mapToDouble(Location::getY)
+                .min()
+                .orElse(Double.NaN);
+        double maxOutlineY = outline.stream()
+                .mapToDouble(Location::getY)
+                .max()
+                .orElse(Double.NaN);
+
+        assertTrue(minOutlineY < 70, "Expected outline to dip below clicked min height, but got " + minOutlineY);
+        assertTrue(maxOutlineY > 80, "Expected outline to exceed clicked max height, but got " + maxOutlineY);
+    }
+
     private static World createWorldStub(String name, int minHeight, int maxHeight) {
         return (World) Proxy.newProxyInstance(
                 World.class.getClassLoader(),

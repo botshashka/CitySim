@@ -59,18 +59,17 @@ public final class SelectionOutline {
         if (fullHeight) {
             int minWorldY = world.getMinHeight();
             int maxWorldY = world.getMaxHeight() - 1;
-            int clampedMinY = clamp(minY, minWorldY, maxWorldY);
-            int clampedMaxY = clamp(maxY, clampedMinY, maxWorldY);
+            int clampedViewerY = clamp(viewerY, minWorldY, maxWorldY);
             List<Location> outline = generateFullHeightColumns(
                     world,
                     minX,
-                    clampedMinY,
+                    minWorldY,
                     minZ,
                     maxX,
-                    clampedMaxY,
+                    maxWorldY,
                     maxZ,
                     includeMidpoints,
-                    viewerY,
+                    clampedViewerY,
                     maxParticles
             );
             if (maxParticles > 0 && outline.size() > maxParticles) {
