@@ -92,7 +92,7 @@ public class CitySimPlugin extends JavaPlugin {
             getLogger().severe("Command 'city' not found in plugin.yml");
         }
 
-        getServer().getPluginManager().registerEvents(new SelectionListener(), this);
+        getServer().getPluginManager().registerEvents(new SelectionListener(this), this);
         getLogger().info("CitySim enabled.");
     }
 
