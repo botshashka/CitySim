@@ -22,6 +22,8 @@ visualization:
   async_prepare: true
   jitter: 0.15
   slice_thickness: 0.0
+  face_offset: 0.03125
+  corner_boost: 2.0
   debug: false
 
 stations:

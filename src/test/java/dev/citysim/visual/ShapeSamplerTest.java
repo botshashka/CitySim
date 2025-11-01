@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,7 +14,8 @@ class ShapeSamplerTest {
     @Test
     void spanSamplingProducesWireframeEdges() {
         SelectionSnapshot snapshot = new SelectionSnapshot(0, 0, 0, 16, 16, 16);
-        SamplingContext context = new SamplingContext(4, 64, 1.5, 800, 0.0, 0.0, 0);
+        assertEquals(16, snapshot.maxZ(), 0.0001, "Expected snapshot to span 16 blocks on Z");
+        SamplingContext context = new SamplingContext(4, 64, 1.5, 800, 0.0, 0.0, 0.03125, 2.0, 0);
 
         List<Vec3> points = ShapeSampler.sampleSelectionEdges(snapshot, YMode.SPAN, 0.5, null, context);
 
@@ -22,14 +24,16 @@ class ShapeSamplerTest {
         double maxX = points.stream().mapToDouble(Vec3::x).max().orElse(Double.NaN);
         double minZ = points.stream().mapToDouble(Vec3::z).min().orElse(Double.NaN);
         double maxZ = points.stream().mapToDouble(Vec3::z).max().orElse(Double.NaN);
-        assertTrue(minX <= 0.01 && minZ <= 0.01, "Expected outline to start near the origin corner");
-        assertTrue(maxX >= 15.99 && maxZ >= 15.99, "Expected outline to reach the opposite corner");
+        assertTrue(minX <= 0.01 && minZ <= 0.01,
+                "Expected outline to start near the origin corner but had minX=" + minX + ", minZ=" + minZ);
+        assertTrue(maxX >= 15.99 && maxZ >= 15.99,
+                "Expected outline to reach the opposite corner but had maxX=" + maxX + ", maxZ=" + maxZ);
     }
 
     @Test
     void fullModeFollowsSliceHeight() {
         SelectionSnapshot snapshot = new SelectionSnapshot(5, 0, 5, 25, 30, 25);
-        SamplingContext context = new SamplingContext(2, 48, 1.5, 400, 0.0, 0.0, 42);
+        SamplingContext context = new SamplingContext(2, 48, 1.5, 400, 0.0, 0.0, 0.03125, 2.0, 42);
 
         double sliceY = 10.5;
         List<Vec3> points = ShapeSampler.sampleSelectionEdges(snapshot, YMode.FULL, 0.5, sliceY, context);
@@ -42,8 +46,8 @@ class ShapeSamplerTest {
     @Test
     void budgetReducesPointCount() {
         SelectionSnapshot snapshot = new SelectionSnapshot(0, 0, 0, 64, 64, 64);
-        SamplingContext generous = new SamplingContext(4, 64, 1.5, 800, 0.0, 0.0, 1);
-        SamplingContext tight = new SamplingContext(4, 64, 1.5, 50, 0.0, 0.0, 1);
+        SamplingContext generous = new SamplingContext(4, 64, 1.5, 800, 0.0, 0.0, 0.03125, 2.0, 1);
+        SamplingContext tight = new SamplingContext(4, 64, 1.5, 50, 0.0, 0.0, 0.03125, 2.0, 1);
 
         int generousCount = ShapeSampler.sampleSelectionEdges(snapshot, YMode.SPAN, 0.5, null, generous).size();
         int limitedCount = ShapeSampler.sampleSelectionEdges(snapshot, YMode.SPAN, 0.5, null, tight).size();

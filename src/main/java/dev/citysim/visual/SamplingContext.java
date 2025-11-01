@@ -10,6 +10,8 @@ public record SamplingContext(
         int maxPoints,
         double jitter,
         double sliceThickness,
+        double faceOffset,
+        double cornerBoost,
         long seedBase
 ) {
 
@@ -25,5 +27,13 @@ public record SamplingContext(
 
     public boolean jitterEnabled() {
         return jitter > 0.0;
+    }
+
+    public double faceOffset() {
+        return faceOffset;
+    }
+
+    public double cornerBoost() {
+        return cornerBoost;
     }
 }
