@@ -99,6 +99,9 @@ city’s cuboids and updates the station total automatically. Manual `/city edit
 this mode so the TrainCarts counts stay authoritative, and CitySim refreshes the totals whenever TrainCarts is enabled, reloaded,
 or disabled.
 
+**Requirements:** Install both [TrainCarts](https://modrinth.com/plugin/traincarts) and [Vault](https://modrinth.com/plugin/vaultunlocked) before switching the counting mode. CitySim relies on Vault being loaded to
+bootstrap the integration; if either plugin is missing, it falls back to manual station counts until they are present.
+
 ## Configuration (`config.yml`)
 CitySim drops a `config.yml` file in `plugins/CitySim/`. The shipped defaults work well for most servers, but everything is open
 for tweaking:
@@ -130,6 +133,3 @@ for tweaking:
 - **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
 - **`titles`** – Enables or disables entry titles, sets the cooldown, and defines the MiniMessage text players see in different
   situations (keep `{city}` as the placeholder for the city name).
-
-**Requirements:** Install both [TrainCarts](https://modrinth.com/plugin/traincarts) and [Vault](https://modrinth.com/plugin/vaultunlocked) before switching the counting mode. CitySim relies on Vault being loaded to
-bootstrap the integration; if either plugin is missing, it falls back to manual station counts until they are present.
