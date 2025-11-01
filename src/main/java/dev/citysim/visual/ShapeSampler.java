@@ -10,7 +10,7 @@ import java.util.Set;
  */
 public final class ShapeSampler {
 
-    private static final double EDGE_OFFSET = 0.001;
+    private static final double EPSILON = 1.0E-6;
 
     private ShapeSampler() {
     }
@@ -27,11 +27,10 @@ public final class ShapeSampler {
     }
 
     public static List<Vec3> sampleCuboidEdges(CuboidSnapshot cuboid,
-                                               YMode mode,
                                                double baseStep,
                                                Double sliceY,
                                                SamplingContext context) {
-        return switch (mode) {
+        return switch (cuboid.mode()) {
             case FULL -> sampleFullSlice(cuboid, baseStep, sliceY, context);
             case SPAN -> sampleSpan(cuboid, baseStep, context);
         };
@@ -40,14 +39,8 @@ public final class ShapeSampler {
     private static List<Vec3> sampleSpan(Bounds bounds,
                                          double baseStep,
                                          SamplingContext context) {
-        double effectiveStep = context.effectiveStep(baseStep);
         List<Edge> edges = buildSpanEdges(bounds);
-        double totalPoints = estimateTotalPoints(edges, effectiveStep);
-        if (totalPoints > context.maxPoints()) {
-            double scale = totalPoints / context.maxPoints();
-            effectiveStep *= scale;
-        }
-        return sampleEdges(edges, effectiveStep, context, false);
+        return sampleEdges(edges, baseStep, context, bounds);
     }
 
     private static List<Vec3> sampleFullSlice(Bounds bounds,
@@ -57,50 +50,76 @@ public final class ShapeSampler {
         if (sliceY == null) {
             return List.of();
         }
-        double effectiveStep = context.effectiveStep(baseStep);
         double minY = sliceY;
         double maxY = sliceY;
         if (context.sliceThickness() > 0.0) {
-            minY = sliceY - context.sliceThickness() / 2.0;
-            maxY = sliceY + context.sliceThickness() / 2.0;
+            double half = context.sliceThickness() / 2.0;
+            minY = sliceY - half;
+            maxY = sliceY + half;
         }
         List<Edge> edges = buildSliceEdges(bounds, minY, maxY);
-        double totalPoints = estimateTotalPoints(edges, effectiveStep);
-        if (totalPoints > context.maxPoints()) {
-            double scale = totalPoints / context.maxPoints();
-            effectiveStep *= scale;
-        }
-        return sampleEdges(edges, effectiveStep, context, true);
+        Bounds sliceBounds = new SimpleBounds(
+                bounds.minX(),
+                minY,
+                bounds.minZ(),
+                bounds.maxX(),
+                maxY,
+                bounds.maxZ()
+        );
+        return sampleEdges(edges, baseStep, context, sliceBounds);
     }
 
     private static List<Vec3> sampleEdges(List<Edge> edges,
-                                          double step,
+                                          double baseStep,
                                           SamplingContext context,
-                                          boolean horizontalSlice) {
-        if (edges.isEmpty() || step <= 0.0) {
+                                          Bounds bounds) {
+        if (edges.isEmpty()) {
             return List.of();
         }
+        double effectiveStep = context.effectiveStep(baseStep);
+        int stride = Math.max(1, (int) Math.round(effectiveStep));
+        long estimate = estimateTotalPoints(edges, stride);
+        int maxPoints = Math.max(1, context.maxPoints());
+        while (estimate > maxPoints) {
+            stride++;
+            estimate = estimateTotalPoints(edges, stride);
+        }
+        return emitEdges(edges, stride, context, bounds);
+    }
+
+    private static List<Vec3> emitEdges(List<Edge> edges,
+                                        int stride,
+                                        SamplingContext context,
+                                        Bounds bounds) {
         List<Vec3> points = new ArrayList<>();
         Set<Long> seen = new HashSet<>();
-        for (int edgeIndex = 0; edgeIndex < edges.size(); edgeIndex++) {
-            Edge edge = edges.get(edgeIndex);
-            double length = edge.length();
-            int segments = Math.max(1, (int) Math.ceil(length / step));
-            Vec3 direction = edge.direction(segments);
-
-            for (int i = 0; i <= segments; i++) {
-                if (edgeIndex > 0 && i == 0) {
-                    continue; // avoid duplicating the start vertex already emitted by previous edge
+        for (Edge edge : edges) {
+            Range range = computeRange(edge);
+            int start = range.start();
+            int end = range.end();
+            List<Integer> samples = new ArrayList<>();
+            samples.add(start);
+            if (start != end) {
+                int value = start + stride;
+                while (value < end) {
+                    samples.add(value);
+                    value += stride;
                 }
-                double x = edge.startX + direction.x() * i;
-                double y = edge.startY + direction.y() * i;
-                double z = edge.startZ + direction.z() * i;
-
-                Vec3 adjusted = adjustForOuterFace(x, y, z, edge.axis, horizontalSlice);
-                Vec3 jittered = applyJitter(adjusted, context);
-                long quantized = quantize(jittered);
+                samples.add(end);
+            }
+            for (int value : samples) {
+                double x = edge.startX;
+                double y = edge.startY;
+                double z = edge.startZ;
+                switch (edge.axis) {
+                    case X -> x = value;
+                    case Y -> y = value;
+                    case Z -> z = value;
+                }
+                Vec3 adjusted = applyOffsets(x, y, z, bounds, edge.axis, context.faceOffset(), context.cornerBoost());
+                long quantized = quantize(adjusted);
                 if (seen.add(quantized)) {
-                    points.add(jittered);
+                    points.add(adjusted);
                     if (points.size() >= context.maxPoints()) {
                         return points;
                     }
@@ -110,58 +129,136 @@ public final class ShapeSampler {
         return points;
     }
 
-    private static Vec3 adjustForOuterFace(double x,
-                                           double y,
-                                           double z,
-                                           Axis axis,
-                                           boolean horizontalSlice) {
-        double offset = EDGE_OFFSET;
-        double adjustedX = x;
-        double adjustedY = y;
-        double adjustedZ = z;
-        switch (axis) {
-            case X -> {
-                adjustedY += y < Math.floor(y) + 0.5 ? -offset : offset;
-                adjustedZ += z < Math.floor(z) + 0.5 ? -offset : offset;
-            }
-            case Y -> {
-                adjustedX += x < Math.floor(x) + 0.5 ? -offset : offset;
-                adjustedZ += z < Math.floor(z) + 0.5 ? -offset : offset;
-            }
-            case Z -> {
-                adjustedX += x < Math.floor(x) + 0.5 ? -offset : offset;
-                adjustedY += horizontalSlice ? 0.0 : (y < Math.floor(y) + 0.5 ? -offset : offset);
-            }
-        }
-        return new Vec3(adjustedX, adjustedY, adjustedZ);
-    }
-
-    private static Vec3 applyJitter(Vec3 point, SamplingContext context) {
-        if (!context.jitterEnabled()) {
-            return point;
-        }
-        long seed = Double.doubleToLongBits(Math.floor(point.x() * 16.0))
-                ^ (Double.doubleToLongBits(Math.floor(point.z() * 16.0)) << 1)
-                ^ context.seedBase();
-        // simple xorshift for deterministic pseudo-random values
-        seed ^= (seed << 21);
-        seed ^= (seed >>> 35);
-        seed ^= (seed << 4);
-        double jitter = context.jitter() / 2.0;
-        double jx = ((seed & 0xFF) / 255.0) * 2 - 1;
-        double jy = (((seed >> 8) & 0xFF) / 255.0) * 2 - 1;
-        double jz = (((seed >> 16) & 0xFF) / 255.0) * 2 - 1;
-        return new Vec3(point.x() + jx * jitter, point.y() + jy * jitter, point.z() + jz * jitter);
-    }
-
-    private static double estimateTotalPoints(List<Edge> edges, double step) {
-        double total = 0;
+    private static long estimateTotalPoints(List<Edge> edges, int stride) {
+        long total = 0L;
         for (Edge edge : edges) {
-            double length = edge.length();
-            int segments = Math.max(1, (int) Math.ceil(length / step));
-            total += segments + 1;
+            Range range = computeRange(edge);
+            int start = range.start();
+            int end = range.end();
+            int diff = Math.abs(end - start);
+            if (diff == 0) {
+                total += 1;
+            } else {
+                total += 1 + (int) Math.ceil(diff / (double) stride);
+            }
         }
         return total;
+    }
+
+    private static Range computeRange(Edge edge) {
+        double axisStart = axisStart(edge);
+        double axisEnd = axisEnd(edge);
+        double min = Math.min(axisStart, axisEnd);
+        double max = Math.max(axisStart, axisEnd);
+        int start = (int) Math.ceil(min);
+        int end = (int) Math.floor(max);
+        if (start > end) {
+            int rounded = (int) Math.round((min + max) / 2.0);
+            start = rounded;
+            end = rounded;
+        }
+        return new Range(start, end);
+    }
+
+    private static double axisStart(Edge edge) {
+        return switch (edge.axis) {
+            case X -> edge.startX;
+            case Y -> edge.startY;
+            case Z -> edge.startZ;
+        };
+    }
+
+    private static double axisEnd(Edge edge) {
+        return switch (edge.axis) {
+            case X -> edge.endX;
+            case Y -> edge.endY;
+            case Z -> edge.endZ;
+        };
+    }
+
+    private static Vec3 applyOffsets(double x,
+                                     double y,
+                                     double z,
+                                     Bounds bounds,
+                                     Axis axis,
+                                     double faceOffset,
+                                     double cornerBoost) {
+        double minX = bounds.minX();
+        double maxX = bounds.maxX();
+        double minY = bounds.minY();
+        double maxY = bounds.maxY();
+        double minZ = bounds.minZ();
+        double maxZ = bounds.maxZ();
+
+        boolean touchesMinX = nearlyEquals(x, minX);
+        boolean touchesMaxX = nearlyEquals(x, maxX);
+        boolean touchesMinY = nearlyEquals(y, minY);
+        boolean touchesMaxY = nearlyEquals(y, maxY);
+        boolean touchesMinZ = nearlyEquals(z, minZ);
+        boolean touchesMaxZ = nearlyEquals(z, maxZ);
+
+        double offsetX = 0.0;
+        double offsetY = 0.0;
+        double offsetZ = 0.0;
+
+        if (!nearlyEquals(minX, maxX)) {
+            if (touchesMinX) {
+                offsetX = -faceOffset;
+            } else if (touchesMaxX) {
+                offsetX = faceOffset;
+            }
+        }
+        if (!nearlyEquals(minY, maxY)) {
+            if (touchesMinY) {
+                offsetY = -faceOffset;
+            } else if (touchesMaxY) {
+                offsetY = faceOffset;
+            }
+        }
+        if (!nearlyEquals(minZ, maxZ)) {
+            if (touchesMinZ) {
+                offsetZ = -faceOffset;
+            } else if (touchesMaxZ) {
+                offsetZ = faceOffset;
+            }
+        }
+
+        int nonZeroOffsets = 0;
+        if (offsetX != 0.0) {
+            nonZeroOffsets++;
+        }
+        if (offsetY != 0.0) {
+            nonZeroOffsets++;
+        }
+        if (offsetZ != 0.0) {
+            nonZeroOffsets++;
+        }
+
+        if (nonZeroOffsets >= 2) {
+            offsetX *= cornerBoost;
+            offsetY *= cornerBoost;
+            offsetZ *= cornerBoost;
+        }
+
+        return new Vec3(x + offsetX, y + offsetY, z + offsetZ);
+    }
+
+    private static boolean nearlyEquals(double a, double b) {
+        return Math.abs(a - b) <= EPSILON;
+    }
+
+    private static long quantize(Vec3 vec) {
+        long qx = Double.doubleToLongBits(Math.round(vec.x() * 100000.0));
+        long qy = Double.doubleToLongBits(Math.round(vec.y() * 100000.0));
+        long qz = Double.doubleToLongBits(Math.round(vec.z() * 100000.0));
+        long hash = 1469598103934665603L;
+        hash ^= qx;
+        hash *= 1099511628211L;
+        hash ^= qy;
+        hash *= 1099511628211L;
+        hash ^= qz;
+        hash *= 1099511628211L;
+        return hash;
     }
 
     private static List<Edge> buildSpanEdges(Bounds bounds) {
@@ -208,7 +305,7 @@ public final class ShapeSampler {
         edges.add(new Edge(maxX, minY, maxZ, minX, minY, maxZ, Axis.X));
         edges.add(new Edge(minX, minY, maxZ, minX, minY, minZ, Axis.Z));
 
-        if (maxY > minY) {
+        if (maxY > minY + EPSILON) {
             edges.add(new Edge(minX, maxY, minZ, maxX, maxY, minZ, Axis.X));
             edges.add(new Edge(maxX, maxY, minZ, maxX, maxY, maxZ, Axis.Z));
             edges.add(new Edge(maxX, maxY, maxZ, minX, maxY, maxZ, Axis.X));
@@ -216,13 +313,6 @@ public final class ShapeSampler {
         }
 
         return edges;
-    }
-
-    private static long quantize(Vec3 vec) {
-        long qx = Double.doubleToLongBits(Math.round(vec.x() * 1000.0));
-        long qy = Double.doubleToLongBits(Math.round(vec.y() * 1000.0));
-        long qz = Double.doubleToLongBits(Math.round(vec.z() * 1000.0));
-        return qx ^ (qy << 21) ^ (qz << 42);
     }
 
     private interface Bounds {
@@ -247,12 +337,14 @@ public final class ShapeSampler {
                                     double maxZ) implements Bounds {
     }
 
-    public record CuboidSnapshot(double minX,
+    public record CuboidSnapshot(int id,
+                                 double minX,
                                  double minY,
                                  double minZ,
                                  double maxX,
                                  double maxY,
-                                 double maxZ) implements Bounds {
+                                 double maxZ,
+                                 YMode mode) implements Bounds {
     }
 
     private enum Axis {X, Y, Z}
@@ -277,23 +369,16 @@ public final class ShapeSampler {
             this.endZ = endZ;
             this.axis = axis;
         }
+    }
 
-        double length() {
-            return switch (axis) {
-                case X -> Math.abs(endX - startX);
-                case Y -> Math.abs(endY - startY);
-                case Z -> Math.abs(endZ - startZ);
-            };
-        }
+    private record Range(int start, int end) {
+    }
 
-        Vec3 direction(int segments) {
-            if (segments <= 0) {
-                return new Vec3(0, 0, 0);
-            }
-            double dx = (endX - startX) / segments;
-            double dy = (endY - startY) / segments;
-            double dz = (endZ - startZ) / segments;
-            return new Vec3(dx, dy, dz);
-        }
+    private record SimpleBounds(double minX,
+                                 double minY,
+                                 double minZ,
+                                 double maxX,
+                                 double maxY,
+                                 double maxZ) implements Bounds {
     }
 }

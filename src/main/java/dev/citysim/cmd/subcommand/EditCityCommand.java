@@ -3,6 +3,7 @@ package dev.citysim.cmd.subcommand;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
+import dev.citysim.city.CuboidYMode;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.stats.StationCountingMode;
@@ -249,8 +250,8 @@ public class EditCityCommand implements CitySubcommand {
             return true;
         }
 
-        boolean fullHeight = sel.mode() == YMode.FULL;
-        Cuboid cuboid = new Cuboid(sel.world(), sel.pos1(), sel.pos2(), fullHeight);
+        CuboidYMode mode = sel.mode() == YMode.FULL ? CuboidYMode.FULL : CuboidYMode.SPAN;
+        Cuboid cuboid = new Cuboid(sel.world(), sel.pos1(), sel.pos2(), mode);
 
         try {
             int index = cityManager.addCuboid(city.id, cuboid);
@@ -260,13 +261,13 @@ public class EditCityCommand implements CitySubcommand {
             int width = cuboid.maxX - cuboid.minX + 1;
             int length = cuboid.maxZ - cuboid.minZ + 1;
             int height = cuboid.maxY - cuboid.minY + 1;
-            String mode = fullHeight ? "full" : "span";
+            String modeLabel = mode == CuboidYMode.FULL ? "full" : "span";
             Component message = Component.text()
                     .append(Component.text("Added cuboid #", NamedTextColor.GREEN))
                     .append(Component.text(Integer.toString(index), NamedTextColor.GREEN))
                     .append(Component.text(" to ", NamedTextColor.GREEN))
                     .append(Component.text(city.name, NamedTextColor.GREEN))
-                    .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + mode + ").", NamedTextColor.GREEN))
+                    .append(Component.text(" (" + width + "×" + length + "×" + height + ", mode: " + modeLabel + ").", NamedTextColor.GREEN))
                     .build();
             player.sendMessage(message);
             refreshShowCuboids(city);
@@ -516,7 +517,8 @@ public class EditCityCommand implements CitySubcommand {
             int width = cuboid.maxX - cuboid.minX + 1;
             int length = cuboid.maxZ - cuboid.minZ + 1;
             int height = cuboid.maxY - cuboid.minY + 1;
-            String mode = cuboid.fullHeight ? "full" : "span";
+            CuboidYMode mode = cuboid.yMode != null ? cuboid.yMode : (cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN);
+            String modeLabel = mode == CuboidYMode.FULL ? "full" : "span";
             String size = width + "×" + length + "×" + height;
 
             lines.add(Component.text()
@@ -526,7 +528,7 @@ public class EditCityCommand implements CitySubcommand {
                     .append(Component.text(" -> ", NamedTextColor.DARK_GRAY))
                     .append(Component.text(cuboid.maxX + "," + cuboid.maxY + "," + cuboid.maxZ, NamedTextColor.WHITE))
                     .append(Component.text(" (", NamedTextColor.DARK_GRAY))
-                    .append(Component.text(mode, NamedTextColor.AQUA))
+                    .append(Component.text(modeLabel, NamedTextColor.AQUA))
                     .append(Component.text(", ", NamedTextColor.DARK_GRAY))
                     .append(Component.text(size, NamedTextColor.AQUA))
                     .append(Component.text(")", NamedTextColor.DARK_GRAY))

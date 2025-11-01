@@ -27,6 +27,8 @@ public final class VisualizationSettings {
     private final double jitter;
     private final double sliceThickness;
     private final boolean debug;
+    private final double faceOffset;
+    private final double cornerBoost;
 
     private VisualizationSettings(boolean enabled,
                                    Particle particle,
@@ -39,7 +41,9 @@ public final class VisualizationSettings {
                                    boolean asyncPrepare,
                                    double jitter,
                                    double sliceThickness,
-                                   boolean debug) {
+                                   boolean debug,
+                                   double faceOffset,
+                                   double cornerBoost) {
         this.enabled = enabled;
         this.particle = particle;
         this.dustColor = dustColor;
@@ -52,6 +56,8 @@ public final class VisualizationSettings {
         this.jitter = jitter;
         this.sliceThickness = sliceThickness;
         this.debug = debug;
+        this.faceOffset = faceOffset;
+        this.cornerBoost = cornerBoost;
     }
 
     public static VisualizationSettings fromConfig(FileConfiguration config) {
@@ -77,6 +83,8 @@ public final class VisualizationSettings {
         double jitter = clamp(section.getDouble("jitter", 0.15), 0.0, 1.0);
         double sliceThickness = clamp(section.getDouble("slice_thickness", 0.0), 0.0, 1.0);
         boolean debug = section.getBoolean("debug", false);
+        double faceOffset = clamp(section.getDouble("face_offset", 0.03125), 0.0, 0.5);
+        double cornerBoost = Math.max(1.0, section.getDouble("corner_boost", 2.0));
 
         return new VisualizationSettings(
                 enabled,
@@ -90,7 +98,9 @@ public final class VisualizationSettings {
                 asyncPrepare,
                 jitter,
                 sliceThickness,
-                debug
+                debug,
+                faceOffset,
+                cornerBoost
         );
     }
 
@@ -145,7 +155,9 @@ public final class VisualizationSettings {
                 true,
                 0.15,
                 0.0,
-                false
+                false,
+                0.03125,
+                2.0
         );
     }
 
@@ -195,5 +207,13 @@ public final class VisualizationSettings {
 
     public boolean debug() {
         return debug;
+    }
+
+    public double faceOffset() {
+        return faceOffset;
+    }
+
+    public double cornerBoost() {
+        return cornerBoost;
     }
 }

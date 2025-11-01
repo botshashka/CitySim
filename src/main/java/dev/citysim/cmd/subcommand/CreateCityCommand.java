@@ -3,6 +3,7 @@ package dev.citysim.cmd.subcommand;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
+import dev.citysim.city.CuboidYMode;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.stats.StatsService;
@@ -99,12 +100,12 @@ public class CreateCityCommand implements CitySubcommand {
                     return true;
                 }
 
-                boolean fullHeight = sel.mode() == YMode.FULL;
-                pendingCuboid = new Cuboid(sel.world(), sel.pos1(), sel.pos2(), fullHeight);
+                CuboidYMode mode = sel.mode() == YMode.FULL ? CuboidYMode.FULL : CuboidYMode.SPAN;
+                pendingCuboid = new Cuboid(sel.world(), sel.pos1(), sel.pos2(), mode);
                 pendingWidth = pendingCuboid.maxX - pendingCuboid.minX + 1;
                 pendingLength = pendingCuboid.maxZ - pendingCuboid.minZ + 1;
                 pendingHeight = pendingCuboid.maxY - pendingCuboid.minY + 1;
-                pendingMode = fullHeight ? "full" : "span";
+                pendingMode = mode == CuboidYMode.FULL ? "full" : "span";
                 selectionOwner = player;
             }
         }

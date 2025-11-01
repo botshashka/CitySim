@@ -116,11 +116,15 @@ public class CityManager {
         if (cuboid.world == null) {
             throw new IllegalArgumentException("Cuboid world cannot be null");
         }
+        if (cuboid.yMode == null) {
+            cuboid.yMode = cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN;
+        }
+        cuboid.fullHeight = cuboid.yMode == CuboidYMode.FULL;
         if (c.world != null && !c.world.equals(cuboid.world)) {
             throw new IllegalArgumentException("City '" + c.name + "' is bound to world " + c.world + ".");
         }
         World world = Bukkit.getWorld(cuboid.world);
-        boolean fullHeight = cuboid.fullHeight || cuboid.isFullHeight(world);
+        boolean fullHeight = cuboid.yMode == CuboidYMode.FULL || cuboid.isFullHeight(world);
         if (c.highrise && fullHeight) {
             throw new IllegalArgumentException("Highrise cities cannot contain cuboids with full Y mode.");
         }
@@ -263,6 +267,9 @@ public class CityManager {
                             if (cuboid.isFullHeight(world)) {
                                 cuboid.fullHeight = true;
                             }
+                        }
+                        if (cuboid.yMode == null) {
+                            cuboid.yMode = cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN;
                         }
                         sanitized.add(cuboid);
                     }

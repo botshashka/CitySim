@@ -3,6 +3,7 @@ package dev.citysim.visual;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
+import dev.citysim.city.CuboidYMode;
 import dev.citysim.visual.ShapeSampler.CuboidSnapshot;
 import dev.citysim.visual.ShapeSampler.SelectionSnapshot;
 import org.bukkit.Bukkit;
@@ -14,10 +15,13 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -224,17 +228,37 @@ public final class VisualizationService {
                     continue;
                 }
                 CityWorldBuffer buffer = state.forWorld(world.getName());
-                if (buffer == null || buffer.cuboids.isEmpty()) {
+                if (buffer == null) {
                     continue;
                 }
-                double distance = nearestDistance(location, buffer.cuboids);
-                if (distance > settings.viewDistance()) {
+                List<CuboidSnapshot> cuboids = buffer.cuboids();
+                if (cuboids.isEmpty()) {
                     continue;
                 }
-                if (buffer.shouldPrepare(distance)) {
-                    scheduleCityPrepare(buffer, distance);
+                double nearest = nearestDistance(location, cuboids);
+                if (nearest > settings.viewDistance()) {
+                    continue;
                 }
-                budgetRemaining = emitFromBuffer(player, buffer, budgetRemaining);
+                for (CuboidSnapshot cuboid : cuboids) {
+                    if (budgetRemaining <= 0) {
+                        budgetExhausted = true;
+                        break;
+                    }
+                    double distance = nearestDistance(location, cuboid);
+                    if (distance > settings.viewDistance()) {
+                        continue;
+                    }
+                CityCuboidCache cuboidCache = buffer.bufferFor(cuboid);
+                int sliceBucket = cuboid.mode() == YMode.FULL ? (int) Math.floor(location.getY()) : Integer.MIN_VALUE;
+                CityCuboidCache.SliceBuffer sliceBuffer = cuboidCache.slice(cuboid.mode(), sliceBucket);
+                if (sliceBuffer.shouldPrepare(cuboid, cuboid.mode(), sliceBucket, distance)) {
+                    scheduleCityPrepare(buffer, sliceBuffer, cuboid, sliceBucket, distance, location.getY());
+                }
+                budgetRemaining = emitFromBuffer(player, sliceBuffer, budgetRemaining);
+                }
+                if (budgetExhausted) {
+                    break;
+                }
             }
         }
 
@@ -309,6 +333,8 @@ public final class VisualizationService {
                         settings.maxPointsPerTick(),
                         settings.jitter(),
                         settings.sliceThickness(),
+                        settings.faceOffset(),
+                        settings.cornerBoost(),
                         snapshot.hashCode()
                 );
                 List<Vec3> points = ShapeSampler.sampleSelectionEdges(
@@ -333,13 +359,19 @@ public final class VisualizationService {
         }
     }
 
-    private void scheduleCityPrepare(CityWorldBuffer buffer, double distance) {
+    private void scheduleCityPrepare(CityWorldBuffer worldBuffer,
+                                     CityCuboidCache.SliceBuffer buffer,
+                                     CuboidSnapshot cuboid,
+                                     int sliceBucket,
+                                     double distance,
+                                     double playerY) {
         if (!buffer.beginPrepare()) {
             return;
         }
-        int shapeKey = buffer.cuboids.hashCode();
+        double sliceY = cuboid.mode() == YMode.FULL ? Math.floor(playerY) + 0.5 : Double.NaN;
         Runnable work = () -> {
             try {
+                long seedBase = (((long) worldBuffer.cityId.hashCode()) << 32) ^ cuboid.id();
                 SamplingContext context = new SamplingContext(
                         distance,
                         settings.viewDistance(),
@@ -347,19 +379,17 @@ public final class VisualizationService {
                         settings.maxPointsPerTick(),
                         settings.jitter(),
                         settings.sliceThickness(),
-                        buffer.worldName.hashCode()
+                        settings.faceOffset(),
+                        settings.cornerBoost(),
+                        seedBase
                 );
-                List<Vec3> aggregated = new ArrayList<>();
-                for (CuboidSnapshot cuboid : buffer.cuboids) {
-                    aggregated.addAll(ShapeSampler.sampleCuboidEdges(
-                            cuboid,
-                            YMode.SPAN,
-                            settings.baseStep(),
-                            null,
-                            context
-                    ));
-                }
-                Bukkit.getScheduler().runTask(plugin, () -> buffer.finishPrepare(aggregated, shapeKey, distance));
+                List<Vec3> points = ShapeSampler.sampleCuboidEdges(
+                        cuboid,
+                        settings.baseStep(),
+                        cuboid.mode() == YMode.FULL ? sliceY : null,
+                        context
+                );
+                Bukkit.getScheduler().runTask(plugin, () -> buffer.finishPrepare(points, cuboid.hashCode(), cuboid.mode(), sliceBucket, distance));
             } catch (Throwable t) {
                 Bukkit.getScheduler().runTask(plugin, buffer::failPrepare);
                 if (settings.debug()) {
@@ -403,7 +433,8 @@ public final class VisualizationService {
         }
         Map<String, List<CuboidSnapshot>> byWorld = new ConcurrentHashMap<>();
         if (city.cuboids != null) {
-            for (Cuboid cuboid : city.cuboids) {
+            for (int i = 0; i < city.cuboids.size(); i++) {
+                Cuboid cuboid = city.cuboids.get(i);
                 if (cuboid == null || cuboid.world == null) {
                     continue;
                 }
@@ -411,7 +442,7 @@ public final class VisualizationService {
                 if (world == null) {
                     continue;
                 }
-                CuboidSnapshot snapshot = toSnapshot(cuboid);
+                CuboidSnapshot snapshot = toSnapshot(i, cuboid);
                 if (snapshot != null) {
                     byWorld.computeIfAbsent(world.getName(), ignored -> new CopyOnWriteArrayList<>()).add(snapshot);
                 }
@@ -420,14 +451,20 @@ public final class VisualizationService {
         state.setCuboids(byWorld);
     }
 
-    private CuboidSnapshot toSnapshot(Cuboid cuboid) {
+    private CuboidSnapshot toSnapshot(int index, Cuboid cuboid) {
         double minX = Math.min(cuboid.minX, cuboid.maxX);
         double minY = Math.min(cuboid.minY, cuboid.maxY);
         double minZ = Math.min(cuboid.minZ, cuboid.maxZ);
         double maxX = Math.max(cuboid.minX, cuboid.maxX) + 1;
         double maxY = Math.max(cuboid.minY, cuboid.maxY) + 1;
         double maxZ = Math.max(cuboid.minZ, cuboid.maxZ) + 1;
-        return new CuboidSnapshot(minX, minY, minZ, maxX, maxY, maxZ);
+        YMode mode = toVisualizationMode(cuboid);
+        return new CuboidSnapshot(index, minX, minY, minZ, maxX, maxY, maxZ, mode);
+    }
+
+    private YMode toVisualizationMode(Cuboid cuboid) {
+        CuboidYMode stored = cuboid.yMode != null ? cuboid.yMode : (cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN);
+        return stored == CuboidYMode.FULL ? YMode.FULL : YMode.SPAN;
     }
 
     private PlayerSession session(Player player) {
@@ -604,38 +641,143 @@ public final class VisualizationService {
         }
     }
 
-    private static final class CityWorldBuffer extends ShapeBuffer {
+    private static final class CityWorldBuffer {
+        final String cityId;
         final String worldName;
         volatile List<CuboidSnapshot> cuboids = Collections.emptyList();
+        final Map<Integer, CityCuboidCache> buffers = new ConcurrentHashMap<>();
 
-        CityWorldBuffer(String worldName) {
+        CityWorldBuffer(String cityId, String worldName) {
+            this.cityId = cityId;
             this.worldName = worldName;
         }
 
-        boolean shouldPrepare(double distance) {
-            int distanceBucket = (int) Math.floor(distance / 4.0);
-            if (!dirty && distanceBucket == this.distanceBucket) {
-                return false;
+        List<CuboidSnapshot> cuboids() {
+            return cuboids;
+        }
+
+        CityCuboidCache bufferFor(CuboidSnapshot snapshot) {
+            return buffers.computeIfAbsent(snapshot.id(), ignored -> new CityCuboidCache());
+        }
+
+        void setCuboids(List<CuboidSnapshot> snapshots) {
+            List<CuboidSnapshot> copy = snapshots == null ? List.of() : List.copyOf(snapshots);
+            this.cuboids = copy;
+            Set<Integer> ids = new HashSet<>();
+            for (CuboidSnapshot snapshot : copy) {
+                ids.add(snapshot.id());
             }
-            this.distanceBucket = distanceBucket;
-            dirty = true;
-            return true;
+            buffers.entrySet().removeIf(entry -> {
+                if (!ids.contains(entry.getKey())) {
+                    entry.getValue().clear();
+                    return true;
+                }
+                return false;
+            });
+            for (Integer id : ids) {
+                CityCuboidCache cache = buffers.computeIfAbsent(id, ignored -> new CityCuboidCache());
+                cache.markDirty();
+            }
         }
 
-        void finishPrepare(List<Vec3> points, long key, double distance) {
-            this.points = points != null ? points : Collections.emptyList();
-            this.cursor = 0;
-            this.key = key;
-            this.distanceBucket = (int) Math.floor(distance / 4.0);
-            this.dirty = false;
-            this.preparing = false;
+        void markDirty() {
+            for (CityCuboidCache cache : buffers.values()) {
+                cache.markDirty();
+            }
         }
 
-        void failPrepare() {
-            this.points = Collections.emptyList();
-            this.cursor = 0;
-            this.dirty = false;
-            this.preparing = false;
+        void clear() {
+            for (CityCuboidCache cache : buffers.values()) {
+                cache.clear();
+            }
+            buffers.clear();
+            cuboids = Collections.emptyList();
+        }
+
+        boolean hasRenderable() {
+            if (!cuboids.isEmpty()) {
+                return true;
+            }
+            for (CityCuboidCache cache : buffers.values()) {
+                if (cache.hasRenderable()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private static final class CityCuboidCache {
+
+        private final Map<SliceKey, SliceBuffer> slices = new ConcurrentHashMap<>();
+
+        CityCuboidCache() {
+        }
+
+        SliceBuffer slice(YMode mode, int sliceBucket) {
+            int bucket = mode == YMode.FULL ? sliceBucket : Integer.MIN_VALUE;
+            SliceKey key = new SliceKey(mode, bucket);
+            return slices.computeIfAbsent(key, ignored -> new SliceBuffer());
+        }
+
+        void markDirty() {
+            for (SliceBuffer slice : slices.values()) {
+                slice.markDirty();
+            }
+        }
+
+        void clear() {
+            for (SliceBuffer slice : slices.values()) {
+                slice.clear();
+            }
+            slices.clear();
+        }
+
+        boolean hasRenderable() {
+            for (SliceBuffer slice : slices.values()) {
+                if (slice.preparing || (slice.points != null && !slice.points.isEmpty())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private record SliceKey(YMode mode, int sliceBucket) {
+        }
+
+        static final class SliceBuffer extends ShapeBuffer {
+
+            boolean shouldPrepare(CuboidSnapshot snapshot, YMode mode, int sliceBucket, double distance) {
+                int distanceBucket = (int) Math.floor(distance / 4.0);
+                long key = snapshot.hashCode();
+                if (!dirty && key == this.key && mode == this.mode && sliceBucket == this.sliceBucket && distanceBucket == this.distanceBucket) {
+                    return false;
+                }
+                this.key = key;
+                this.mode = mode;
+                this.sliceBucket = sliceBucket;
+                this.distanceBucket = distanceBucket;
+                dirty = true;
+                return true;
+            }
+
+            void finishPrepare(List<Vec3> points, long key, YMode mode, int sliceBucket, double distance) {
+                this.points = points != null ? points : Collections.emptyList();
+                this.cursor = 0;
+                this.key = key;
+                this.mode = mode;
+                this.sliceBucket = sliceBucket;
+                this.distanceBucket = (int) Math.floor(distance / 4.0);
+                this.dirty = false;
+                this.preparing = false;
+            }
+
+            void failPrepare() {
+                this.points = Collections.emptyList();
+                this.cursor = 0;
+                this.dirty = false;
+                this.preparing = false;
+            }
         }
     }
 
@@ -649,12 +791,17 @@ public final class VisualizationService {
         }
 
         void setCuboids(Map<String, List<CuboidSnapshot>> grouped) {
-            buffers.clear();
+            Iterator<Map.Entry<String, CityWorldBuffer>> iterator = buffers.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, CityWorldBuffer> entry = iterator.next();
+                if (!grouped.containsKey(entry.getKey())) {
+                    entry.getValue().clear();
+                    iterator.remove();
+                }
+            }
             for (Map.Entry<String, List<CuboidSnapshot>> entry : grouped.entrySet()) {
-                CityWorldBuffer buffer = new CityWorldBuffer(entry.getKey());
-                buffer.cuboids = List.copyOf(entry.getValue());
-                buffer.markDirty();
-                buffers.put(entry.getKey(), buffer);
+                CityWorldBuffer buffer = buffers.computeIfAbsent(entry.getKey(), world -> new CityWorldBuffer(cityId, world));
+                buffer.setCuboids(entry.getValue());
             }
         }
 
@@ -677,10 +824,7 @@ public final class VisualizationService {
 
         boolean hasRenderable() {
             for (CityWorldBuffer buffer : buffers.values()) {
-                if (buffer.preparing) {
-                    return true;
-                }
-                if (buffer.cuboids != null && !buffer.cuboids.isEmpty()) {
+                if (buffer.hasRenderable()) {
                     return true;
                 }
             }
