@@ -1,4 +1,4 @@
-# CitySim (Paper 1.21.x) — v0.5.2
+# CitySim (Paper 1.21.x) — v0.5.3
 SimCity-like city stats for villagers (Paper).
 
 ## What it does
@@ -61,9 +61,9 @@ java -version  # should report a Java 21 runtime
 ## Deploy
 - Stop your server.
 - Delete any older CitySim jars from `plugins/`.
-- Copy `build/libs/CitySim-0.5.2.jar` to `plugins/`.
+- Copy `build/libs/CitySim-0.5.3.jar` to `plugins/`.
 - Start the server.
-- `/version CitySim` should show `0.5.2`.
+- `/version CitySim` should show `0.5.3`.
 
 ## Commands
 ```text
@@ -108,6 +108,9 @@ for tweaking:
   - `async_prepare` – Toggle asynchronous geometry preparation.
   - `jitter` – Small random offset to reduce aliasing on long edges.
   - `slice_thickness` – Optional vertical thickness for the Y-mode `full` slice.
+  - `face_offset` – Slightly expands shapes to keep particles from clipping into blocks.
+  - `corner_boost` – Adds extra particles to edges and corners so outlines look crisp.
+  - `debug` – When `true`, logs extra detail about visualizer behavior for troubleshooting.
 
 - **Visualization performance notes** – With the defaults (`max_points_per_tick: 800`, `refresh_ticks: 3`) each player receives at most ~266
   particles per tick. Typical selections such as a 32×32×32 span resolve to ~250 particles, while a 512×512 full-height region automatically

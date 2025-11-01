@@ -1,6 +1,6 @@
 name: CitySim
 main: dev.citysim.CitySimPlugin
-version: 0.5.2
+version: 0.5.3
 api-version: 1.21
 authors: [ 'you + gpt' ]
 description: SimCity-like city stats for villagers (Paper)
