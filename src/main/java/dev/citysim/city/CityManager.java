@@ -116,14 +116,18 @@ public class CityManager {
         if (cuboid.world == null) {
             throw new IllegalArgumentException("Cuboid world cannot be null");
         }
+        World world = Bukkit.getWorld(cuboid.world);
         if (cuboid.yMode == null) {
-            cuboid.yMode = cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN;
+            boolean fullByGeom = world != null && cuboid.isFullHeight(world);
+            boolean full = cuboid.fullHeight || fullByGeom;
+            cuboid.yMode = full ? CuboidYMode.FULL : CuboidYMode.SPAN;
+            cuboid.fullHeight = full || (cuboid.yMode == CuboidYMode.FULL);
+        } else {
+            cuboid.fullHeight = (cuboid.yMode == CuboidYMode.FULL) || cuboid.fullHeight;
         }
-        cuboid.fullHeight = cuboid.yMode == CuboidYMode.FULL;
         if (c.world != null && !c.world.equals(cuboid.world)) {
             throw new IllegalArgumentException("City '" + c.name + "' is bound to world " + c.world + ".");
         }
-        World world = Bukkit.getWorld(cuboid.world);
         boolean fullHeight = cuboid.yMode == CuboidYMode.FULL || cuboid.isFullHeight(world);
         if (c.highrise && fullHeight) {
             throw new IllegalArgumentException("Highrise cities cannot contain cuboids with full Y mode.");
@@ -254,28 +258,36 @@ public class CityManager {
 
         byId.clear();
         citiesByWorld.clear();
+        boolean changed = false;
         if (list != null) {
             for (City c : list) {
                 List<Cuboid> sanitized = new ArrayList<>();
                 if (c.cuboids != null) {
                     for (Cuboid cuboid : c.cuboids) {
                         if (cuboid == null || cuboid.world == null) {
+                            changed = true;
                             continue;
                         }
-                        if (!cuboid.fullHeight) {
-                            org.bukkit.World world = Bukkit.getWorld(cuboid.world);
-                            if (cuboid.isFullHeight(world)) {
-                                cuboid.fullHeight = true;
-                            }
-                        }
+                        World world = Bukkit.getWorld(cuboid.world);
+                        boolean beforeFullHeight = cuboid.fullHeight;
+                        CuboidYMode beforeMode = cuboid.yMode;
+                        boolean fullByGeom = world != null && cuboid.isFullHeight(world);
+                        boolean full = beforeFullHeight || fullByGeom;
                         if (cuboid.yMode == null) {
-                            cuboid.yMode = cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN;
+                            cuboid.yMode = full ? CuboidYMode.FULL : CuboidYMode.SPAN;
+                        }
+                        cuboid.fullHeight = full || (cuboid.yMode == CuboidYMode.FULL);
+                        if (beforeMode != cuboid.yMode || beforeFullHeight != cuboid.fullHeight) {
+                            changed = true;
                         }
                         sanitized.add(cuboid);
                     }
                 }
                 c.cuboids = sanitized;
                 if (c.cuboids.isEmpty()) {
+                    if (c.world != null) {
+                        changed = true;
+                    }
                     c.world = null;
                 }
                 byId.put(c.id, c);
@@ -283,6 +295,9 @@ public class CityManager {
             }
         }
         verifyWorldIndexState("load");
+        if (changed) {
+            save();
+        }
     }
 
     private List<City> readCities(Charset charset) throws IOException, JsonParseException {

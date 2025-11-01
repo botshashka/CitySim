@@ -463,8 +463,12 @@ public final class VisualizationService {
     }
 
     private YMode toVisualizationMode(Cuboid cuboid) {
-        CuboidYMode stored = cuboid.yMode != null ? cuboid.yMode : (cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN);
-        return stored == CuboidYMode.FULL ? YMode.FULL : YMode.SPAN;
+        if (cuboid.yMode != null) {
+            return cuboid.yMode == CuboidYMode.FULL ? YMode.FULL : YMode.SPAN;
+        }
+        World world = cuboid.world != null ? Bukkit.getWorld(cuboid.world) : null;
+        boolean full = (world != null && cuboid.isFullHeight(world)) || cuboid.fullHeight;
+        return full ? YMode.FULL : YMode.SPAN;
     }
 
     private PlayerSession session(Player player) {

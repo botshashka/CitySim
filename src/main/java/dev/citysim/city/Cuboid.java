@@ -7,14 +7,12 @@ public class Cuboid {
     public String world;
     public int minX, minY, minZ, maxX, maxY, maxZ;
     public boolean fullHeight;
-    public CuboidYMode yMode = CuboidYMode.SPAN;
+    public CuboidYMode yMode;
 
     public Cuboid() {}
 
     public Cuboid(World w, Location a, Location b, boolean fullHeight) {
         this(w, a, b, fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN);
-        this.fullHeight = fullHeight;
-        this.yMode = fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN;
     }
 
     public Cuboid(World w, Location a, Location b, CuboidYMode mode) {
@@ -22,12 +20,13 @@ public class Cuboid {
             throw new IllegalArgumentException("World and locations cannot be null");
         }
         this.world = w.getName();
-        this.yMode = mode != null ? mode : CuboidYMode.SPAN;
+        CuboidYMode resolvedMode = mode != null ? mode : CuboidYMode.SPAN;
+        this.yMode = resolvedMode;
         this.minX = Math.min(a.getBlockX(), b.getBlockX());
         this.maxX = Math.max(a.getBlockX(), b.getBlockX());
         this.minZ = Math.min(a.getBlockZ(), b.getBlockZ());
         this.maxZ = Math.max(a.getBlockZ(), b.getBlockZ());
-        if (this.yMode == CuboidYMode.FULL) {
+        if (resolvedMode == CuboidYMode.FULL) {
             this.minY = w.getMinHeight();
             this.maxY = w.getMaxHeight() - 1;
             this.fullHeight = true;
@@ -39,11 +38,12 @@ public class Cuboid {
     }
 
     public boolean isFullHeight(World world) {
-        if (fullHeight) return true;
         if (world != null) {
             int worldMin = world.getMinHeight();
             int worldMax = world.getMaxHeight() - 1;
-            if (minY <= worldMin && maxY >= worldMax) return true;
+            if (minY <= worldMin && maxY >= worldMax) {
+                return true;
+            }
         }
         return (maxY - minY) >= 255;
     }
