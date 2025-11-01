@@ -90,6 +90,15 @@ java -version  # should report a Java 21 runtime
 /city debug scans                                # print scan timing details to chat for troubleshooting (admin only)
 ```
 
+## Integrations
+
+### [TrainCarts](https://modrinth.com/plugin/traincarts) station sync
+CitySim can keep the transit stat in step with your TrainCarts rail network. Set `stations.counting_mode: traincarts` in
+`config.yml` to enable the integration. When this mode is active, the plugin scans the `station` signs that fall inside each
+city’s cuboids and updates the station total automatically. Manual `/city edit <cityId> station ...` commands are disabled in
+this mode so the TrainCarts counts stay authoritative, and CitySim refreshes the totals whenever TrainCarts is enabled, reloaded,
+or disabled.
+
 ## Configuration (`config.yml`)
 CitySim drops a `config.yml` file in `plugins/CitySim/`. The shipped defaults work well for most servers, but everything is open
 for tweaking:
@@ -121,15 +130,6 @@ for tweaking:
 - **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
 - **`titles`** – Enables or disables entry titles, sets the cooldown, and defines the MiniMessage text players see in different
   situations (keep `{city}` as the placeholder for the city name).
-
-## Integrations
-
-### [TrainCarts](https://modrinth.com/plugin/traincarts) station sync
-CitySim can keep the transit stat in step with your TrainCarts rail network. Set `stations.counting_mode: traincarts` in
-`config.yml` to enable the integration. When this mode is active, the plugin scans the `station` signs that fall inside each
-city’s cuboids and updates the station total automatically. Manual `/city edit <cityId> station ...` commands are disabled in
-this mode so the TrainCarts counts stay authoritative, and CitySim refreshes the totals whenever TrainCarts is enabled, reloaded,
-or disabled.
 
 **Requirements:** Install both [TrainCarts](https://modrinth.com/plugin/traincarts) and [Vault](https://modrinth.com/plugin/vaultunlocked) before switching the counting mode. CitySim relies on Vault being loaded to
 bootstrap the integration; if either plugin is missing, it falls back to manual station counts until they are present.
