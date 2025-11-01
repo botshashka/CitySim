@@ -10,9 +10,18 @@ updates:
   # Lighting samples for non-high-rise cities focus on parcels with beds; high-rises
   # continue to scan their full claimed volume because interior light drives happiness.
 
-selection:
-  max_outline_particles: 1500    # Switches to simple corner columns when a cuboid outline would spawn more particles
-  simple_outline_midpoints: true # Adds midpoint markers to the simplified outline so players can orient large selections
+visualization:
+  enabled: true
+  particle: DUST
+  dust_color: "#FF7A00"
+  view_distance: 48
+  base_step: 0.75
+  far_distance_step_multiplier: 1.5
+  max_points_per_tick: 800
+  refresh_ticks: 3
+  async_prepare: true
+  jitter: 0.15
+  slice_thickness: 0.0
 
 stations:
   counting_mode: manual # manual, traincarts, or disabled

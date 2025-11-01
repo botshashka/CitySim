@@ -2,7 +2,8 @@ package dev.citysim.cmd.subcommand;
 
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.selection.SelectionListener;
-import dev.citysim.selection.SelectionState;
+import dev.citysim.visual.SelectionTracker;
+import dev.citysim.visual.SelectionTracker.YMode;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -15,6 +16,12 @@ import java.util.List;
 import java.util.Locale;
 
 public class WandCommand implements CitySubcommand {
+
+    private final SelectionTracker selectionTracker;
+
+    public WandCommand(SelectionTracker selectionTracker) {
+        this.selectionTracker = selectionTracker;
+    }
 
     @Override
     public String name() {
@@ -46,7 +53,7 @@ public class WandCommand implements CitySubcommand {
         if (args.length >= 1) {
             String option = args[0].toLowerCase(Locale.ROOT);
             if (option.equals("clear")) {
-                SelectionListener.clear(player);
+                selectionTracker.clear(player);
                 player.sendMessage(Component.text("Selection cleared.", NamedTextColor.GREEN));
                 return true;
             }
@@ -87,16 +94,13 @@ public class WandCommand implements CitySubcommand {
         }
 
         String modeArg = args[1].toLowerCase(Locale.ROOT);
-        SelectionState sel = SelectionListener.get(player);
         switch (modeArg) {
             case "full" -> {
-                sel.yMode = SelectionState.YMode.FULL;
-                sel.markPreviewDirty();
+                selectionTracker.setYMode(player, YMode.FULL);
                 player.sendMessage(Component.text("Y-mode set to full.", NamedTextColor.WHITE));
             }
             case "span" -> {
-                sel.yMode = SelectionState.YMode.SPAN;
-                sel.markPreviewDirty();
+                selectionTracker.setYMode(player, YMode.SPAN);
                 player.sendMessage(Component.text("Y-mode set to span.", NamedTextColor.WHITE));
             }
             default -> player.sendMessage(Component.text("Unknown mode. Use full or span.", NamedTextColor.RED));

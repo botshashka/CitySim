@@ -16,6 +16,9 @@ import dev.citysim.stats.StationCountingMode;
 import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
+import dev.citysim.visual.SelectionTracker;
+import dev.citysim.visual.VisualizationConfig;
+import dev.citysim.visual.VisualizationService;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
@@ -32,6 +35,8 @@ public class CitySimPlugin extends JavaPlugin {
     private TitleService titleService;
     private DisplayPreferencesStore displayPreferencesStore;
     private TrainCartsStationService trainCartsStationService;
+    private SelectionTracker selectionTracker;
+    private VisualizationService visualizationService;
 
     @Override
     public void onEnable() {
@@ -74,6 +79,11 @@ public class CitySimPlugin extends JavaPlugin {
         this.titleService.start();
         getLogger().info("TitleService started");
 
+        this.selectionTracker = new SelectionTracker();
+        VisualizationConfig visualizationConfig = new VisualizationConfig();
+        visualizationConfig.load(getConfig());
+        this.visualizationService = new VisualizationService(this, cityManager, selectionTracker, visualizationConfig);
+
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
                 new CitySimExpansion(cityManager).register();
@@ -84,7 +94,7 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService);
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, selectionTracker, visualizationService);
             getCommand("city").setExecutor(cityCommand);
             getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
@@ -92,12 +102,15 @@ public class CitySimPlugin extends JavaPlugin {
             getLogger().severe("Command 'city' not found in plugin.yml");
         }
 
-        getServer().getPluginManager().registerEvents(new SelectionListener(this), this);
+        getServer().getPluginManager().registerEvents(new SelectionListener(selectionTracker, visualizationService), this);
         getLogger().info("CitySim enabled.");
     }
 
     @Override
     public void onDisable() {
+        if (visualizationService != null) {
+            visualizationService.shutdown();
+        }
         if (bossBarService != null) {
             bossBarService.stop();
         }
@@ -141,6 +154,14 @@ public class CitySimPlugin extends JavaPlugin {
 
     public DisplayPreferencesStore getDisplayPreferencesStore() {
         return displayPreferencesStore;
+    }
+
+    public VisualizationService getVisualizationService() {
+        return visualizationService;
+    }
+
+    public SelectionTracker getSelectionTracker() {
+        return selectionTracker;
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {
