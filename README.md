@@ -98,12 +98,21 @@ for tweaking:
   - `stats_interval_ticks` / `stats_initial_delay_ticks` – Interval and initial delay (ticks) between stat refreshes.
   - `bossbar_interval_ticks` – How often the boss bar display is updated.
   - `max_cities_per_tick`, `max_entity_chunks_per_tick`, `max_bed_blocks_per_tick` – Workload caps that keep scans lightweight.
-- **`selection`** – Governs the golden-axe preview particles and `/city edit ... cuboid show` outlines.
-  - `max_outline_particles` – Maximum particle count for the detailed edge loop. If a cuboid would exceed this number, the plugin
-    switches to light-weight corner columns (with optional mid-edge markers) so huge selections stay readable without flooding
-    the client.
-  - `simple_outline_midpoints` – When the simplified outline is active, toggles the extra mid-edge markers that help players
-    gauge width and depth.
+- **`visualization`** – Controls the new particle renderer that powers wand selections and `/city edit <id> cuboid show`.
+  - `enabled` – Master switch for the visualizer.
+  - `particle` / `dust_color` – Choose the particle type (default `DUST`) and color when using dust.
+  - `view_distance` – Skip rendering when a player is farther than this many blocks from a shape.
+  - `base_step` / `far_distance_step_multiplier` – Baseline sampling density and how aggressively it thins out with distance.
+  - `max_points_per_tick` – Per-player emission budget; geometry coarsens automatically to stay within this cap.
+  - `refresh_ticks` – How often each player's outline task runs.
+  - `async_prepare` – Toggle asynchronous geometry preparation.
+  - `jitter` – Small random offset to reduce aliasing on long edges.
+  - `slice_thickness` – Optional vertical thickness for the Y-mode `full` slice.
+
+- **Visualization performance notes** – With the defaults (`max_points_per_tick: 800`, `refresh_ticks: 3`) each player receives at most ~266
+  particles per tick. Typical selections such as a 32×32×32 span resolve to ~250 particles, while a 512×512 full-height region automatically
+  thins to ~780 points so it stays inside the budget. Cached outlines are stored per player/city pair as compact coordinate arrays (roughly
+  120 bytes per 100 particles), keeping even a city with a dozen cuboids under 100 KiB of visualization cache.
 - **`stations.counting_mode`** – Default is `manual`. Change to `traincarts` for automatic station syncing or `disabled` to
   ignore station scoring entirely.
 - **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
