@@ -20,6 +20,8 @@ import dev.citysim.stats.StatsService;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
 import dev.citysim.stats.BossBarService;
+import dev.citysim.visual.SelectionTracker;
+import dev.citysim.visual.VisualizationService;
 import dev.citysim.util.AdventureMessages;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.Command;
@@ -43,15 +45,17 @@ public class CityCommand implements CommandExecutor {
                        StatsService statsService,
                        TitleService titleService,
                        BossBarService bossBarService,
-                       ScoreboardService scoreboardService) {
+                       ScoreboardService scoreboardService,
+                       SelectionTracker selectionTracker,
+                       VisualizationService visualizationService) {
         this.cityManager = cityManager;
         this.statsService = statsService;
 
-        register(new WandCommand());
-        register(new CreateCityCommand(cityManager, statsService));
+        register(new WandCommand(selectionTracker));
+        register(new CreateCityCommand(cityManager, statsService, selectionTracker));
         register(new ListCitiesCommand(cityManager));
         register(new RemoveCityCommand(cityManager));
-        EditCityCommand editCityCommand = new EditCityCommand(cityManager, statsService);
+        EditCityCommand editCityCommand = new EditCityCommand(cityManager, statsService, selectionTracker, visualizationService);
         register(editCityCommand);
         register(new ExpandCityCommand(cityManager, editCityCommand));
         register(new StatsCommand(cityManager, statsService));

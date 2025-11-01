@@ -5,8 +5,8 @@ import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
-import dev.citysim.selection.SelectionListener;
-import dev.citysim.selection.SelectionState;
+import dev.citysim.visual.SelectionTracker;
+import dev.citysim.visual.YMode;
 import dev.citysim.stats.StatsService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -20,10 +20,12 @@ public class CreateCityCommand implements CitySubcommand {
 
     private final CityManager cityManager;
     private final StatsService statsService;
+    private final SelectionTracker selectionTracker;
 
-    public CreateCityCommand(CityManager cityManager, StatsService statsService) {
+    public CreateCityCommand(CityManager cityManager, StatsService statsService, SelectionTracker selectionTracker) {
         this.cityManager = cityManager;
         this.statsService = statsService;
+        this.selectionTracker = selectionTracker;
     }
 
     @Override
@@ -80,19 +82,19 @@ public class CreateCityCommand implements CitySubcommand {
 
         Player selectionOwner = null;
         if (sender instanceof Player player) {
-            SelectionState sel = SelectionListener.get(player);
+            SelectionTracker.SelectionState sel = selectionTracker.stateFor(player);
             if (sel.ready()) {
-                if (sel.world != sel.pos1.getWorld() || sel.world != sel.pos2.getWorld()) {
+                if (sel.world() != sel.pos1().getWorld() || sel.world() != sel.pos2().getWorld()) {
                     player.sendMessage(Component.text("Your selection must be in a single world. Use /city wand clear and try again.", NamedTextColor.RED));
                     return true;
                 }
-                if (sel.world != player.getWorld()) {
+                if (sel.world() != player.getWorld()) {
                     player.sendMessage(Component.text("You are in a different world than your selection. Switch worlds or clear it with /city wand clear before creating a city.", NamedTextColor.RED));
                     return true;
                 }
 
-                boolean fullHeight = sel.yMode == SelectionState.YMode.FULL;
-                pendingCuboid = new Cuboid(sel.world, sel.pos1, sel.pos2, fullHeight);
+                boolean fullHeight = sel.mode() == YMode.FULL;
+                pendingCuboid = new Cuboid(sel.world(), sel.pos1(), sel.pos2(), fullHeight);
                 pendingWidth = pendingCuboid.maxX - pendingCuboid.minX + 1;
                 pendingLength = pendingCuboid.maxZ - pendingCuboid.minZ + 1;
                 pendingHeight = pendingCuboid.maxY - pendingCuboid.minY + 1;
@@ -127,7 +129,7 @@ public class CreateCityCommand implements CitySubcommand {
                 sender.sendMessage(base.append(details));
             }
             if (pendingCuboid != null && selectionOwner != null) {
-                SelectionListener.clear(selectionOwner);
+                selectionTracker.clear(selectionOwner);
             }
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
