@@ -69,13 +69,14 @@ public final class SelectionOutline {
                     maxWorldY,
                     maxZ,
                     maxParticles,
+                    includeMidpoints,
                     false,
                     new int[]{clampedViewerY});
         }
         if (minY == maxY) {
             return generateHorizontalSlice(world, minX, minZ, maxX, maxZ, minY, maxParticles);
         }
-        return generateEdgeOutline(world, minX, minY, minZ, maxX, maxY, maxZ, maxParticles, true, null);
+        return generateEdgeOutline(world, minX, minY, minZ, maxX, maxY, maxZ, maxParticles, includeMidpoints, true, null);
     }
 
     private static List<Location> limitPoints(List<Location> points, int maxParticles) {
@@ -150,6 +151,7 @@ public final class SelectionOutline {
                                                       int maxY,
                                                       int maxZ,
                                                       int maxParticles,
+                                                      boolean includeMidpoints,
                                                       boolean offsetY,
                                                       int[] forcedY) {
         List<Location> points = new ArrayList<>();
@@ -183,6 +185,10 @@ public final class SelectionOutline {
             context.ensureCorners(points);
         } finally {
             EDGE_CONTEXT.remove();
+        }
+
+        if (includeMidpoints && offsetY) {
+            addMidpointSamples(points, world, minX, minY, minZ, maxX, maxY, maxZ, offsetY);
         }
 
         if (maxParticles > 0 && points.size() > maxParticles) {
@@ -256,6 +262,177 @@ public final class SelectionOutline {
         }
 
         return limited;
+    }
+
+    private static void addMidpointSamples(List<Location> points,
+                                           World world,
+                                           int minX,
+                                           int minY,
+                                           int minZ,
+                                           int maxX,
+                                           int maxY,
+                                           int maxZ,
+                                           boolean offsetY) {
+        if (world == null || minX > maxX || minY > maxY || minZ > maxZ) {
+            return;
+        }
+
+        FaceTracker faceTracker = new FaceTracker();
+        int[] xCorners = axisValues(minX, maxX);
+        int[] zCorners = axisValues(minZ, maxZ);
+
+        int height = Math.max(1, maxY - minY + 1);
+        int columnHeight = Math.min(6, height);
+        int maxColumnStart = Math.max(minY, maxY - columnHeight + 1);
+        int centerColumnStart = clamp(minY + (height / 2) - (columnHeight / 2), minY, maxColumnStart);
+
+        List<Integer> sampleYs = new ArrayList<>();
+        addIfAbsent(sampleYs, clamp(minY + (maxY - minY) / 2, minY, maxY));
+        addIfAbsent(sampleYs, clamp(centerColumnStart, minY, maxY));
+        addIfAbsent(sampleYs, clamp(Math.min(maxY, centerColumnStart + columnHeight - 1), minY, maxY));
+        addIfAbsent(sampleYs, minY);
+        addIfAbsent(sampleYs, maxY);
+
+        int midX = minX + (maxX - minX) / 2;
+        int midZ = minZ + (maxZ - minZ) / 2;
+        int midY = minY + (maxY - minY) / 2;
+
+        if (maxX > minX) {
+            int[] xSamples = axisInteriorSamples(minX, maxX);
+            for (int sampleX : xSamples) {
+                for (int sampleY : sampleYs) {
+                    int y = clamp(sampleY, minY, maxY);
+                    for (int z : zCorners) {
+                        addOutlinePoints(points,
+                                world,
+                                sampleX,
+                                y,
+                                z,
+                                minX,
+                                maxX,
+                                minY,
+                                maxY,
+                                minZ,
+                                maxZ,
+                                offsetY,
+                                faceTracker);
+                    }
+                }
+            }
+        }
+
+        if (maxZ > minZ) {
+            int[] zSamples = axisInteriorSamples(minZ, maxZ);
+            for (int sampleZ : zSamples) {
+                for (int sampleY : sampleYs) {
+                    int y = clamp(sampleY, minY, maxY);
+                    for (int x : xCorners) {
+                        addOutlinePoints(points,
+                                world,
+                                x,
+                                y,
+                                sampleZ,
+                                minX,
+                                maxX,
+                                minY,
+                                maxY,
+                                minZ,
+                                maxZ,
+                                offsetY,
+                                faceTracker);
+                    }
+                }
+            }
+        }
+
+        if (maxX > minX) {
+            for (int sampleY : sampleYs) {
+                int y = clamp(sampleY, minY, maxY);
+                addOutlinePoints(points,
+                        world,
+                        midX,
+                        y,
+                        minZ,
+                        minX,
+                        maxX,
+                        minY,
+                        maxY,
+                        minZ,
+                        maxZ,
+                        offsetY,
+                        faceTracker);
+                if (minZ != maxZ) {
+                    addOutlinePoints(points,
+                            world,
+                            midX,
+                            y,
+                            maxZ,
+                            minX,
+                            maxX,
+                            minY,
+                            maxY,
+                            minZ,
+                            maxZ,
+                            offsetY,
+                            faceTracker);
+                }
+            }
+        }
+
+        if (maxZ > minZ) {
+            for (int sampleY : sampleYs) {
+                int y = clamp(sampleY, minY, maxY);
+                addOutlinePoints(points,
+                        world,
+                        minX,
+                        y,
+                        midZ,
+                        minX,
+                        maxX,
+                        minY,
+                        maxY,
+                        minZ,
+                        maxZ,
+                        offsetY,
+                        faceTracker);
+                if (minX != maxX) {
+                    addOutlinePoints(points,
+                            world,
+                            maxX,
+                            y,
+                            midZ,
+                            minX,
+                            maxX,
+                            minY,
+                            maxY,
+                            minZ,
+                            maxZ,
+                            offsetY,
+                            faceTracker);
+                }
+            }
+        }
+
+        if (maxY > minY) {
+            int clampedMidY = clamp(midY, minY, maxY);
+            for (int x : xCorners) {
+                for (int z : zCorners) {
+                    addOutlinePoints(points,
+                            world,
+                            x,
+                            clampedMidY,
+                            z,
+                            minX,
+                            maxX,
+                            minY,
+                            maxY,
+                            minZ,
+                            maxZ,
+                            offsetY,
+                            faceTracker);
+                }
+            }
+        }
     }
 
     private static final ThreadLocal<EdgeEmissionContext> EDGE_CONTEXT = new ThreadLocal<>();
