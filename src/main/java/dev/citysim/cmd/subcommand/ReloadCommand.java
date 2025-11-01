@@ -5,6 +5,8 @@ import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
+import dev.citysim.visual.VisualizationService;
+import dev.citysim.visual.VisualizationSettings;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.CommandSender;
 
@@ -44,6 +46,11 @@ public class ReloadCommand implements CitySubcommand {
         BossBarService bossBars = plugin.getBossBarService();
         if (bossBars != null) {
             bossBars.restart();
+        }
+
+        VisualizationService visualizationService = plugin.getVisualizationService();
+        if (visualizationService != null) {
+            visualizationService.reload(VisualizationSettings.fromConfig(plugin.getConfig()));
         }
 
         CommandFeedback.sendSuccess(sender, "CitySim configuration reloaded.");
