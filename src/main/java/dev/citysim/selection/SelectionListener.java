@@ -33,6 +33,7 @@ public class SelectionListener implements Listener {
         if (event.getItem() == null || event.getItem().getType() != WAND) {
             return;
         }
+        event.setCancelled(true);
         Action action = event.getAction();
         if (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK) {
             return;
@@ -56,7 +57,6 @@ public class SelectionListener implements Listener {
         boolean first = action == Action.LEFT_CLICK_BLOCK;
         selectionTracker.setCorner(player, first, block.getLocation());
         sendSelectionUpdate(player, selectionTracker.get(player), first ? "Pos1" : "Pos2");
-        event.setCancelled(true);
     }
 
     @EventHandler
