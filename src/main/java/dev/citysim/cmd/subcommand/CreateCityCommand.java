@@ -110,6 +110,8 @@ public class CreateCityCommand implements CitySubcommand {
             }
         }
 
+        boolean createdSuccessfully = false;
+        boolean selectionUsed = pendingCuboid != null && selectionOwner != null;
         try {
             City created = cityManager.create(name);
             if (pendingCuboid != null) {
@@ -135,12 +137,13 @@ public class CreateCityCommand implements CitySubcommand {
                 Component details = Component.text(". Use /city wand and /city edit " + created.id + " cuboid add (or /city expand " + created.id + ") to define its area.", NamedTextColor.GREEN);
                 sender.sendMessage(base.append(details));
             }
-            if (pendingCuboid != null && selectionOwner != null) {
-                selectionTracker.clear(selectionOwner);
-            }
             visualizationService.updateCityView(null, created.id);
+            createdSuccessfully = true;
         } catch (IllegalArgumentException ex) {
             sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
+        }
+        if (createdSuccessfully && selectionUsed) {
+            selectionTracker.clear(selectionOwner);
         }
         return true;
     }
