@@ -220,14 +220,14 @@ public class StatsCommand implements CitySubcommand {
         String agri = formatPercent(city.sectorAgri);
         String industry = formatPercent(city.sectorInd);
         String services = formatPercent(city.sectorServ);
-        return "<green>Sectors:</green> Agri %s  Ind %s  Serv %s".formatted(agri, industry, services);
+        return "<green>Sectors:</green> Agri %s • Ind %s • Serv %s".formatted(agri, industry, services);
     }
 
     private String formatPressureLine(City city) {
-        String jobs = formatDecimal(city.jobsPressure);
-        String housing = formatDecimal(city.housingPressure);
-        String transit = formatDecimal(city.transitPressure);
-        return "<red>Pressures:</red> Jobs %s  Housing %s  Transit %s".formatted(jobs, housing, transit);
+        String jobs = formatSignedDelta(city.jobsPressure);
+        String housing = formatSignedDelta(city.housingPressure);
+        String transit = formatSignedDelta(city.transitPressure);
+        return "<red>Pressures:</red> Jobs Δ: %s  Housing Δ: %s  Transit Δ: %s".formatted(jobs, housing, transit);
     }
 
     private String formatLandValueLine(City city) {
@@ -242,8 +242,12 @@ public class StatsCommand implements CitySubcommand {
         return String.format(Locale.US, "%.0f%%", clamp01(value) * 100.0);
     }
 
-    private String formatDecimal(double value) {
-        return String.format(Locale.US, "%.2f", Math.max(0.0, value));
+    private String formatSignedDelta(double value) {
+        String formatted = String.format(Locale.US, "%+.2f", value);
+        if (formatted.startsWith("-")) {
+            return "−" + formatted.substring(1);
+        }
+        return formatted;
     }
 
     private double clamp01(double value) {

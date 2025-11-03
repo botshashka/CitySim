@@ -14,6 +14,7 @@ public class EconomyCalculator {
     private static final double LIGHTING_DRAG_MAX = 2.0;
     private static final double TRANSIT_DRAG_PER_STATION = 0.3;
     private static final double TRANSIT_DRAG_MAX = 3.0;
+    private static final double TRANSIT_NEUTRAL_NORMALIZED = 0.5;
 
     private final HappinessCalculator happinessCalculator;
 
@@ -89,9 +90,12 @@ public class EconomyCalculator {
         double gdp = city.population * BASE_PRODUCTIVITY * prosperityMultiplier;
         double gdpPerCapita = city.population <= 0 ? 0.0 : gdp / city.population;
 
-        double jobsPressure = clamp(Math.max(0.0, EMPLOYMENT_NEUTRAL - city.employmentRate), 0.0, 1.0);
-        double housingPressure = clamp(Math.max(0.0, 1.0 - city.housingRatio), 0.0, 1.0);
-        double transitPressure = clamp(Math.max(0.0, 1.0 - city.transitCoverage), 0.0, 1.0);
+        double jobsPressure = city.employmentRate - EMPLOYMENT_NEUTRAL;
+        double housingPressure = city.housingRatio - 1.0;
+        double normalizedTransitCoverage = happinessCalculator.normalizeTransitCoverage(city.transitCoverage);
+        // Pressures are stored as signed deltas so that surpluses (+) and deficits (-) are visible to the UI.
+        // Transit uses the same easing normalization as happiness scoring, with 0.5 treated as the neutral baseline.
+        double transitPressure = normalizedTransitCoverage - TRANSIT_NEUTRAL_NORMALIZED;
 
         double landValue = computeLandValue(city, metrics);
 

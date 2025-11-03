@@ -240,6 +240,12 @@ public class HappinessCalculator {
         return clamp(coverageRatio, 0.0, 1.0);
     }
 
+    public double normalizeTransitCoverage(double coverageRatio) {
+        double ratio = clamp(coverageRatio, 0.0, 1.0);
+        double eased = Math.pow(ratio, TRANSIT_EASING_EXPONENT);
+        return clamp(eased, 0.0, 1.0);
+    }
+
     double adjustNatureRatio(double rawRatio, int sampleCount) {
         double clampedRatio = clamp(rawRatio, 0.0, 1.0);
         int samples = Math.max(0, sampleCount);
