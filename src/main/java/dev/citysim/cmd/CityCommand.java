@@ -10,12 +10,14 @@ import dev.citysim.cmd.subcommand.DebugCommand;
 import dev.citysim.cmd.subcommand.DisplayCommand;
 import dev.citysim.cmd.subcommand.EditCityCommand;
 import dev.citysim.cmd.subcommand.ExpandCityCommand;
+import dev.citysim.cmd.subcommand.LinksCommand;
 import dev.citysim.cmd.subcommand.ListCitiesCommand;
 import dev.citysim.cmd.subcommand.ReloadCommand;
 import dev.citysim.cmd.subcommand.RemoveCityCommand;
 import dev.citysim.cmd.subcommand.StatsCommand;
 import dev.citysim.cmd.subcommand.TopCommand;
 import dev.citysim.cmd.subcommand.WandCommand;
+import dev.citysim.links.LinkService;
 import dev.citysim.stats.StatsService;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
@@ -47,7 +49,8 @@ public class CityCommand implements CommandExecutor {
                        BossBarService bossBarService,
                        ScoreboardService scoreboardService,
                        VisualizationService visualizationService,
-                       SelectionTracker selectionTracker) {
+                       SelectionTracker selectionTracker,
+                       LinkService linkService) {
         this.cityManager = cityManager;
         this.statsService = statsService;
 
@@ -59,6 +62,7 @@ public class CityCommand implements CommandExecutor {
         register(editCityCommand);
         register(new ExpandCityCommand(cityManager, editCityCommand));
         register(new StatsCommand(cityManager, statsService));
+        register(new LinksCommand(cityManager, linkService));
         register(new DisplayCommand(titleService, bossBarService, scoreboardService));
         register(new TopCommand(cityManager));
         register(new ReloadCommand(plugin));
