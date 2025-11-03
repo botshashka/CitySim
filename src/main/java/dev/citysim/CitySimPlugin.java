@@ -9,6 +9,7 @@ import dev.citysim.integration.traincarts.TrainCartsLocator;
 import dev.citysim.integration.traincarts.TrainCartsReflectionBinder;
 import dev.citysim.integration.traincarts.TrainCartsStationService;
 import dev.citysim.links.LinkService;
+import dev.citysim.migration.MigrationService;
 import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.visual.SelectionTracker;
@@ -39,6 +40,7 @@ public class CitySimPlugin extends JavaPlugin {
     private VisualizationService visualizationService;
     private SelectionTracker selectionTracker;
     private LinkService linkService;
+    private MigrationService migrationService;
 
     @Override
     public void onEnable() {
@@ -66,6 +68,11 @@ public class CitySimPlugin extends JavaPlugin {
 
         this.linkService = new LinkService(cityManager);
         this.linkService.reload(getConfig());
+
+        this.migrationService = new MigrationService(this, cityManager, linkService);
+        this.migrationService.reload(getConfig());
+        this.migrationService.start();
+        getLogger().info("MigrationService started");
 
         this.displayPreferencesStore = new DisplayPreferencesStore(this);
         this.displayPreferencesStore.load();
@@ -99,7 +106,7 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker, linkService);
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker, linkService, migrationService);
             getCommand("city").setExecutor(cityCommand);
             getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
@@ -127,6 +134,9 @@ public class CitySimPlugin extends JavaPlugin {
         }
         if (statsService != null) {
             statsService.stop();
+        }
+        if (migrationService != null) {
+            migrationService.stop();
         }
         if (cityManager != null) {
             cityManager.save();
@@ -167,6 +177,10 @@ public class CitySimPlugin extends JavaPlugin {
 
     public LinkService getLinkService() {
         return linkService;
+    }
+
+    public MigrationService getMigrationService() {
+        return migrationService;
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {

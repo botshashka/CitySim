@@ -127,6 +127,34 @@ migration:
   interval_ticks: 100
   max_moves_per_tick: 2
   cooldown_minutes: 10
+  min_city_population_floor: 10
+
+  teleport:
+    radius: 8
+    max_samples: 24
+    require_y_at_least_rail: true
+    disallow_on_rail: true
+    disallow_below_rail: true
+    rail_avoid_horiz_radius: 1
+    rail_avoid_vert_above: 3
+    floor_allowlist: []
+    floor_block_blacklist:
+      - CARPET
+      - TRAPDOOR
+      - SCAFFOLDING
+      - ICE
+      - PACKED_ICE
+      - BLUE_ICE
+      - SLIME_BLOCK
+      - HONEY_BLOCK
+      - MAGMA_BLOCK
+      - CACTUS
+      - SWEET_BERRY_BUSH
+    rail_materials:
+      - RAIL
+      - POWERED_RAIL
+      - DETECTOR_RAIL
+      - ACTIVATOR_RAIL
 
 ui:
   bossbar:
