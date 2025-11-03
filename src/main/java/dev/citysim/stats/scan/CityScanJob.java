@@ -10,9 +10,12 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Villager;
+import org.bukkit.entity.Villager.Profession;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 
@@ -27,6 +30,7 @@ public class CityScanJob {
 
     private int population = 0;
     private int employed = 0;
+    private final Map<Profession, Integer> professionHistogram = new HashMap<>();
 
     private int bedHalfCount = 0;
     private int beds = 0;
@@ -143,8 +147,10 @@ public class CityScanJob {
                     continue;
                 }
                 population++;
-                if (villager.getProfession() != Villager.Profession.NONE) {
+                Profession profession = villager.getProfession();
+                if (profession != Profession.NONE) {
                     employed++;
+                    professionHistogram.merge(profession, 1, Integer::sum);
                 }
             }
             processed++;
@@ -247,6 +253,7 @@ public class CityScanJob {
         city.unemployed = unemployed;
         city.beds = beds;
         city.setResidentialChunks(residentialBedChunks);
+        updateSectorBreakdown();
 
         trainCartsStationCount = callbacks.refreshStationCount(city);
 
@@ -254,6 +261,61 @@ public class CityScanJob {
         result = callbacks.calculateHappinessBreakdown(city, metrics);
         city.happinessBreakdown = result;
         city.happiness = result.total;
+    }
+
+    private void updateSectorBreakdown() {
+        int agri = countForSector(Sector.AGRICULTURE);
+        int industry = countForSector(Sector.INDUSTRY);
+        int services = countForSector(Sector.SERVICES);
+        int total = agri + industry + services;
+        if (total <= 0) {
+            city.sectorAgri = 0.0;
+            city.sectorInd = 0.0;
+            city.sectorServ = 0.0;
+            return;
+        }
+        city.sectorAgri = (double) agri / (double) total;
+        city.sectorInd = (double) industry / (double) total;
+        city.sectorServ = (double) services / (double) total;
+    }
+
+    private int countForSector(Sector sector) {
+        int sum = 0;
+        for (Map.Entry<Profession, Integer> entry : professionHistogram.entrySet()) {
+            if (sector == Sector.fromProfession(entry.getKey())) {
+                sum += Math.max(0, entry.getValue());
+            }
+        }
+        return sum;
+    }
+
+    private enum Sector {
+        AGRICULTURE,
+        INDUSTRY,
+        SERVICES;
+
+        static Sector fromProfession(Profession profession) {
+            if (profession == null) {
+                return SERVICES;
+            }
+            if (profession == Profession.FARMER
+                    || profession == Profession.FISHERMAN
+                    || profession == Profession.SHEPHERD) {
+                return AGRICULTURE;
+            }
+            if (profession == Profession.ARMORER
+                    || profession == Profession.TOOLSMITH
+                    || profession == Profession.WEAPONSMITH
+                    || profession == Profession.MASON
+                    || profession == Profession.FLETCHER
+                    || profession == Profession.LEATHERWORKER) {
+                return INDUSTRY;
+            }
+            if (profession == Profession.NONE) {
+                return SERVICES;
+            }
+            return SERVICES;
+        }
     }
 
     public HappinessBreakdown getResult() {

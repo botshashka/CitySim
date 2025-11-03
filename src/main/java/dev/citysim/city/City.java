@@ -1,5 +1,6 @@
 package dev.citysim.city;
 
+import dev.citysim.stats.EconomyBreakdown;
 import dev.citysim.stats.HappinessBreakdown;
 
 import java.util.ArrayList;
@@ -31,7 +32,18 @@ public class City {
     public double housingRatio = 1.0;
     public double transitCoverage = 0.0;
 
+    public double gdp = 0.0;
+    public double gdpPerCapita = 0.0;
+    public double sectorAgri = 0.0;
+    public double sectorInd = 0.0;
+    public double sectorServ = 0.0;
+    public double jobsPressure = 0.0;
+    public double housingPressure = 0.0;
+    public double transitPressure = 0.0;
+    public double landValue = 0.0;
+
     public transient HappinessBreakdown happinessBreakdown = null;
+    public transient EconomyBreakdown economyBreakdown = null;
 
     public transient BlockScanCache blockScanCache = null;
     private transient Set<ChunkPosition> residentialChunks = new LinkedHashSet<>();
@@ -63,6 +75,7 @@ public class City {
     public void invalidateBlockScanCache() {
         blockScanCache = null;
         happinessBreakdown = null;
+        economyBreakdown = null;
         residentialChunks.clear();
     }
 
