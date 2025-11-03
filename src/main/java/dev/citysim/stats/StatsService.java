@@ -134,6 +134,10 @@ public class StatsService {
         return stationCountingMode;
     }
 
+    public HappinessCalculator getHappinessCalculator() {
+        return happinessCalculator;
+    }
+
     private void addPendingCity(String cityId, boolean forceRefresh, String reason, ScanContext context) {
         addPendingCity(cityId, forceRefresh, false, reason, context);
     }

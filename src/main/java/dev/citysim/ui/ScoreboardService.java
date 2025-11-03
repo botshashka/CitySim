@@ -9,6 +9,8 @@ import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionType;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
+import dev.citysim.economy.CityEconomy;
+import dev.citysim.economy.EconomyService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
@@ -41,12 +43,17 @@ public class ScoreboardService {
     private final Map<UUID, String> lastTitles = new HashMap<>();
     private final Map<UUID, List<String>> lastLines = new HashMap<>();
     private final DisplayPreferencesStore displayPreferencesStore;
+    private EconomyService economyService;
 
     public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
         this.statsService = statsService;
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.displayPreferencesStore = displayPreferencesStore;
+    }
+
+    public void setEconomyService(EconomyService economyService) {
+        this.economyService = economyService;
     }
 
     public void start() {
@@ -226,6 +233,18 @@ public class ScoreboardService {
             raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
         }
 
+        if (economyService != null && economyService.isEnabled()) {
+            CityEconomy economy = economyService.economy(city.id);
+            if (economy != null) {
+                String lviLine = ChatColor.YELLOW + "Land value: " + ChatColor.WHITE
+                        + String.format(Locale.US, "%.0f", economy.lviAverage()) + " " + trendSymbol(economy.lviTrend());
+                raw.add(lviLine);
+                String gdpLine = ChatColor.DARK_AQUA + "GDPpc: " + ChatColor.WHITE
+                        + String.format(Locale.US, "%.1f", economy.gdpPerCapita()) + " " + trendSymbol(economy.gdpTrend());
+                raw.add(gdpLine);
+            }
+        }
+
         if (mode == Mode.FULL && !ghostTown) {
             raw.add(ChatColor.DARK_GRAY + " ");
             ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
@@ -252,6 +271,17 @@ public class ScoreboardService {
             decorated.add(raw.get(i) + ChatColor.COLOR_CHAR + code);
         }
         return decorated;
+    }
+
+    private String trendSymbol(CityEconomy.Trend trend) {
+        if (trend == null) {
+            return "→";
+        }
+        return switch (trend) {
+            case UP -> "↑";
+            case DOWN -> "↓";
+            default -> "→";
+        };
     }
 
     private String formatPoints(double value) {

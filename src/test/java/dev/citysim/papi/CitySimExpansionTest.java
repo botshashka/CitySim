@@ -36,7 +36,7 @@ class CitySimExpansionTest {
     @BeforeEach
     void setUp() {
         cityManager = new StubCityManager();
-        expansion = new CitySimExpansion(cityManager);
+        expansion = new CitySimExpansion(cityManager, null);
     }
 
     @Test

@@ -14,4 +14,10 @@ permissions:
     default: op
   citysim.view:
     default: true
+  citysim.economy:
+    default: true
+  citysim.district:
+    default: true
+  citysim.market:
+    default: true
 softdepend: [PlaceholderAPI]

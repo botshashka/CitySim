@@ -8,6 +8,7 @@ import dev.citysim.integration.traincarts.StationSignParser;
 import dev.citysim.integration.traincarts.TrainCartsLocator;
 import dev.citysim.integration.traincarts.TrainCartsReflectionBinder;
 import dev.citysim.integration.traincarts.TrainCartsStationService;
+import dev.citysim.economy.EconomyService;
 import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.visual.SelectionTracker;
@@ -37,6 +38,7 @@ public class CitySimPlugin extends JavaPlugin {
     private TrainCartsStationService trainCartsStationService;
     private VisualizationService visualizationService;
     private SelectionTracker selectionTracker;
+    private EconomyService economyService;
 
     @Override
     public void onEnable() {
@@ -60,6 +62,10 @@ public class CitySimPlugin extends JavaPlugin {
         this.statsService.start();
         getLogger().info("StatsService started");
 
+        this.economyService = new EconomyService(this, cityManager, statsService.getHappinessCalculator());
+        this.economyService.start();
+        getLogger().info("EconomyService initialized (enabled=" + economyService.isEnabled() + ")");
+
         getServer().getPluginManager().registerEvents(new DependencyListener(), this);
 
         this.displayPreferencesStore = new DisplayPreferencesStore(this);
@@ -72,6 +78,7 @@ public class CitySimPlugin extends JavaPlugin {
         getLogger().info("BossBarService started");
 
         this.scoreboardService = new ScoreboardService(this, cityManager, statsService, displayPreferencesStore);
+        this.scoreboardService.setEconomyService(economyService);
         this.scoreboardService.start();
         getLogger().info("ScoreboardService started");
 
@@ -86,7 +93,7 @@ public class CitySimPlugin extends JavaPlugin {
 
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
-                new CitySimExpansion(cityManager).register();
+                new CitySimExpansion(cityManager, economyService).register();
                 getLogger().info("PlaceholderAPI detected: CitySim placeholders registered.");
             } catch (Throwable t) {
                 getLogger().warning("Failed to register PlaceholderAPI expansion: " + t.getMessage());
@@ -94,7 +101,7 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker);
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, economyService, visualizationService, selectionTracker);
             getCommand("city").setExecutor(cityCommand);
             getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
@@ -119,6 +126,9 @@ public class CitySimPlugin extends JavaPlugin {
         }
         if (titleService != null) {
             titleService.stop();
+        }
+        if (economyService != null && economyService.isEnabled()) {
+            economyService.stop();
         }
         if (statsService != null) {
             statsService.stop();
