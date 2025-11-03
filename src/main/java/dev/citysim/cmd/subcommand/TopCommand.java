@@ -33,13 +33,13 @@ public class TopCommand implements CitySubcommand {
 
     @Override
     public List<Component> help() {
-        return List.of(CommandMessages.help("/city top [happy|pop]"));
+        return List.of(CommandMessages.help("/city top [prosperity|pop]"));
     }
 
     @Override
     public boolean execute(CommandSender sender, String[] args) {
         Player player = (Player) sender;
-        String metric = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "happy";
+        String metric = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "prosperity";
 
         List<City> list = new ArrayList<>(cityManager.all());
         Comparator<City> comparator;
@@ -58,15 +58,15 @@ public class TopCommand implements CitySubcommand {
 
         int limit = Math.min(10, list.size());
         StringBuilder sb = new StringBuilder();
-        sb.append("Top cities by ").append(metric.startsWith("pop") ? "population" : "happiness").append(":\n");
+        sb.append("Top cities by ").append(metric.startsWith("pop") ? "population" : "prosperity").append(":\n");
         for (int i = 0; i < limit; i++) {
             City city = list.get(i);
             String details;
             if (city.isGhostTown()) {
                 details = "pop %d".formatted(city.population);
             } else {
-                String happinessDisplay = city.happiness + "%";
-                details = "pop %d, happy %s".formatted(city.population, happinessDisplay);
+                String prosperityDisplay = city.happiness + "%";
+                details = "pop %d, prosperity %s".formatted(city.population, prosperityDisplay);
             }
             sb.append(String.format("%2d. %s  —  %s\n", i + 1, city.name, details));
         }
@@ -80,7 +80,7 @@ public class TopCommand implements CitySubcommand {
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
-            return List.of("happy", "pop");
+            return List.of("prosperity", "happy", "pop");
         }
         return List.of();
     }

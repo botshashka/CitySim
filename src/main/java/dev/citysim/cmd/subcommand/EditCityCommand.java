@@ -19,6 +19,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.OfflinePlayer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class EditCityCommand implements CitySubcommand {
@@ -42,7 +44,8 @@ public class EditCityCommand implements CitySubcommand {
             CommandMessages.help("/city edit <cityId> cuboid show [on|off]"),
             CommandMessages.help("/city edit <cityId> cuboid list"),
             CommandMessages.help("/city edit <cityId> highrise <true|false>"),
-            CommandMessages.help("/city edit <cityId> station <add|remove|set|clear> [amount]")
+            CommandMessages.help("/city edit <cityId> station <add|remove|set|clear> [amount]"),
+            CommandMessages.help("/city edit <cityId> mayor <add|remove|list> [player|uuid]")
     );
 
     private final CityManager cityManager;
@@ -103,8 +106,9 @@ public class EditCityCommand implements CitySubcommand {
             case "listcuboids" -> handleLegacyCuboid(sender, cityId, "list", args);
             case "highrise" -> handleHighrise(sender, cityId, args);
             case "station" -> handleStation(sender, cityId, args);
+            case "mayor" -> handleMayor(sender, cityId, args);
             default -> {
-                CommandFeedback.sendError(sender, "Unknown edit action. Use name, cuboid, highrise, or station.");
+                CommandFeedback.sendError(sender, "Unknown edit action. Use name, cuboid, highrise, station, or mayor.");
                 yield true;
             }
         };
@@ -116,7 +120,7 @@ public class EditCityCommand implements CitySubcommand {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         if (args.length == 2) {
-            return List.of("name", "cuboid", "highrise", "station");
+            return List.of("name", "cuboid", "highrise", "station", "mayor");
         }
 
         String action = args[1].toLowerCase(Locale.ROOT);
@@ -149,6 +153,17 @@ public class EditCityCommand implements CitySubcommand {
                 String sub = args[2].toLowerCase(Locale.ROOT);
                 if (List.of("add", "remove", "set").contains(sub)) {
                     return List.of("<amount>");
+                }
+            }
+        }
+        if ("mayor".equals(action)) {
+            if (args.length == 3) {
+                return List.of("add", "remove", "list");
+            }
+            if (args.length == 4) {
+                String sub = args[2].toLowerCase(Locale.ROOT);
+                if ("add".equals(sub) || "remove".equals(sub)) {
+                    return Bukkit.getOnlinePlayers().stream().map(Player::getName).collect(Collectors.toList());
                 }
             }
         }
@@ -677,6 +692,117 @@ public class EditCityCommand implements CitySubcommand {
         return true;
     }
 
+    private boolean handleMayor(CommandSender sender, String cityId, String[] args) {
+        if (args.length < 3) {
+            sendMayorUsage(sender);
+            return true;
+        }
+
+        City city = cityManager.get(cityId);
+        if (city == null) {
+            sender.sendMessage(Component.text()
+                    .append(Component.text("City with id '", NamedTextColor.RED))
+                    .append(Component.text(cityId, NamedTextColor.RED))
+                    .append(Component.text("' does not exist.", NamedTextColor.RED))
+                    .build());
+            return true;
+        }
+
+        String sub = args[2].toLowerCase(Locale.ROOT);
+        return switch (sub) {
+            case "add" -> handleMayorAdd(sender, city, args);
+            case "remove" -> handleMayorRemove(sender, city, args);
+            case "list" -> handleMayorList(sender, city);
+            default -> {
+                sendMayorUsage(sender);
+                yield true;
+            }
+        };
+    }
+
+    private boolean handleMayorAdd(CommandSender sender, City city, String[] args) {
+        if (args.length < 4) {
+            sendMayorUsage(sender);
+            return true;
+        }
+        String target = args[3];
+        UUID uuid = parsePlayerIdentifier(target);
+        if (uuid == null) {
+            CommandFeedback.sendError(sender, "Could not resolve player or UUID: " + target);
+            return true;
+        }
+        if (city.mayors == null) {
+            city.mayors = new ArrayList<>();
+        }
+        String key = uuid.toString();
+        if (city.mayors.stream().anyMatch(existing -> existing != null && existing.equalsIgnoreCase(key))) {
+            CommandFeedback.sendWarning(sender, displayNameForMayor(key) + " is already a mayor of '" + city.name + "'.");
+            return true;
+        }
+        city.mayors.add(key);
+        cityManager.save();
+        CommandFeedback.sendSuccess(sender, "Added " + displayNameForMayor(key) + " as a mayor of '" + city.name + "'.");
+        return true;
+    }
+
+    private boolean handleMayorRemove(CommandSender sender, City city, String[] args) {
+        if (args.length < 4) {
+            sendMayorUsage(sender);
+            return true;
+        }
+        String target = args[3];
+        UUID uuid = parsePlayerIdentifier(target);
+        String key = uuid != null ? uuid.toString() : null;
+        if (city.mayors == null || city.mayors.isEmpty()) {
+            CommandFeedback.sendWarning(sender, "City '" + city.name + "' has no mayors assigned.");
+            return true;
+        }
+
+        boolean removed = false;
+        if (key != null) {
+            removed = city.mayors.removeIf(existing -> existing != null && existing.equalsIgnoreCase(key));
+        }
+        if (!removed) {
+            removed = city.mayors.removeIf(existing -> existing != null && existing.equalsIgnoreCase(target));
+        }
+
+        if (!removed) {
+            CommandFeedback.sendWarning(sender, "No matching mayor found for input '" + target + "'.");
+            return true;
+        }
+
+        cityManager.save();
+        String label = key != null ? displayNameForMayor(key) : target;
+        CommandFeedback.sendSuccess(sender, "Removed " + label + " from the mayors of '" + city.name + "'.");
+        return true;
+    }
+
+    private boolean handleMayorList(CommandSender sender, City city) {
+        if (city.mayors == null || city.mayors.isEmpty()) {
+            CommandFeedback.sendInfo(sender, "City '" + city.name + "' has no mayors assigned.");
+            return true;
+        }
+        List<String> names = new ArrayList<>();
+        for (String entry : city.mayors) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            names.add(displayNameForMayor(entry));
+        }
+        if (names.isEmpty()) {
+            CommandFeedback.sendInfo(sender, "City '" + city.name + "' has no mayors assigned.");
+            return true;
+        }
+        String joined = String.join(", ", names);
+        sender.sendMessage(Component.text()
+                .append(Component.text("City '", NamedTextColor.GREEN))
+                .append(Component.text(city.name, NamedTextColor.GREEN))
+                .append(Component.text("' mayors: ", NamedTextColor.GREEN))
+                .append(Component.text(joined, NamedTextColor.WHITE))
+                .build());
+        return true;
+    }
+
     private Integer modifyStations(CommandSender sender, String[] args, int base, String context, StationOperator operator) {
         if (args.length < 4) {
             sendStationUsage(sender);
@@ -716,6 +842,13 @@ public class EditCityCommand implements CitySubcommand {
         ));
     }
 
+    private void sendMayorUsage(CommandSender sender) {
+        sender.sendMessage(AdventureMessages.joinLines(
+                CommandMessages.usage("Usage:"),
+                CommandMessages.usage("/city edit <cityId> mayor <add|remove|list> [player|uuid]")
+        ));
+    }
+
     private void sendEditUsage(CommandSender sender) {
         List<Component> lines = new ArrayList<>(HELP.size() + 1);
         lines.add(CommandMessages.usage("Usage:"));
@@ -738,6 +871,48 @@ public class EditCityCommand implements CitySubcommand {
             return false;
         }
         return null;
+    }
+
+    private UUID parsePlayerIdentifier(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException ex) {
+            Player online = Bukkit.getPlayerExact(value);
+            if (online != null) {
+                return online.getUniqueId();
+            }
+            OfflinePlayer cached = Bukkit.getOfflinePlayerIfCached(value);
+            if (cached != null && cached.getUniqueId() != null) {
+                return cached.getUniqueId();
+            }
+            OfflinePlayer offline = Bukkit.getOfflinePlayer(value);
+            if (offline != null && offline.getUniqueId() != null) {
+                return offline.getUniqueId();
+            }
+            return null;
+        }
+    }
+
+    private String displayNameForMayor(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        try {
+            UUID uuid = UUID.fromString(raw);
+            OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
+            if (offline != null) {
+                String name = offline.getName();
+                if (name != null && !name.isBlank()) {
+                    return name;
+                }
+            }
+            return uuid.toString();
+        } catch (IllegalArgumentException ex) {
+            return raw;
+        }
     }
 
     @FunctionalInterface

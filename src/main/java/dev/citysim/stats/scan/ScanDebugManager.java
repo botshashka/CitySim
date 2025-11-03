@@ -86,7 +86,7 @@ public class ScanDebugManager {
         String type = describeReason(job);
         String cityLabel = describeCity(job.city());
         StringBuilder message = new StringBuilder(String.format(
-                "Completed %s scan for %s in %d ms — pop=%d, employed=%d, beds=%d, happiness=%d",
+                "Completed %s scan for %s in %d ms — pop=%d, employed=%d, beds=%d, prosperity=%d",
                 type,
                 cityLabel,
                 duration,

@@ -9,12 +9,16 @@ import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 import dev.citysim.util.AdventureMessages;
+import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class StatsCommand implements CitySubcommand {
@@ -69,17 +73,19 @@ public class StatsCommand implements CitySubcommand {
         if (showStations) {
             homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
         }
+        String mayorLine = formatMayorLine(city);
 
         String safeName = AdventureMessages.escapeMiniMessage(city.name);
         if (hb.isGhostTown()) {
             String msg = ("""
             <white><b>%s — City stats</b></white>
+            %s
             <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
             %s
-            <gold>Happiness:</gold> N/A (ghost town)
+            <gold>Prosperity:</gold> N/A (ghost town)
             %s
             """).formatted(
-                    safeName, city.population, city.employed, city.unemployed,
+                    safeName, mayorLine, city.population, city.employed, city.unemployed,
                     homesLine,
                     hb.dominantMessage()
             ).stripTrailing();
@@ -100,12 +106,13 @@ public class StatsCommand implements CitySubcommand {
 
         String msg = ("""
         <white><b>%s — City stats</b></white>
+        %s
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
         %s
-        <gold>Happiness:</gold> %d%%  <white>(base 50)</white>
+        <gold>Prosperity:</gold> %d%%  <white>(base 50)</white>
         %s
         """).formatted(
-                safeName, city.population, city.employed, city.unemployed,
+                safeName, mayorLine, city.population, city.employed, city.unemployed,
                 homesLine,
                 hb.total,
                 breakdownLines
@@ -120,5 +127,47 @@ public class StatsCommand implements CitySubcommand {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         return List.of();
+    }
+
+    private String formatMayorLine(City city) {
+        List<String> names = resolveMayorNames(city);
+        if (names.isEmpty()) {
+            return "<yellow>Mayors:</yellow> <gray>None assigned</gray>";
+        }
+        return "<yellow>Mayors:</yellow> " + String.join("<gray>, </gray>", names);
+    }
+
+    private List<String> resolveMayorNames(City city) {
+        List<String> formatted = new ArrayList<>();
+        if (city == null || city.mayors == null) {
+            return formatted;
+        }
+        for (String raw : city.mayors) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            String display = resolveMayorDisplay(raw);
+            if (display == null || display.isBlank()) {
+                continue;
+            }
+            formatted.add("<white>" + AdventureMessages.escapeMiniMessage(display) + "</white>");
+        }
+        return formatted;
+    }
+
+    private String resolveMayorDisplay(String raw) {
+        try {
+            UUID uuid = UUID.fromString(raw);
+            OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
+            if (offline != null) {
+                String name = offline.getName();
+                if (name != null && !name.isBlank()) {
+                    return name;
+                }
+            }
+            return uuid.toString();
+        } catch (IllegalArgumentException ex) {
+            return raw;
+        }
     }
 }

@@ -218,8 +218,8 @@ public class ScoreboardService {
 
         List<String> raw = new ArrayList<>();
         raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-        String happinessValue = ghostTown ? "N/A" : city.happiness + "%";
-        raw.add(ChatColor.GOLD + "Happiness: " + ChatColor.WHITE + happinessValue);
+        String prosperityValue = ghostTown ? "N/A" : city.happiness + "%";
+        raw.add(ChatColor.GOLD + "Prosperity: " + ChatColor.WHITE + prosperityValue);
         raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
         raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
         if (showStations) {
