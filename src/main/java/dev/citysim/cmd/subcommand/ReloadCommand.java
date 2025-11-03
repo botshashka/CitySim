@@ -3,6 +3,9 @@ package dev.citysim.cmd.subcommand;
 import dev.citysim.CitySimPlugin;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
+import dev.citysim.economy.EconomyOverlayRenderer;
+import dev.citysim.economy.EconomyService;
+import dev.citysim.economy.EconomySettings;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
 import dev.citysim.visual.VisualizationService;
@@ -51,6 +54,16 @@ public class ReloadCommand implements CitySubcommand {
         VisualizationService visualizationService = plugin.getVisualizationService();
         if (visualizationService != null) {
             visualizationService.reload(VisualizationSettings.fromConfig(plugin.getConfig()));
+        }
+
+        EconomyService economyService = plugin.getEconomyService();
+        if (economyService != null) {
+            EconomySettings settings = new EconomySettings(plugin.getConfig());
+            economyService.reload(settings);
+            EconomyOverlayRenderer overlay = plugin.getEconomyOverlayRenderer();
+            if (overlay != null) {
+                overlay.reload(settings);
+            }
         }
 
         CommandFeedback.sendSuccess(sender, "CitySim configuration reloaded.");

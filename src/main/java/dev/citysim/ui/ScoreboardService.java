@@ -2,6 +2,8 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.economy.CityEconomy;
+import dev.citysim.economy.EconomyService;
 import dev.citysim.stats.HappinessBreakdown;
 import dev.citysim.stats.HappinessBreakdownFormatter;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLine;
@@ -33,6 +35,7 @@ public class ScoreboardService {
     public enum Mode { COMPACT, FULL }
 
     private final StatsService statsService;
+    private final EconomyService economyService;
     private final Plugin plugin;
     private final CityManager cityManager;
     private int taskId = -1;
@@ -42,10 +45,15 @@ public class ScoreboardService {
     private final Map<UUID, List<String>> lastLines = new HashMap<>();
     private final DisplayPreferencesStore displayPreferencesStore;
 
-    public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
+    public ScoreboardService(Plugin plugin,
+                             CityManager cityManager,
+                             StatsService statsService,
+                             EconomyService economyService,
+                             DisplayPreferencesStore displayPreferencesStore) {
         this.statsService = statsService;
         this.plugin = plugin;
         this.cityManager = cityManager;
+        this.economyService = economyService;
         this.displayPreferencesStore = displayPreferencesStore;
     }
 
@@ -226,6 +234,14 @@ public class ScoreboardService {
             raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
         }
 
+        CityEconomy economy = economyService != null ? economyService.cityEconomy(city.id) : null;
+        if (economy != null) {
+            raw.add(ChatColor.YELLOW + "Land value: " + ChatColor.WHITE + String.format(Locale.US, "%.1f", economy.lviAverage())
+                    + " " + arrowFor(economy.lviAverage() - economy.lviEma()));
+            raw.add(ChatColor.GOLD + "GDPpc: " + ChatColor.WHITE + String.format(Locale.US, "%.1f", economy.gdpPerCapita())
+                    + " " + arrowFor(economy.gdpReturnEma()));
+        }
+
         if (mode == Mode.FULL && !ghostTown) {
             raw.add(ChatColor.DARK_GRAY + " ");
             ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
@@ -252,6 +268,16 @@ public class ScoreboardService {
             decorated.add(raw.get(i) + ChatColor.COLOR_CHAR + code);
         }
         return decorated;
+    }
+
+    private String arrowFor(double delta) {
+        if (delta > 0.01) {
+            return ChatColor.GREEN + "↑";
+        }
+        if (delta < -0.01) {
+            return ChatColor.RED + "↓";
+        }
+        return ChatColor.GRAY + "→";
     }
 
     private String formatPoints(double value) {

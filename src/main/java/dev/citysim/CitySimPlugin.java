@@ -14,6 +14,9 @@ import dev.citysim.visual.SelectionTracker;
 import dev.citysim.visual.VisualizationService;
 import dev.citysim.visual.VisualizationSettings;
 import dev.citysim.stats.BossBarService;
+import dev.citysim.economy.EconomyOverlayRenderer;
+import dev.citysim.economy.EconomyService;
+import dev.citysim.economy.EconomySettings;
 import dev.citysim.stats.StatsService;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.ui.DisplayPreferencesStore;
@@ -37,6 +40,8 @@ public class CitySimPlugin extends JavaPlugin {
     private TrainCartsStationService trainCartsStationService;
     private VisualizationService visualizationService;
     private SelectionTracker selectionTracker;
+    private EconomyService economyService;
+    private EconomyOverlayRenderer economyOverlayRenderer;
 
     @Override
     public void onEnable() {
@@ -60,6 +65,12 @@ public class CitySimPlugin extends JavaPlugin {
         this.statsService.start();
         getLogger().info("StatsService started");
 
+        EconomySettings economySettings = new EconomySettings(getConfig());
+        this.economyService = new EconomyService(this, cityManager, statsService.getHappinessCalculator(), economySettings);
+        this.economyService.start();
+        this.economyOverlayRenderer = new EconomyOverlayRenderer(this, economyService, economySettings);
+        getLogger().info("EconomyService started");
+
         getServer().getPluginManager().registerEvents(new DependencyListener(), this);
 
         this.displayPreferencesStore = new DisplayPreferencesStore(this);
@@ -71,7 +82,7 @@ public class CitySimPlugin extends JavaPlugin {
         this.bossBarService.start();
         getLogger().info("BossBarService started");
 
-        this.scoreboardService = new ScoreboardService(this, cityManager, statsService, displayPreferencesStore);
+        this.scoreboardService = new ScoreboardService(this, cityManager, statsService, economyService, displayPreferencesStore);
         this.scoreboardService.start();
         getLogger().info("ScoreboardService started");
 
@@ -86,7 +97,7 @@ public class CitySimPlugin extends JavaPlugin {
 
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
-                new CitySimExpansion(cityManager).register();
+                new CitySimExpansion(cityManager, economyService).register();
                 getLogger().info("PlaceholderAPI detected: CitySim placeholders registered.");
             } catch (Throwable t) {
                 getLogger().warning("Failed to register PlaceholderAPI expansion: " + t.getMessage());
@@ -94,7 +105,7 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker);
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker, economyService, economyOverlayRenderer);
             getCommand("city").setExecutor(cityCommand);
             getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
@@ -111,6 +122,9 @@ public class CitySimPlugin extends JavaPlugin {
         if (visualizationService != null) {
             visualizationService.shutdown();
         }
+        if (economyOverlayRenderer != null) {
+            economyOverlayRenderer.stop();
+        }
         if (bossBarService != null) {
             bossBarService.stop();
         }
@@ -122,6 +136,9 @@ public class CitySimPlugin extends JavaPlugin {
         }
         if (statsService != null) {
             statsService.stop();
+        }
+        if (economyService != null) {
+            economyService.stop();
         }
         if (cityManager != null) {
             cityManager.save();
@@ -158,6 +175,14 @@ public class CitySimPlugin extends JavaPlugin {
 
     public VisualizationService getVisualizationService() {
         return visualizationService;
+    }
+
+    public EconomyService getEconomyService() {
+        return economyService;
+    }
+
+    public EconomyOverlayRenderer getEconomyOverlayRenderer() {
+        return economyOverlayRenderer;
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {

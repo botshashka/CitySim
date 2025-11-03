@@ -110,3 +110,38 @@ titles:
       - "<gray>A fresh city awaiting its first residents</gray>"
       - "<gray>New streets patiently awaiting their bustle</gray>"
       - "<gray>Districts standing ready for settlers to arrive</gray>"
+
+economy:
+  enabled: true
+  district_tile_blocks: 32
+  district_sample_step: 8
+  refresh_interval_millis: 45000
+  overlay_ttl_seconds: 30
+  overlay_buckets: [20, 40, 60, 80]
+  station_radius_chunks: 6
+  lvi_weights:
+    light: 0.25
+    nature: 0.20
+    access: 0.20
+    pollution: 0.20
+    crowding: 0.15
+  gdp:
+    per_worker: 4.0
+    happiness_multiplier_min: 0.80
+    happiness_multiplier_max: 1.20
+    lvi_multiplier_min: 0.90
+    lvi_multiplier_max: 1.10
+    access_multiplier_min: 0.80
+    access_multiplier_max: 1.20
+  index:
+    a_gdp_return: 0.6
+    b_lvi_return: 0.3
+    c_population_return: 0.1
+    ema_alpha: 0.2
+  behavior:
+    mode: "DISABLED"
+    max_moves_per_minute: 10
+    max_spawns_per_minute: 5
+    villager_cooldown_minutes: 30
+  logging:
+    economy_debug: false

@@ -8,14 +8,19 @@ import dev.citysim.cmd.subcommand.CitySubcommandRegistry;
 import dev.citysim.cmd.subcommand.CreateCityCommand;
 import dev.citysim.cmd.subcommand.DebugCommand;
 import dev.citysim.cmd.subcommand.DisplayCommand;
+import dev.citysim.cmd.subcommand.DistrictCommand;
+import dev.citysim.cmd.subcommand.EconomyCommand;
 import dev.citysim.cmd.subcommand.EditCityCommand;
 import dev.citysim.cmd.subcommand.ExpandCityCommand;
 import dev.citysim.cmd.subcommand.ListCitiesCommand;
+import dev.citysim.cmd.subcommand.MarketCommand;
 import dev.citysim.cmd.subcommand.ReloadCommand;
 import dev.citysim.cmd.subcommand.RemoveCityCommand;
 import dev.citysim.cmd.subcommand.StatsCommand;
 import dev.citysim.cmd.subcommand.TopCommand;
 import dev.citysim.cmd.subcommand.WandCommand;
+import dev.citysim.economy.EconomyOverlayRenderer;
+import dev.citysim.economy.EconomyService;
 import dev.citysim.stats.StatsService;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
@@ -47,7 +52,9 @@ public class CityCommand implements CommandExecutor {
                        BossBarService bossBarService,
                        ScoreboardService scoreboardService,
                        VisualizationService visualizationService,
-                       SelectionTracker selectionTracker) {
+                       SelectionTracker selectionTracker,
+                       EconomyService economyService,
+                       EconomyOverlayRenderer overlayRenderer) {
         this.cityManager = cityManager;
         this.statsService = statsService;
 
@@ -61,6 +68,9 @@ public class CityCommand implements CommandExecutor {
         register(new StatsCommand(cityManager, statsService));
         register(new DisplayCommand(titleService, bossBarService, scoreboardService));
         register(new TopCommand(cityManager));
+        register(new EconomyCommand(cityManager, economyService));
+        register(new DistrictCommand(cityManager, economyService, overlayRenderer));
+        register(new MarketCommand(cityManager, economyService));
         register(new ReloadCommand(plugin));
         register(new DebugCommand(statsService));
     }

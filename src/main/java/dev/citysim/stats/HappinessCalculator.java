@@ -126,6 +126,10 @@ public class HappinessCalculator {
         this.overcrowdMaxPenalty = overcrowdMaxPenalty;
     }
 
+    public double getOvercrowdingMaxPenalty() {
+        return overcrowdMaxPenalty;
+    }
+
     public void setNatureMaxPts(double natureMaxPts) {
         this.natureMaxPts = natureMaxPts;
     }
