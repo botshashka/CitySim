@@ -12,7 +12,7 @@ class ScoreboardServiceTest {
 
     @Test
     void trimObjectiveTitleTruncatesLongNamesWithinLimit() throws Exception {
-        ScoreboardService service = new ScoreboardService(null, null, null, null);
+        ScoreboardService service = new ScoreboardService(null, null, null, null, null);
         Method method = ScoreboardService.class.getDeclaredMethod("trimObjectiveTitle", String.class);
         method.setAccessible(true);
 
@@ -29,7 +29,7 @@ class ScoreboardServiceTest {
 
     @Test
     void trimObjectiveTitleLeavesShortNamesUnchanged() throws Exception {
-        ScoreboardService service = new ScoreboardService(null, null, null, null);
+        ScoreboardService service = new ScoreboardService(null, null, null, null, null);
         Method method = ScoreboardService.class.getDeclaredMethod("trimObjectiveTitle", String.class);
         method.setAccessible(true);
 

@@ -2,6 +2,7 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.links.LinkService;
 import dev.citysim.stats.HappinessBreakdown;
 import dev.citysim.stats.HappinessBreakdownFormatter;
 import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLine;
@@ -35,6 +36,7 @@ public class ScoreboardService {
     private final StatsService statsService;
     private final Plugin plugin;
     private final CityManager cityManager;
+    private final LinkService linkService;
     private int taskId = -1;
 
     private final Map<UUID, Scoreboard> boards = new HashMap<>();
@@ -42,11 +44,16 @@ public class ScoreboardService {
     private final Map<UUID, List<String>> lastLines = new HashMap<>();
     private final DisplayPreferencesStore displayPreferencesStore;
 
-    public ScoreboardService(Plugin plugin, CityManager cityManager, StatsService statsService, DisplayPreferencesStore displayPreferencesStore) {
+    public ScoreboardService(Plugin plugin,
+                             CityManager cityManager,
+                             StatsService statsService,
+                             DisplayPreferencesStore displayPreferencesStore,
+                             LinkService linkService) {
         this.statsService = statsService;
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.displayPreferencesStore = displayPreferencesStore;
+        this.linkService = linkService;
     }
 
     public void start() {
@@ -224,6 +231,10 @@ public class ScoreboardService {
         raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
         if (showStations) {
             raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+        }
+        if (mode == Mode.FULL && linkService != null && linkService.isEnabled()) {
+            int linkCount = linkService.linkCount(city);
+            raw.add(ChatColor.DARK_AQUA + "Links: " + ChatColor.WHITE + linkCount);
         }
 
         if (mode == Mode.FULL && !ghostTown) {

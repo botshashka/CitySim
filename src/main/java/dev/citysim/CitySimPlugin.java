@@ -8,6 +8,7 @@ import dev.citysim.integration.traincarts.StationSignParser;
 import dev.citysim.integration.traincarts.TrainCartsLocator;
 import dev.citysim.integration.traincarts.TrainCartsReflectionBinder;
 import dev.citysim.integration.traincarts.TrainCartsStationService;
+import dev.citysim.links.LinkService;
 import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.visual.SelectionTracker;
@@ -37,6 +38,7 @@ public class CitySimPlugin extends JavaPlugin {
     private TrainCartsStationService trainCartsStationService;
     private VisualizationService visualizationService;
     private SelectionTracker selectionTracker;
+    private LinkService linkService;
 
     @Override
     public void onEnable() {
@@ -62,6 +64,9 @@ public class CitySimPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new DependencyListener(), this);
 
+        this.linkService = new LinkService(cityManager);
+        this.linkService.reload(getConfig());
+
         this.displayPreferencesStore = new DisplayPreferencesStore(this);
         this.displayPreferencesStore.load();
         getLogger().info("Display preferences loaded");
@@ -71,7 +76,7 @@ public class CitySimPlugin extends JavaPlugin {
         this.bossBarService.start();
         getLogger().info("BossBarService started");
 
-        this.scoreboardService = new ScoreboardService(this, cityManager, statsService, displayPreferencesStore);
+        this.scoreboardService = new ScoreboardService(this, cityManager, statsService, displayPreferencesStore, linkService);
         this.scoreboardService.start();
         getLogger().info("ScoreboardService started");
 
@@ -94,7 +99,7 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker);
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker, linkService);
             getCommand("city").setExecutor(cityCommand);
             getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
@@ -158,6 +163,10 @@ public class CitySimPlugin extends JavaPlugin {
 
     public VisualizationService getVisualizationService() {
         return visualizationService;
+    }
+
+    public LinkService getLinkService() {
+        return linkService;
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {
