@@ -127,7 +127,7 @@ public class StatsCommand implements CitySubcommand {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         return List.of();
-}
+    }
 
     private String formatMayorLine(City city) {
         List<String> names = resolveMayorNames(city);
