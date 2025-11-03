@@ -7,7 +7,7 @@ public class HappinessCalculator {
     private static final double OVERCROWDING_BASELINE = 3.0;
     private static final double TRANSIT_IDEAL_SPACING_BLOCKS = 75.0;
     private static final double TRANSIT_EASING_EXPONENT = 0.5;
-    private static final double NATURE_TARGET_RATIO = 0.10;
+    static final double NATURE_TARGET_RATIO = 0.10;
     private static final int NATURE_MIN_EFFECTIVE_SAMPLES = 36;
     private static final double HOUSING_SURPLUS_CAP = 1.2;
     private static final double HOUSING_SHORTAGE_FLOOR = 0.6;
@@ -62,7 +62,7 @@ public class HappinessCalculator {
 
         hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
 
-        double adjustedNature = adjustedNatureRatio(metrics.nature, metrics.natureSamples);
+        double adjustedNature = adjustNatureRatio(metrics.nature, metrics.natureSamples);
         double natureScore = (adjustedNature - NATURE_TARGET_RATIO) / NATURE_TARGET_RATIO;
         hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
 
@@ -118,28 +118,64 @@ public class HappinessCalculator {
         this.lightMaxPts = lightMaxPts;
     }
 
+    public double getLightMaxPts() {
+        return lightMaxPts;
+    }
+
     public void setEmploymentMaxPts(double employmentMaxPts) {
         this.employmentMaxPts = employmentMaxPts;
+    }
+
+    public double getEmploymentMaxPts() {
+        return employmentMaxPts;
     }
 
     public void setOvercrowdMaxPenalty(double overcrowdMaxPenalty) {
         this.overcrowdMaxPenalty = overcrowdMaxPenalty;
     }
 
+    public double getOvercrowdMaxPenalty() {
+        return overcrowdMaxPenalty;
+    }
+
     public void setNatureMaxPts(double natureMaxPts) {
         this.natureMaxPts = natureMaxPts;
+    }
+
+    public double getNatureMaxPts() {
+        return natureMaxPts;
     }
 
     public void setPollutionMaxPenalty(double pollutionMaxPenalty) {
         this.pollutionMaxPenalty = pollutionMaxPenalty;
     }
 
+    public double getPollutionMaxPenalty() {
+        return pollutionMaxPenalty;
+    }
+
     public void setHousingMaxPts(double housingMaxPts) {
         this.housingMaxPts = housingMaxPts;
     }
 
+    public double getHousingMaxPts() {
+        return housingMaxPts;
+    }
+
+    public double getHousingSurplusCap() {
+        return HOUSING_SURPLUS_CAP;
+    }
+
+    public double getHousingShortageFloor() {
+        return HOUSING_SHORTAGE_FLOOR;
+    }
+
     public void setTransitMaxPts(double transitMaxPts) {
         this.transitMaxPts = Math.max(0.0, transitMaxPts);
+    }
+
+    public double getTransitMaxPts() {
+        return transitMaxPts;
     }
 
     public void setStationCountingMode(StationCountingMode stationCountingMode) {
@@ -204,12 +240,22 @@ public class HappinessCalculator {
         return clamp(coverageRatio, 0.0, 1.0);
     }
 
-    private double adjustedNatureRatio(double rawRatio, int sampleCount) {
+    public double normalizeTransitCoverage(double coverageRatio) {
+        double ratio = clamp(coverageRatio, 0.0, 1.0);
+        double eased = Math.pow(ratio, TRANSIT_EASING_EXPONENT);
+        return clamp(eased, 0.0, 1.0);
+    }
+
+    double adjustNatureRatio(double rawRatio, int sampleCount) {
         double clampedRatio = clamp(rawRatio, 0.0, 1.0);
         int samples = Math.max(0, sampleCount);
         double sampleWeight = Math.min(1.0, samples / (double) NATURE_MIN_EFFECTIVE_SAMPLES);
         double adjusted = NATURE_TARGET_RATIO + sampleWeight * (clampedRatio - NATURE_TARGET_RATIO);
         return clamp(adjusted, 0.0, 1.0);
+    }
+
+    public double getNatureTargetRatio() {
+        return NATURE_TARGET_RATIO;
     }
 
     private double totalEffectiveArea(City city) {
@@ -232,6 +278,10 @@ public class HappinessCalculator {
             sum += area;
         }
         return (double) sum;
+    }
+
+    public double estimateFootprintArea(City city) {
+        return totalFootprintArea(city);
     }
 
     private double totalFootprintArea(City city) {
