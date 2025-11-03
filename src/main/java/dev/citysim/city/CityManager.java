@@ -15,12 +15,17 @@ import java.nio.charset.Charset;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.Normalizer;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.logging.Level;
 
 public class CityManager {
     private static final Type CITY_LIST_TYPE = new TypeToken<List<City>>(){}.getType();
+
+    private static final DateTimeFormatter BACKUP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSSS");
 
     private final Plugin plugin;
     private final Map<String, City> byId = new LinkedHashMap<>();
@@ -252,6 +257,16 @@ public class CityManager {
             return;
         }
 
+        MigrationResult migrationResult = migrateLegacyCuboids(list);
+        Path backupPath = null;
+        if (migrationResult.hasChanges()) {
+            try {
+                backupPath = writeBackup(dataFile);
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.SEVERE, "Failed creating cities backup before migration: " + e.getMessage(), e);
+            }
+        }
+
         byId.clear();
         citiesByWorld.clear();
         if (list != null) {
@@ -262,14 +277,27 @@ public class CityManager {
                         if (cuboid == null || cuboid.world == null) {
                             continue;
                         }
-                        if (!cuboid.fullHeight) {
-                            org.bukkit.World world = Bukkit.getWorld(cuboid.world);
-                            if (cuboid.isFullHeight(world)) {
-                                cuboid.fullHeight = true;
-                            }
-                        }
+                        World world = Bukkit.getWorld(cuboid.world);
+                        boolean geometricFullHeight = isGeometricallyFullHeight(cuboid, world);
                         if (cuboid.yMode == null) {
-                            cuboid.yMode = cuboid.fullHeight ? CuboidYMode.FULL : CuboidYMode.SPAN;
+                            boolean effectiveFull = cuboid.fullHeight || geometricFullHeight;
+                            if (c.highrise && effectiveFull) {
+                                handleHighriseFullHeightConflict(c, cuboid, world);
+                                world = Bukkit.getWorld(cuboid.world);
+                                geometricFullHeight = isGeometricallyFullHeight(cuboid, world);
+                                effectiveFull = cuboid.fullHeight || geometricFullHeight;
+                            }
+                            cuboid.yMode = effectiveFull ? CuboidYMode.FULL : CuboidYMode.SPAN;
+                            cuboid.fullHeight = effectiveFull;
+                        } else {
+                            boolean effectiveFull = (cuboid.yMode == CuboidYMode.FULL) || geometricFullHeight;
+                            if (c.highrise && effectiveFull) {
+                                handleHighriseFullHeightConflict(c, cuboid, world);
+                                world = Bukkit.getWorld(cuboid.world);
+                                geometricFullHeight = isGeometricallyFullHeight(cuboid, world);
+                                effectiveFull = (cuboid.yMode == CuboidYMode.FULL) || geometricFullHeight;
+                            }
+                            cuboid.fullHeight = effectiveFull;
                         }
                         sanitized.add(cuboid);
                     }
@@ -278,16 +306,150 @@ public class CityManager {
                 if (c.cuboids.isEmpty()) {
                     c.world = null;
                 }
+                c.invalidateBlockScanCache();
                 byId.put(c.id, c);
                 addCityToWorldIndex(c);
             }
         }
         verifyWorldIndexState("load");
+
+        if (migrationResult.hasChanges()) {
+            save();
+            if (backupPath != null) {
+                plugin.getLogger().info("Migrated " + migrationResult.migratedCuboids + " cuboids across " + migrationResult.getChangedCityCount() + " cities; wrote backup to " + backupPath.getFileName());
+            } else {
+                plugin.getLogger().info("Migrated " + migrationResult.migratedCuboids + " cuboids across " + migrationResult.getChangedCityCount() + " cities; backup was not created (see earlier errors).");
+            }
+        }
     }
 
     private List<City> readCities(Charset charset) throws IOException, JsonParseException {
         try (Reader reader = Files.newBufferedReader(dataFile.toPath(), charset)) {
             return gson.fromJson(reader, CITY_LIST_TYPE);
+        }
+    }
+
+    private MigrationResult migrateLegacyCuboids(List<City> list) {
+        MigrationResult result = new MigrationResult();
+        if (list == null) {
+            return result;
+        }
+
+        for (City city : list) {
+            if (city == null || city.cuboids == null || city.cuboids.isEmpty()) {
+                continue;
+            }
+            boolean cityChanged = false;
+            for (Cuboid cuboid : city.cuboids) {
+                if (cuboid == null || cuboid.world == null) {
+                    continue;
+                }
+                if (cuboid.yMode != null) {
+                    continue;
+                }
+
+                World world = Bukkit.getWorld(cuboid.world);
+                boolean geometricFullHeight = world != null ? isGeometricallyFullHeight(cuboid, world) : (cuboid.maxY - cuboid.minY) >= 255;
+                boolean full = cuboid.fullHeight || geometricFullHeight;
+
+                if (city.highrise && full) {
+                    handleHighriseFullHeightConflict(city, cuboid, world);
+                    world = Bukkit.getWorld(cuboid.world);
+                    geometricFullHeight = world != null ? isGeometricallyFullHeight(cuboid, world) : (cuboid.maxY - cuboid.minY) >= 255;
+                    full = cuboid.fullHeight || geometricFullHeight;
+                }
+
+                cuboid.yMode = full ? CuboidYMode.FULL : CuboidYMode.SPAN;
+                cuboid.fullHeight = full;
+
+                result.migratedCuboids++;
+                cityChanged = true;
+            }
+
+            if (cityChanged) {
+                result.changedCityIds.add(city.id != null ? city.id : city.name);
+            }
+        }
+
+        return result;
+    }
+
+    private boolean isGeometricallyFullHeight(Cuboid cuboid, World world) {
+        if (cuboid == null) {
+            return false;
+        }
+        if (world != null) {
+            int worldMin = world.getMinHeight();
+            int worldMax = world.getMaxHeight() - 1;
+            if (cuboid.minY <= worldMin && cuboid.maxY >= worldMax) {
+                return true;
+            }
+        }
+        return (cuboid.maxY - cuboid.minY) >= 255;
+    }
+
+    private void handleHighriseFullHeightConflict(City city, Cuboid cuboid, World world) {
+        if (city == null || cuboid == null) {
+            return;
+        }
+
+        String cityName = city.name != null ? city.name : city.id;
+        plugin.getLogger().warning("City '" + cityName + "' is flagged highrise but had a full-height cuboid; downgrading to span mode.");
+
+        cuboid.yMode = CuboidYMode.SPAN;
+        cuboid.fullHeight = false;
+
+        if (world != null) {
+            int worldMin = world.getMinHeight();
+            int worldMax = world.getMaxHeight() - 1;
+            if (cuboid.minY <= worldMin) {
+                cuboid.minY = worldMin;
+            }
+            if (cuboid.maxY >= worldMax) {
+                cuboid.maxY = Math.max(worldMin, worldMax - 1);
+            }
+            if (cuboid.maxY < cuboid.minY) {
+                cuboid.maxY = cuboid.minY;
+            }
+            if ((cuboid.maxY - cuboid.minY) >= 255) {
+                cuboid.maxY = cuboid.minY + 254;
+                if (cuboid.maxY > worldMax) {
+                    cuboid.maxY = worldMax;
+                    cuboid.minY = Math.max(worldMin, cuboid.maxY - 254);
+                }
+            }
+        } else {
+            if ((cuboid.maxY - cuboid.minY) >= 255) {
+                cuboid.maxY = cuboid.minY + 254;
+            }
+            if (cuboid.maxY < cuboid.minY) {
+                cuboid.maxY = cuboid.minY;
+            }
+        }
+    }
+
+    private Path writeBackup(File dataFile) throws IOException {
+        if (dataFile == null || !dataFile.exists()) {
+            throw new FileNotFoundException("Cities data file not found for backup");
+        }
+        plugin.getDataFolder().mkdirs();
+        Path source = dataFile.toPath();
+        String timestamp = LocalDateTime.now().format(BACKUP_FORMAT);
+        Path backup = source.resolveSibling("cities.backup-" + timestamp + ".json");
+        Files.copy(source, backup);
+        return backup;
+    }
+
+    private static class MigrationResult {
+        private int migratedCuboids = 0;
+        private final Set<String> changedCityIds = new LinkedHashSet<>();
+
+        boolean hasChanges() {
+            return migratedCuboids > 0;
+        }
+
+        int getChangedCityCount() {
+            return changedCityIds.size();
         }
     }
 
