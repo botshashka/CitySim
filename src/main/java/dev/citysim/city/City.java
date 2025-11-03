@@ -23,6 +23,14 @@ public class City {
     public int happiness = 50;
     public int stations = 0;
 
+    public int level = 0;
+    public double levelProgress = 0.0;
+    public java.util.List<String> mayors = new java.util.ArrayList<>();
+
+    public double employmentRate = 0.0;
+    public double housingRatio = 1.0;
+    public double transitCoverage = 0.0;
+
     public transient HappinessBreakdown happinessBreakdown = null;
 
     public transient BlockScanCache blockScanCache = null;

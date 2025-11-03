@@ -180,10 +180,12 @@ public class StatsService {
         HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
         if (result != null) {
             result.setGhostTown(city.isGhostTown() || result.isGhostTown());
+            updateDerivedMetrics(city);
             return result;
         }
         HappinessBreakdown fallback = new HappinessBreakdown();
         fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
+        updateDerivedMetrics(city);
         return fallback;
     }
 
@@ -264,7 +266,9 @@ public class StatsService {
     }
 
     private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
-        return happinessCalculator.calculate(city, metrics);
+        HappinessBreakdown breakdown = happinessCalculator.calculate(city, metrics);
+        updateDerivedMetrics(city);
+        return breakdown;
     }
 
     public void invalidateBlockScanCache(City city) {
@@ -357,5 +361,39 @@ public class StatsService {
         public HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache cache) {
             return StatsService.this.calculateHappinessBreakdown(city, cache);
         }
+    }
+
+    private void updateDerivedMetrics(City city) {
+        if (city == null) {
+            return;
+        }
+        int population = Math.max(0, city.population);
+        int employed = Math.max(0, city.employed);
+        int beds = Math.max(0, city.beds);
+
+        if (population <= 0) {
+            city.employmentRate = 0.0;
+            city.housingRatio = 1.0;
+        } else {
+            double employment = (double) employed / (double) population;
+            city.employmentRate = clamp(employment, 0.0, 1.0);
+            city.housingRatio = (double) beds / (double) population;
+        }
+
+        double coverage = happinessCalculator.computeTransitCoverage(city);
+        if (Double.isNaN(coverage) || Double.isInfinite(coverage)) {
+            coverage = 0.0;
+        }
+        city.transitCoverage = clamp(coverage, 0.0, 1.0);
+    }
+
+    private static double clamp(double value, double min, double max) {
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
     }
 }

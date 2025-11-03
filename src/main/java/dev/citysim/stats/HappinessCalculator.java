@@ -187,6 +187,23 @@ public class HappinessCalculator {
         return clamp(score, -transitMaxPts, transitMaxPts);
     }
 
+    public double computeTransitCoverage(City city) {
+        if (stationCountingMode == StationCountingMode.DISABLED) {
+            return 0.0;
+        }
+        double area = totalFootprintArea(city);
+        if (area <= 0.0) {
+            return 0.0;
+        }
+        double idealStations = Math.max(1.0, area / (TRANSIT_IDEAL_SPACING_BLOCKS * TRANSIT_IDEAL_SPACING_BLOCKS));
+        double actualStations = Math.max(0.0, city.stations);
+        if (actualStations <= 0.0) {
+            return 0.0;
+        }
+        double coverageRatio = actualStations / idealStations;
+        return clamp(coverageRatio, 0.0, 1.0);
+    }
+
     private double adjustedNatureRatio(double rawRatio, int sampleCount) {
         double clampedRatio = clamp(rawRatio, 0.0, 1.0);
         int samples = Math.max(0, sampleCount);

@@ -110,3 +110,25 @@ titles:
       - "<gray>A fresh city awaiting its first residents</gray>"
       - "<gray>New streets patiently awaiting their bustle</gray>"
       - "<gray>Districts standing ready for settlers to arrive</gray>"
+
+levels:
+  enabled: true
+  thresholds: [0, 20, 35, 50, 65, 80, 90]
+  min_scans_above_gate: 3
+  cooldown_scans: 10
+  decay_when_below: 0.05
+
+links:
+  enabled: true
+  link_distance_blocks: 400
+
+migration:
+  enabled: true
+  interval_ticks: 100
+  max_moves_per_tick: 2
+  cooldown_minutes: 10
+
+ui:
+  bossbar:
+    show_level_progress: true
+    show_on_cooldown: true

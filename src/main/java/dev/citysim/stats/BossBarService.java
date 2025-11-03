@@ -89,7 +89,7 @@ public class BossBarService {
                 progress = 0f;
             } else {
                 text = "<white>" + safeName + "</white><white> — </white>" +
-                        "<gold>" + c.happiness + "%</gold>";
+                        "<gold>Prosperity " + c.happiness + "%</gold>";
                 progress = Math.max(0f, Math.min(1f, c.happiness / 100f));
             }
             Component comp = mm.deserialize(text);
