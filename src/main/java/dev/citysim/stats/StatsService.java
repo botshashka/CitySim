@@ -24,6 +24,7 @@ public class StatsService {
     private final Plugin plugin;
     private final CityManager cityManager;
     private final HappinessCalculator happinessCalculator;
+    private final EconomyCalculator economyCalculator;
     private final BlockScanService blockScanService;
     private final ScanDebugManager scanDebugManager;
     private final CityScanCallbacks scanCallbacks;
@@ -46,6 +47,7 @@ public class StatsService {
         this.cityManager = cityManager;
         this.stationCounter = stationCounter;
         this.happinessCalculator = happinessCalculator != null ? happinessCalculator : new HappinessCalculator();
+        this.economyCalculator = new EconomyCalculator(this.happinessCalculator);
         this.blockScanService = blockScanService != null ? blockScanService : new BlockScanService(this.happinessCalculator);
         this.scanDebugManager = new ScanDebugManager();
         this.scanCallbacks = new StatsScanCallbacks();
@@ -385,6 +387,23 @@ public class StatsService {
             coverage = 0.0;
         }
         city.transitCoverage = clamp(coverage, 0.0, 1.0);
+
+        EconomyCalculator.EconomyComputation economy = economyCalculator.compute(city, city.happinessBreakdown, city.blockScanCache);
+        if (economy != null) {
+            city.economyBreakdown = economy.breakdown();
+            city.gdp = economy.gdp();
+            city.gdpPerCapita = economy.gdpPerCapita();
+            city.sectorAgri = economy.sectorAgri();
+            city.sectorInd = economy.sectorInd();
+            city.sectorServ = economy.sectorServ();
+            city.jobsPressure = economy.jobsPressure();
+            city.housingPressure = economy.housingPressure();
+            city.transitPressure = economy.transitPressure();
+            city.landValue = economy.landValue();
+            if (city.economyBreakdown != null) {
+                city.happiness = city.economyBreakdown.total;
+            }
+        }
     }
 
     private static double clamp(double value, double min, double max) {
