@@ -16,20 +16,19 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.plugin.Plugin;
 
-import java.util.Collections;
-import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Collections;
 
 public class JobSiteTracker implements Listener {
     private final Plugin plugin;
     private final CityManager cityManager;
     private final StatsService statsService;
     private final Map<String, LinkedHashMap<ChunkCoordinate, ScanContext>> dirtyChunks = new LinkedHashMap<>();
-    private final Map<String, Map<ChunkCoordinate, EnumMap<Profession, Integer>>> cachedChunkJobSites = new LinkedHashMap<>();
+    private final Map<String, Map<ChunkCoordinate, Map<Profession, Integer>>> cachedChunkJobSites = new LinkedHashMap<>();
 
     private volatile JobSiteAssignments assignments = JobSiteAssignments.empty();
 
@@ -153,12 +152,12 @@ public class JobSiteTracker implements Listener {
             return Map.of();
         }
         synchronized (cachedChunkJobSites) {
-            Map<ChunkCoordinate, EnumMap<Profession, Integer>> perCity = cachedChunkJobSites.get(city.id);
+            Map<ChunkCoordinate, Map<Profession, Integer>> perCity = cachedChunkJobSites.get(city.id);
             if (perCity == null || perCity.isEmpty()) {
                 return Map.of();
             }
-            EnumMap<Profession, Integer> totals = new EnumMap<>(Profession.class);
-            for (EnumMap<Profession, Integer> chunkCounts : perCity.values()) {
+            Map<Profession, Integer> totals = new HashMap<>();
+            for (Map<Profession, Integer> chunkCounts : perCity.values()) {
                 if (chunkCounts == null || chunkCounts.isEmpty()) {
                     continue;
                 }
@@ -184,11 +183,11 @@ public class JobSiteTracker implements Listener {
         }
         ChunkCoordinate coord = new ChunkCoordinate(world, chunkX, chunkZ);
         synchronized (cachedChunkJobSites) {
-            Map<ChunkCoordinate, EnumMap<Profession, Integer>> perCity = cachedChunkJobSites.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
+            Map<ChunkCoordinate, Map<Profession, Integer>> perCity = cachedChunkJobSites.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
             if (counts == null || counts.isEmpty()) {
                 perCity.remove(coord);
             } else {
-                EnumMap<Profession, Integer> snapshot = new EnumMap<>(Profession.class);
+                Map<Profession, Integer> snapshot = new HashMap<>();
                 for (Map.Entry<Profession, Integer> entry : counts.entrySet()) {
                     Profession profession = entry.getKey();
                     if (profession == null) {
@@ -216,8 +215,8 @@ public class JobSiteTracker implements Listener {
             return;
         }
         synchronized (cachedChunkJobSites) {
-            Map<ChunkCoordinate, EnumMap<Profession, Integer>> perCity = cachedChunkJobSites.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
-            EnumMap<Profession, Integer> counts = perCity.computeIfAbsent(coord, ignored -> new EnumMap<>(Profession.class));
+            Map<ChunkCoordinate, Map<Profession, Integer>> perCity = cachedChunkJobSites.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
+            Map<Profession, Integer> counts = perCity.computeIfAbsent(coord, ignored -> new HashMap<>());
             int current = counts.getOrDefault(profession, 0);
             int updated = Math.max(0, current + delta);
             if (updated <= 0) {

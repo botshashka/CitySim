@@ -687,8 +687,8 @@ public class CityScanJob {
             }
         }
 
-        EnumMap<Profession, Integer> snapshot() {
-            return counts.isEmpty() ? new EnumMap<>(Profession.class) : new EnumMap<>(counts);
+        Map<Profession, Integer> snapshot() {
+            return counts.isEmpty() ? Map.of() : new HashMap<>(counts);
         }
     }
 
