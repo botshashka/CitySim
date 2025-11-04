@@ -39,6 +39,7 @@ public class CityScanJob {
     private final Map<Profession, Integer> jobSiteTotals = new HashMap<>();
     private ChunkJobSiteCounts activeJobSiteChunkCounts = null;
     private boolean activeJobSiteChunkTouched = false;
+    private boolean activeJobSiteChunkInitialized = false;
 
     private int bedHalfCount = 0;
     private int beds = 0;
@@ -219,6 +220,7 @@ public class CityScanJob {
                     }
                     continue;
                 }
+                initializeActiveJobSiteChunkCountsIfNeeded();
                 Material type = world.getBlockAt(bedX, bedY, bedZ).getType();
                 recordJobSite(type);
                 if (isBed(type)) {
@@ -251,6 +253,7 @@ public class CityScanJob {
         if (!jobSiteTrackingEnabled() || activeBedChunk == null) {
             activeJobSiteChunkCounts = null;
             activeJobSiteChunkTouched = false;
+            activeJobSiteChunkInitialized = false;
             return;
         }
         ChunkJobSiteCounts counts = jobSiteChunkCounts.get(activeBedChunk);
@@ -258,15 +261,16 @@ public class CityScanJob {
             counts = new ChunkJobSiteCounts();
             jobSiteChunkCounts.put(activeBedChunk, counts);
         }
-        counts.reset();
         activeJobSiteChunkCounts = counts;
         activeJobSiteChunkTouched = false;
+        activeJobSiteChunkInitialized = false;
     }
 
     private void recordJobSite(Material type) {
         if (!jobSiteTrackingEnabled() || activeJobSiteChunkCounts == null) {
             return;
         }
+        initializeActiveJobSiteChunkCountsIfNeeded();
         activeJobSiteChunkTouched = true;
         Profession profession = jobSiteAssignments.professionFor(type);
         if (profession != null) {
@@ -278,11 +282,13 @@ public class CityScanJob {
         if (!jobSiteTrackingEnabled()) {
             activeJobSiteChunkCounts = null;
             activeJobSiteChunkTouched = false;
+            activeJobSiteChunkInitialized = false;
             return;
         }
         if (activeBedChunk == null) {
             activeJobSiteChunkCounts = null;
             activeJobSiteChunkTouched = false;
+            activeJobSiteChunkInitialized = false;
             return;
         }
         if (activeJobSiteChunkTouched && jobSiteTracker != null) {
@@ -290,6 +296,17 @@ public class CityScanJob {
         }
         activeJobSiteChunkCounts = null;
         activeJobSiteChunkTouched = false;
+        activeJobSiteChunkInitialized = false;
+    }
+
+    private void initializeActiveJobSiteChunkCountsIfNeeded() {
+        if (!jobSiteTrackingEnabled() || activeJobSiteChunkCounts == null) {
+            return;
+        }
+        if (!activeJobSiteChunkInitialized) {
+            activeJobSiteChunkCounts.reset();
+            activeJobSiteChunkInitialized = true;
+        }
     }
 
     private boolean advanceBedCursor(Cuboid cuboid) {
@@ -581,6 +598,7 @@ public class CityScanJob {
 
     private void releaseActiveBedChunk() {
         if (activeBedChunk == null) {
+            activeJobSiteChunkInitialized = false;
             return;
         }
         finalizeActiveJobSiteChunk();
@@ -589,6 +607,7 @@ public class CityScanJob {
         activeBedWorldName = null;
         activeBedChunkX = 0;
         activeBedChunkZ = 0;
+        activeJobSiteChunkInitialized = false;
     }
 
     private boolean isActiveBedChunk(String worldName, int chunkX, int chunkZ) {
