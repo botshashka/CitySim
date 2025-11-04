@@ -18,10 +18,12 @@ public class City {
     public List<Cuboid> cuboids = new ArrayList<>();
 
     public int population = 0;
+    public int adultPopulation = 0;
     public int employed = 0;
     public int unemployed = 0;
+    public int adultNone = 0;
+    public int adultNitwit = 0;
     public int beds = 0;
-    public int vacanciesTotal = 0;
     public int happiness = 50;
     public int stations = 0;
 

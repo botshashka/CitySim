@@ -4,8 +4,6 @@ import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
 import dev.citysim.stats.HappinessBreakdown;
 import dev.citysim.stats.StationCountResult;
-import dev.citysim.stats.jobs.JobSiteAssignments;
-import dev.citysim.stats.jobs.JobSiteTracker;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
@@ -15,7 +13,6 @@ import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -34,13 +31,9 @@ public class CityScanJob {
     private int population = 0;
     private int employed = 0;
     private final Map<Profession, Integer> professionHistogram = new HashMap<>();
-    private final JobSiteAssignments jobSiteAssignments;
-    private final JobSiteTracker jobSiteTracker;
-    private final Map<ChunkCoord, ChunkJobSiteCounts> jobSiteChunkCounts = new HashMap<>();
-    private final Map<Profession, Integer> jobSiteTotals = new HashMap<>();
-    private ChunkJobSiteCounts activeJobSiteChunkCounts = null;
-    private boolean activeJobSiteChunkTouched = false;
-    private boolean activeJobSiteChunkInitialized = false;
+    private int adultPopulation = 0;
+    private int adultNoneCount = 0;
+    private int adultNitwitCount = 0;
 
     private int bedHalfCount = 0;
     private int beds = 0;
@@ -84,8 +77,6 @@ public class CityScanJob {
         this.callbacks = callbacks;
         this.debugManager = debugManager;
         this.entityChunks = buildChunkList(city);
-        this.jobSiteAssignments = callbacks != null ? callbacks.jobSiteAssignments() : JobSiteAssignments.empty();
-        this.jobSiteTracker = callbacks != null ? callbacks.jobSiteTracker() : null;
     }
 
     public boolean process(int chunkLimit, int bedLimit) {
@@ -159,8 +150,16 @@ public class CityScanJob {
                 if (!villager.isValid()) {
                     continue;
                 }
-                population++;
                 Profession profession = villager.getProfession();
+                if (villager.isAdult()) {
+                    adultPopulation++;
+                    if (profession == Profession.NONE) {
+                        adultNoneCount++;
+                    } else if (profession == Profession.NITWIT) {
+                        adultNitwitCount++;
+                    }
+                }
+                population++;
                 if (profession != Profession.NONE) {
                     employed++;
                     professionHistogram.merge(profession, 1, Integer::sum);
@@ -209,7 +208,6 @@ public class CityScanJob {
                     activeBedWorldName = worldName;
                     activeBedChunkX = chunkX;
                     activeBedChunkZ = chunkZ;
-                    prepareActiveJobSiteChunk();
                 }
                 if (!ensureChunkAvailable(world, activeBedChunk)) {
                     processed++;
@@ -221,9 +219,7 @@ public class CityScanJob {
                     }
                     continue;
                 }
-                initializeActiveJobSiteChunkCountsIfNeeded();
                 Material type = world.getBlockAt(bedX, bedY, bedZ).getType();
-                recordJobSite(type);
                 if (isBed(type)) {
                     bedHalfCount++;
                     residentialBedChunks.add(new City.ChunkPosition(worldName, chunkX, chunkZ));
@@ -244,74 +240,6 @@ public class CityScanJob {
             return true;
         }
         return false;
-    }
-
-    private boolean jobSiteTrackingEnabled() {
-        return jobSiteAssignments != null && !jobSiteAssignments.isEmpty();
-    }
-
-    private void prepareActiveJobSiteChunk() {
-        if (!jobSiteTrackingEnabled() || activeBedChunk == null) {
-            activeJobSiteChunkCounts = null;
-            activeJobSiteChunkTouched = false;
-            activeJobSiteChunkInitialized = false;
-            return;
-        }
-        ChunkJobSiteCounts counts = jobSiteChunkCounts.get(activeBedChunk);
-        if (counts == null) {
-            counts = new ChunkJobSiteCounts();
-            jobSiteChunkCounts.put(activeBedChunk, counts);
-        }
-        activeJobSiteChunkCounts = counts;
-        activeJobSiteChunkTouched = false;
-        activeJobSiteChunkInitialized = false;
-    }
-
-    private void recordJobSite(Material type) {
-        if (!jobSiteTrackingEnabled() || activeJobSiteChunkCounts == null) {
-            return;
-        }
-        initializeActiveJobSiteChunkCountsIfNeeded();
-        activeJobSiteChunkTouched = true;
-        Profession profession = jobSiteAssignments.professionFor(type);
-        if (profession != null) {
-            activeJobSiteChunkCounts.increment(profession);
-        }
-    }
-
-    private void finalizeActiveJobSiteChunk() {
-        if (!jobSiteTrackingEnabled()) {
-            activeJobSiteChunkCounts = null;
-            activeJobSiteChunkTouched = false;
-            activeJobSiteChunkInitialized = false;
-            return;
-        }
-        if (activeBedChunk == null) {
-            activeJobSiteChunkCounts = null;
-            activeJobSiteChunkTouched = false;
-            activeJobSiteChunkInitialized = false;
-            return;
-        }
-        if (activeJobSiteChunkTouched && jobSiteTracker != null) {
-            if (activeJobSiteChunkCounts != null) {
-                jobSiteTracker.updateChunkTotals(city, activeBedWorldName, activeBedChunkX, activeBedChunkZ,
-                        activeJobSiteChunkCounts.snapshot());
-            }
-            jobSiteTracker.markChunkClean(city, activeBedWorldName, activeBedChunkX, activeBedChunkZ);
-        }
-        activeJobSiteChunkCounts = null;
-        activeJobSiteChunkTouched = false;
-        activeJobSiteChunkInitialized = false;
-    }
-
-    private void initializeActiveJobSiteChunkCountsIfNeeded() {
-        if (!jobSiteTrackingEnabled() || activeJobSiteChunkCounts == null) {
-            return;
-        }
-        if (!activeJobSiteChunkInitialized) {
-            activeJobSiteChunkCounts.reset();
-            activeJobSiteChunkInitialized = true;
-        }
     }
 
     private boolean advanceBedCursor(Cuboid cuboid) {
@@ -335,9 +263,11 @@ public class CityScanJob {
         city.population = population;
         city.employed = employed;
         city.unemployed = unemployed;
+        city.adultPopulation = adultPopulation;
+        city.adultNone = adultNoneCount;
+        city.adultNitwit = adultNitwitCount;
         city.beds = beds;
         city.setResidentialChunks(residentialBedChunks);
-        computeJobSiteVacancies();
         updateSectorBreakdown();
 
         trainCartsStationCount = callbacks.refreshStationCount(city);
@@ -358,29 +288,6 @@ public class CityScanJob {
             city.entityScanCache = cache;
         }
         cache.timestamp = System.currentTimeMillis();
-    }
-
-    private void computeJobSiteVacancies() {
-        if (!jobSiteTrackingEnabled()) {
-            city.vacanciesTotal = 0;
-            return;
-        }
-        Map<Profession, Integer> totals = jobSiteTracker != null ? jobSiteTracker.cityJobSiteTotals(city) : Map.of();
-        if (totals == null || totals.isEmpty()) {
-            jobSiteTotals.clear();
-            for (ChunkJobSiteCounts counts : jobSiteChunkCounts.values()) {
-                counts.mergeInto(jobSiteTotals);
-            }
-            totals = jobSiteTotals;
-        }
-        int totalVacancies = 0;
-        for (Map.Entry<Profession, Integer> entry : totals.entrySet()) {
-            int jobSites = Math.max(0, entry.getValue());
-            int employedCount = Math.max(0, professionHistogram.getOrDefault(entry.getKey(), 0));
-            int vacancy = Math.max(0, jobSites - employedCount);
-            totalVacancies += vacancy;
-        }
-        city.vacanciesTotal = Math.max(0, totalVacancies);
     }
 
     private void updateSectorBreakdown() {
@@ -607,16 +514,13 @@ public class CityScanJob {
 
     private void releaseActiveBedChunk() {
         if (activeBedChunk == null) {
-            activeJobSiteChunkInitialized = false;
             return;
         }
-        finalizeActiveJobSiteChunk();
         unloadChunkIfLoadedByJob(activeBedChunk);
         activeBedChunk = null;
         activeBedWorldName = null;
         activeBedChunkX = 0;
         activeBedChunkZ = 0;
-        activeJobSiteChunkInitialized = false;
     }
 
     private boolean isActiveBedChunk(String worldName, int chunkX, int chunkZ) {
@@ -662,34 +566,6 @@ public class CityScanJob {
     private enum Stage { ENTITY_SCAN, BEDS, BLOCK_CACHE, COMPLETE }
 
     private record ChunkCoord(String world, int x, int z) {
-    }
-
-    private static final class ChunkJobSiteCounts {
-        private final Map<Profession, Integer> counts = new HashMap<>();
-
-        void reset() {
-            counts.clear();
-        }
-
-        void increment(Profession profession) {
-            if (profession == null) {
-                return;
-            }
-            counts.merge(profession, 1, Integer::sum);
-        }
-
-        void mergeInto(Map<Profession, Integer> totals) {
-            if (counts.isEmpty()) {
-                return;
-            }
-            for (Map.Entry<Profession, Integer> entry : counts.entrySet()) {
-                totals.merge(entry.getKey(), entry.getValue(), Integer::sum);
-            }
-        }
-
-        Map<Profession, Integer> snapshot() {
-            return counts.isEmpty() ? Map.of() : new HashMap<>(counts);
-        }
     }
 
     private static boolean isBed(Material type) {

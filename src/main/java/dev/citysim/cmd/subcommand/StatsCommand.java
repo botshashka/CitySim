@@ -76,7 +76,6 @@ public class StatsCommand implements CitySubcommand {
         if (showStations) {
             homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
         }
-        String jobVacancyLine = "<dark_green>Job vacancies:</dark_green> %d".formatted(Math.max(0, city.vacanciesTotal));
         String mayorLine = formatMayorLine(city);
 
         String safeName = AdventureMessages.escapeMiniMessage(city.name);
@@ -86,13 +85,11 @@ public class StatsCommand implements CitySubcommand {
             %s
             <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
             %s
-            %s
             <gold>Prosperity:</gold> N/A (ghost town)
             %s
             """).formatted(
                     safeName, mayorLine, city.population, city.employed, city.unemployed,
                     homesLine,
-                    jobVacancyLine,
                     hb.dominantMessage()
             ).stripTrailing();
             player.sendMessage(AdventureMessages.mini(msg));
@@ -129,7 +126,6 @@ public class StatsCommand implements CitySubcommand {
         %s
         <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
         %s
-        %s
         <gold>Prosperity:</gold> %d%%  <white>(base %d)</white>
         %s
         <gray>Economy (Prosperity):</gray>
@@ -141,7 +137,6 @@ public class StatsCommand implements CitySubcommand {
         """).formatted(
                 safeName, mayorLine, city.population, city.employed, city.unemployed,
                 homesLine,
-                jobVacancyLine,
                 prosperityTotal,
                 prosperityBase,
                 breakdownLines,
