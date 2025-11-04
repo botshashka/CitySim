@@ -96,6 +96,7 @@ public class CityScanJob {
             if (!processEntityStage(chunkLimit)) {
                 return false;
             }
+            markEntityScanComplete();
             stage = Stage.BEDS;
         }
         if (stage == Stage.BEDS) {
@@ -323,6 +324,18 @@ public class CityScanJob {
         result = callbacks.calculateHappinessBreakdown(city, metrics);
         city.happinessBreakdown = result;
         city.happiness = result.total;
+    }
+
+    private void markEntityScanComplete() {
+        if (city == null) {
+            return;
+        }
+        City.EntityScanCache cache = city.entityScanCache;
+        if (cache == null) {
+            cache = new City.EntityScanCache();
+            city.entityScanCache = cache;
+        }
+        cache.timestamp = System.currentTimeMillis();
     }
 
     private void computeJobSiteVacancies() {

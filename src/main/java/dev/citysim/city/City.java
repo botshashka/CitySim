@@ -48,6 +48,7 @@ public class City {
     public transient EconomyBreakdown economyBreakdown = null;
 
     public transient BlockScanCache blockScanCache = null;
+    public transient EntityScanCache entityScanCache = null;
     private transient Set<ChunkPosition> residentialChunks = new LinkedHashSet<>();
 
     public boolean highrise = false;
@@ -100,6 +101,10 @@ public class City {
         public double pollution;
         public int pollutingBlocks;
         public double overcrowdingPenalty;
+        public long timestamp;
+    }
+
+    public static class EntityScanCache {
         public long timestamp;
     }
 

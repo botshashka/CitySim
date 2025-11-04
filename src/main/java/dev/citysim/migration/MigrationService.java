@@ -63,6 +63,7 @@ public class MigrationService implements Runnable {
     private final PriorityQueue<DelayedMove> delayedQueue = new PriorityQueue<>(Comparator.comparingLong(DelayedMove::executeTick));
     private final TokenBucket globalBucket = new TokenBucket();
     private final Map<String, Integer> platformIndices = new HashMap<>();
+    private final Map<String, Long> staleStatsLogTick = new HashMap<>();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
@@ -115,6 +116,7 @@ public class MigrationService implements Runnable {
         destinationBuckets.clear();
         linkBuckets.clear();
         platformIndices.clear();
+        staleStatsLogTick.clear();
         globalBucket.configure(settings.rate.globalPerInterval);
         globalBucket.reset();
         logicalTick = 0L;
@@ -549,24 +551,53 @@ public class MigrationService implements Runnable {
         }
         long last = lastStatsTimestamp(city);
         if (last <= 0L) {
+            logStaleStatsSkip(city, nowMillis, last);
             return false;
         }
-        return nowMillis - last <= settings.logic.freshnessMillis;
+        boolean fresh = nowMillis - last <= settings.logic.freshnessMillis;
+        if (!fresh) {
+            logStaleStatsSkip(city, nowMillis, last);
+            return false;
+        }
+        if (city != null && city.id != null) {
+            staleStatsLogTick.remove(city.id);
+        }
+        return true;
     }
 
     private long lastStatsTimestamp(City city) {
         if (city == null) {
             return 0L;
         }
-        long timestamp = city.statsTimestamp;
-        if (timestamp > 0L) {
-            return timestamp;
+        long timestamp = Math.max(0L, city.statsTimestamp);
+        City.BlockScanCache blockCache = city.blockScanCache;
+        if (blockCache != null) {
+            timestamp = Math.max(timestamp, blockCache.timestamp);
         }
-        City.BlockScanCache cache = city.blockScanCache;
-        if (cache != null) {
-            timestamp = Math.max(timestamp, cache.timestamp);
+        City.EntityScanCache entityCache = city.entityScanCache;
+        if (entityCache != null) {
+            timestamp = Math.max(timestamp, entityCache.timestamp);
         }
         return timestamp;
+    }
+
+    private void logStaleStatsSkip(City city, long nowMillis, long lastTimestamp) {
+        if (city == null || city.id == null) {
+            return;
+        }
+        long lastTick = staleStatsLogTick.getOrDefault(city.id, Long.MIN_VALUE);
+        if (lastTick == logicalTick) {
+            return;
+        }
+        staleStatsLogTick.put(city.id, logicalTick);
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        if (lastTimestamp > 0L) {
+            long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - lastTimestamp)));
+            long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, settings.logic.freshnessMillis)));
+            plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats " + ageSeconds + "s old (max " + maxSeconds + "s).");
+        } else {
+            plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats have never completed.");
+        }
     }
 
     private String linkKey(String originId, String destinationId) {

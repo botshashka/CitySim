@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class StationPlatformResolver implements Listener {
 
@@ -41,6 +42,7 @@ public class StationPlatformResolver implements Listener {
     private final Map<StationKey, StationMetadata> metadata = new HashMap<>();
     private final Map<String, Set<StationKey>> cityIndex = new HashMap<>();
     private final Map<ChunkKey, Set<StationKey>> chunkIndex = new HashMap<>();
+    private final Set<String> wallSignWarnings = ConcurrentHashMap.newKeySet();
 
     private long lastRebuildTick = Long.MIN_VALUE;
     private int rebuildsThisTick = 0;
@@ -70,6 +72,7 @@ public class StationPlatformResolver implements Listener {
         if (cityId == null) {
             return;
         }
+        wallSignWarnings.remove(cityId);
         Set<StationKey> keys = cityIndex.get(cityId);
         if (keys == null || keys.isEmpty()) {
             return;
@@ -98,6 +101,8 @@ public class StationPlatformResolver implements Listener {
 
         List<StationSpots> spots = new ArrayList<>(blocks.size());
         Set<StationKey> currentKeys = new HashSet<>();
+        boolean hadStationBlocks = false;
+        boolean sawWallSignStation = false;
 
         for (Block block : blocks) {
             if (block == null) {
@@ -107,8 +112,13 @@ public class StationPlatformResolver implements Listener {
             if (world == null) {
                 continue;
             }
+            hadStationBlocks = true;
             Material type = block.getType();
-            if (teleportSettings.requireWallSign && !isWallSign(type)) {
+            boolean isWallSign = isWallSign(type);
+            if (isWallSign) {
+                sawWallSignStation = true;
+            }
+            if (teleportSettings.requireWallSign && !isWallSign) {
                 continue;
             }
             StationKey key = StationKey.from(block);
@@ -123,7 +133,31 @@ public class StationPlatformResolver implements Listener {
         }
 
         reconcileCityKeys(city.id, currentKeys);
+        handleWallSignWarnings(city, hadStationBlocks, sawWallSignStation);
         return spots;
+    }
+
+    private void handleWallSignWarnings(City city, boolean hadStationBlocks, boolean sawWallSignStation) {
+        if (city == null || city.id == null) {
+            return;
+        }
+        if (!teleportSettings.requireWallSign) {
+            wallSignWarnings.remove(city.id);
+            return;
+        }
+        if (!hadStationBlocks) {
+            wallSignWarnings.remove(city.id);
+            return;
+        }
+        if (sawWallSignStation) {
+            wallSignWarnings.remove(city.id);
+            return;
+        }
+        if (!wallSignWarnings.add(city.id)) {
+            return;
+        }
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        plugin.getLogger().warning("No wall-sign stations found for " + cityLabel + "; set migration.teleport.require_wall_sign=false if you use standing/post signs.");
     }
 
     private void clearAll() {
@@ -131,6 +165,7 @@ public class StationPlatformResolver implements Listener {
         metadata.clear();
         cityIndex.clear();
         chunkIndex.clear();
+        wallSignWarnings.clear();
     }
 
     private List<Location> resolveCachedSpots(StationKey key, Block signBlock) {
