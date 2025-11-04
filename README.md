@@ -88,6 +88,7 @@ java -version  # should report a Java 21 runtime
 /city top [happy|pop]                            # rank cities by happiness or population
 /city reload                                     # reload the plugin configuration (admin only)
 /city debug scans                                # print scan timing details to chat for troubleshooting (admin only)
+/city debug migration                            # stream live migration approvals, skips, and errors to chat (admin only)
 ```
 
 ## Integrations
@@ -134,9 +135,12 @@ for tweaking:
   - `teleport.require_wall_sign` – Defaults to `true`. When enabled, migration only considers TrainCarts stations that use wall-mounted signs for teleport anchors. Set this to `false` if your network relies on standing/post signs so they are eligible; the plugin logs a warning when no wall-sign stations are found and the restriction blocks every candidate.
 
 ### Troubleshooting migration targets
-- Migration freshness checks now look at the newest timestamp across the city stats row and every populated scan cache (block + entity). If one cache lags behind, the DEBUG log prints each timestamp and which one was chosen so you can spot the stale source. Adjust `migration.logic.freshness_max_secs` if your scan cadence is intentionally slower.
+- Migration freshness now adapts to your scan backlog: `migration.logic.freshness_base_secs` sets the floor, `freshness_queue_slack_secs` adds safety margin, and `freshness_backlog_weight` controls how strongly pending jobs extend the window. The migration debug feed includes the dynamic limit so you can tune it when needed.
 - If your TrainCarts stations rely on standing or frame signs, set `migration.teleport.require_wall_sign: false`. When the flag stays true and only non-wall signs exist, the resolver emits an INFO hint explaining that platform caching is blocked by the requirement.
 - When no prevalidated platforms are in cache (for example after a station rebuild), the fallback sampler automatically widens to the configured `migration.teleport.radius` so villagers can still land on a safe, non-rail floor that honors every existing safety rule.
+- Tune `migration.teleport.platform_vertical_search` if some stations have platforms more than one block above their wall signs; increasing the scan lets the resolver snap villagers on top of the right floor instead of underneath.
+- Want to keep starter towns offline? Set `migration.logic.allow_zero_population_destinations: false` to prevent moves into empty cities; by default they remain eligible so fresh settlements can start growing. Pair it with `migration.logic.zero_population_prosperity_boost` (prosperity floor) — empty destinations also bypass housing/employment gates when the toggle stays on, so their first migrants aren't blocked by missing stats.
+- Need real-time visibility into what the migration service is doing? Run `/city debug migration` (admin only) to toggle a live chat feed that covers origin/destination gating, rate limits, approvals, teleport targets, and any failures across the full migration pipeline. Run the command again to stop receiving updates.
 - **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
 - **`titles`** – Enables or disables entry titles, sets the cooldown, and defines the MiniMessage text players see in different
   situations (keep `{city}` as the placeholder for the city name).

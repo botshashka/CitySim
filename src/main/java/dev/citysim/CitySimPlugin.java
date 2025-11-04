@@ -76,7 +76,7 @@ public class CitySimPlugin extends JavaPlugin {
         this.linkService = new LinkService(cityManager);
         this.linkService.reload(getConfig());
 
-        this.migrationService = new MigrationService(this, cityManager, linkService, stationPlatformResolver);
+        this.migrationService = new MigrationService(this, cityManager, statsService, linkService, stationPlatformResolver);
         this.migrationService.reload(getConfig());
         this.migrationService.start();
         getLogger().info("MigrationService started");

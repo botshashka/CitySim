@@ -72,4 +72,12 @@ public class StatsUpdateScheduler {
     public boolean isRunning() {
         return taskId != -1;
     }
+
+    public long getStatsIntervalTicks() {
+        return statsIntervalTicks;
+    }
+
+    public long getStatsInitialDelayTicks() {
+        return statsInitialDelayTicks;
+    }
 }

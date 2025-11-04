@@ -5,6 +5,8 @@ import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
 import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
+import dev.citysim.stats.StatsService;
+import dev.citysim.stats.StatsService.FreshnessSnapshot;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -13,6 +15,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -49,6 +52,7 @@ public class MigrationService implements Runnable {
     private final Plugin plugin;
     private final CityManager cityManager;
     private final LinkService linkService;
+    private final StatsService statsService;
     private final NamespacedKey cooldownKey;
     private final StationPlatformResolver platformResolver;
 
@@ -61,23 +65,30 @@ public class MigrationService implements Runnable {
     private final Map<String, TokenBucket> linkBuckets = new HashMap<>();
     private final Map<String, Integer> inflightToDest = new HashMap<>();
     private final Map<String, Integer> pendingFromOrigin = new HashMap<>();
+    private final Map<String, Integer> zeroPopulationArrivals = new HashMap<>();
     private final PriorityQueue<DelayedMove> delayedQueue = new PriorityQueue<>(Comparator.comparingLong(DelayedMove::executeTick));
     private final TokenBucket globalBucket = new TokenBucket();
     private final Map<String, Integer> platformIndices = new HashMap<>();
     private final Map<String, Long> staleStatsLogTick = new HashMap<>();
     private final Map<String, Long> platformHintsLogTick = new HashMap<>();
     private final Map<String, Long> unemploymentGateLogTick = new HashMap<>();
+    private final MigrationDebugManager debugManager = new MigrationDebugManager();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
     private long logicalTick = 0L;
 
-    public MigrationService(Plugin plugin, CityManager cityManager, LinkService linkService, StationPlatformResolver platformResolver) {
+    public MigrationService(Plugin plugin, CityManager cityManager, StatsService statsService, LinkService linkService, StationPlatformResolver platformResolver) {
         this.plugin = plugin;
         this.cityManager = cityManager;
+        this.statsService = statsService;
         this.linkService = linkService;
         this.cooldownKey = new NamespacedKey(plugin, "migrate_until");
         this.platformResolver = platformResolver;
+    }
+
+    public boolean toggleDebug(Player player) {
+        return debugManager.toggle(player);
     }
 
     public void reload(FileConfiguration config) {
@@ -133,20 +144,53 @@ public class MigrationService implements Runnable {
     }
 
     private void tick() {
-        if (!settings.enabled || settings.maxMovesPerTick <= 0) {
+        if (!settings.enabled) {
+            debugInfo("Migration tick skipped - service disabled in configuration.");
+            return;
+        }
+        if (settings.maxMovesPerTick <= 0) {
+            debugInfo("Migration tick skipped - maxMovesPerTick=0.");
             return;
         }
         if (linkService == null || !linkService.isEnabled()) {
+            debugInfo("Migration tick skipped - link service unavailable.");
             return;
         }
 
         long now = System.currentTimeMillis();
         logicalTick += Math.max(1, settings.intervalTicks);
 
+        if (debugManager.isEnabled()) {
+            int approvalsQueued = delayedQueue.size();
+            int inflight = 0;
+            for (Integer value : inflightToDest.values()) {
+                if (value != null) {
+                    inflight += value;
+                }
+            }
+            int pending = 0;
+            for (Integer value : pendingFromOrigin.values()) {
+                if (value != null) {
+                    pending += value;
+                }
+            }
+            debugInfo(String.format(
+                    Locale.US,
+                    "Tick %d - queued approvals=%d, inflight=%d, pending=%d",
+                    logicalTick,
+                    approvalsQueued,
+                    inflight,
+                    pending
+            ));
+        }
+
         processDelayedQueue(now);
 
         Collection<City> cities = cityManager.all();
         if (cities.isEmpty()) {
+            if (debugManager.isEnabled()) {
+                debugInfo("Tick " + logicalTick + " - no cities available for migration checks.");
+            }
             return;
         }
 
@@ -171,29 +215,61 @@ public class MigrationService implements Runnable {
                 pairConsistency.remove(origin.id);
                 continue;
             }
+            if (debugManager.isEnabled()) {
+                debugInfo("Origin " + describeCity(origin) + " eligible - streak=" + originStreak + "/" + settings.logic.requireConsistencyScans);
+            }
             if (originStreak < settings.logic.requireConsistencyScans) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Origin " + describeCity(origin) + " waiting for consistency streak (current=" + originStreak + ").");
+                }
                 continue;
             }
             if (!hasPopulationBudget(origin)) {
+                if (debugManager.isEnabled()) {
+                    int pending = pendingFromOrigin.getOrDefault(origin.id, 0);
+                    debugWarning("Origin " + describeCity(origin) + " exhausted population budget (pending=" + pending + ", population=" + Math.max(0, origin.population) + ").");
+                }
                 continue;
             }
 
             List<CityLink> links = new ArrayList<>(linkService.computeLinks(origin));
             if (links.isEmpty()) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Origin " + describeCity(origin) + " has no eligible links.");
+                }
                 continue;
             }
 
             List<DestinationCandidate> candidates = evaluateCandidates(origin, links, now);
             if (candidates.isEmpty()) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Origin " + describeCity(origin) + " produced no destination candidates this tick.");
+                }
                 continue;
             }
 
             for (DestinationCandidate candidate : candidates) {
                 if (approvals >= settings.maxMovesPerTick) {
+                    if (debugManager.isEnabled()) {
+                        debugInfo("Reached max approvals for tick (" + approvals + "/" + settings.maxMovesPerTick + ").");
+                    }
                     return;
                 }
                 if (!hasPopulationBudget(origin)) {
+                    if (debugManager.isEnabled()) {
+                        debugWarning("Origin " + describeCity(origin) + " ran out of population budget mid-loop.");
+                    }
                     break;
+                }
+                if (debugManager.isEnabled()) {
+                    debugInfo(String.format(
+                            Locale.US,
+                            "Evaluating link %s - score=%.3f, strength=%.3f, prosperityDelta=%.3f",
+                            describeMove(origin, candidate.destination),
+                            candidate.score,
+                            candidate.linkStrength,
+                            candidate.prosperityDelta
+                    ));
                 }
                 if (tryApproveMove(origin, candidate.destination, now)) {
                     approvals++;
@@ -241,15 +317,33 @@ public class MigrationService implements Runnable {
             return false;
         }
         if (!isStatsFresh(city, nowMillis)) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, "stats are stale.");
+            }
             return false;
         }
         CityEma ema = cityEmas.get(city.id);
         if (ema == null || !ema.isInitialized()) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, "waiting for rolling averages.");
+            }
             return false;
         }
         boolean employmentPressure = ema.employment() < 0.75d;
         boolean housingPressure = ema.housing() < 1.0d;
-        return (employmentPressure || housingPressure) && city.population > settings.minPopulationFloor;
+        if (city.population <= settings.minPopulationFloor) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, "population at floor (" + Math.max(0, city.population) + ").");
+            }
+            return false;
+        }
+        if (!employmentPressure && !housingPressure) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, String.format(Locale.US, "no pressure (employment=%.2f, housing=%.2f).", ema.employment(), ema.housing()));
+            }
+            return false;
+        }
+        return true;
     }
 
     private boolean hasPopulationBudget(City origin) {
@@ -274,33 +368,78 @@ public class MigrationService implements Runnable {
         for (CityLink link : links) {
             City destination = link != null ? link.neighbor() : null;
             if (destination == null || destination.id == null || destination == origin) {
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "link missing destination metadata.");
+                }
                 continue;
             }
             if (!isStatsFresh(destination, nowMillis)) {
                 updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "destination stats are stale.");
+                }
+                continue;
+            }
+            if (!settings.logic.allowZeroPopulationDestinations && destination.population <= 0) {
+                updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "destination population is zero (disabled by config).");
+                }
                 continue;
             }
             CityEma destEma = cityEmas.get(destination.id);
             if (destEma == null || !destEma.isInitialized()) {
                 updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "destination averages not initialized.");
+                }
                 continue;
             }
-            boolean housingOk = destEma.housing() >= settings.logic.destMinHousingRatio;
-            boolean employmentOk = destEma.employment() >= settings.logic.destMinEmploymentFloor;
+            boolean destinationEmpty = destination.population <= 0;
+            boolean housingOk = destinationEmpty
+                    ? destination.beds >= settings.logic.zeroPopulationMinBeds
+                    : destEma.housing() >= settings.logic.destMinHousingRatio;
+            int arrivalGraceUsed = Math.max(destination.population, arrivalCount(destination.id));
+            boolean employmentOk = destinationEmpty
+                    ? arrivalGraceUsed < settings.logic.zeroPopulationEmploymentGrace
+                    : destEma.employment() >= settings.logic.destMinEmploymentFloor;
             double prosperityDelta = destEma.prosperity() - originEma.prosperity();
-            boolean prosperityOk = prosperityDelta >= settings.logic.minProsperityDelta;
+            if (destinationEmpty) {
+                prosperityDelta = Math.max(prosperityDelta, settings.logic.zeroPopulationProsperityBoost);
+            }
+            boolean prosperityOk = destinationEmpty || prosperityDelta >= settings.logic.minProsperityDelta;
             if (!housingOk || !employmentOk || !prosperityOk) {
                 updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    String reason;
+                    if (destinationEmpty) {
+                        reason = String.format(Locale.US,
+                                "destination zero-pop gates failed (beds=%d, arrivals=%d, prosperityDelta=%.2f).",
+                                Math.max(0, destination.beds),
+                                arrivalGraceUsed,
+                                prosperityDelta);
+                    } else {
+                        reason = String.format(Locale.US,
+                                "destination gates failed (housing=%.2f, employment=%.2f, prosperityDelta=%.2f).",
+                                destEma.housing(),
+                                destEma.employment(),
+                                prosperityDelta);
+                    }
+                    debugCandidateSkip(origin, destination, reason);
+                }
                 continue;
             }
 
-            if (!passesUnemploymentGate(destination)) {
+            if (!passesUnemploymentGate(origin, destination)) {
                 updatePairConsistency(origin.id, destination.id, false);
                 continue;
             }
 
             int pairStreak = updatePairConsistency(origin.id, destination.id, true);
             if (pairStreak < settings.logic.requireConsistencyScans) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Link " + describeMove(origin, destination) + " waiting for consistency streak (current=" + pairStreak + ").");
+                }
                 continue;
             }
 
@@ -349,23 +488,32 @@ public class MigrationService implements Runnable {
 
     private boolean tryApproveMove(City origin, City destination, long nowMillis) {
         if (origin == null || destination == null || origin.id == null || destination.id == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "missing city metadata.");
+            }
             return false;
         }
-        if (!passesPostMoveGuard(destination)) {
+        if (!passesPostMoveGuard(origin, destination)) {
             return false;
         }
 
         Location originAnchor = stationAnchor(origin);
         if (originAnchor == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "no origin station anchor.");
+            }
             return false;
         }
 
         Location destinationAnchor = stationAnchor(destination);
         if (destinationAnchor == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "no destination station anchor.");
+            }
             return false;
         }
 
-        if (!reserveTokens(origin.id, destination.id, linkKey(origin.id, destination.id))) {
+        if (!reserveTokens(origin, destination, linkKey(origin.id, destination.id))) {
             return false;
         }
 
@@ -377,11 +525,21 @@ public class MigrationService implements Runnable {
         inflightToDest.merge(destination.id, 1, Integer::sum);
         pendingFromOrigin.merge(origin.id, 1, Integer::sum);
         delayedQueue.add(new DelayedMove(executeTick, origin.id, destination.id));
+        if (debugManager.isEnabled()) {
+            debugSuccess(String.format(Locale.US,
+                    "Approved migration %s - executeTick=%d (jitter=%d).",
+                    describeMove(origin, destination),
+                    executeTick,
+                    jitter));
+        }
         return true;
     }
 
-    private boolean passesPostMoveGuard(City destination) {
+    private boolean passesPostMoveGuard(City origin, City destination) {
         if (destination == null || destination.id == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "destination missing for post-move guard.");
+            }
             return false;
         }
         if (settings.logic.postMoveHousingFloor <= 0) {
@@ -392,14 +550,30 @@ public class MigrationService implements Runnable {
         int beds = Math.max(0, destination.beds);
         int denominator = population + inflight + 1;
         if (denominator <= 0) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "post-move guard denominator invalid.");
+            }
             return false;
         }
         double effectiveHousing = beds / (double) denominator;
-        return effectiveHousing >= settings.logic.postMoveHousingFloor;
+        boolean allowed = effectiveHousing >= settings.logic.postMoveHousingFloor;
+        if (!allowed && debugManager.isEnabled()) {
+            debugCandidateSkip(origin, destination, String.format(Locale.US,
+                    "post-move housing guard (%.2f < %.2f) [beds=%d, inflight=%d, population=%d].",
+                    effectiveHousing,
+                    settings.logic.postMoveHousingFloor,
+                    beds,
+                    inflight,
+                    population));
+        }
+        return allowed;
     }
 
-    private boolean passesUnemploymentGate(City destination) {
+    private boolean passesUnemploymentGate(City origin, City destination) {
         if (destination == null || destination.id == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "destination missing for unemployment gate.");
+            }
             return false;
         }
         LogicSettings.UnemploymentSettings unemployment = settings.logic.unemployment;
@@ -415,25 +589,22 @@ public class MigrationService implements Runnable {
         double noneShare = none / (double) adults;
 
         if (noneShare > unemployment.hardCap()) {
-            logUnemploymentGate(destination, "hard_cap", noneShare, none, nitwit);
+            logUnemploymentGate(origin, destination, "hard_cap", noneShare, none, nitwit);
             return false;
         }
         if (noneShare > unemployment.softCap()) {
             double reliefThreshold = unemployment.nitwitReliefRatio() * none;
             boolean relief = nitwit >= reliefThreshold;
             if (!relief) {
-                logUnemploymentGate(destination, "soft_cap", noneShare, none, nitwit);
+                logUnemploymentGate(origin, destination, "soft_cap", noneShare, none, nitwit);
                 return false;
             }
         }
         return true;
     }
 
-    private void logUnemploymentGate(City destination, String reasonKey, double noneShare, int none, int nitwit) {
+    private void logUnemploymentGate(City origin, City destination, String reasonKey, double noneShare, int none, int nitwit) {
         if (destination == null || destination.id == null) {
-            return;
-        }
-        if (!plugin.getLogger().isLoggable(Level.FINE)) {
             return;
         }
         String key = destination.id + ':' + reasonKey;
@@ -449,12 +620,19 @@ public class MigrationService implements Runnable {
             default -> "unemployment gate";
         };
         String formattedShare = String.format(Locale.US, "%.2f", noneShare);
-        plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + destination.id
-                + ") — " + reason + " (NONE share=" + formattedShare
-                + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
+        if (plugin.getLogger().isLoggable(Level.FINE)) {
+            plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + destination.id
+                    + ") - " + reason + " (NONE share=" + formattedShare
+                    + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
+        }
+        if (debugManager.isEnabled()) {
+            debugCandidateSkip(origin, destination, reason + " (NONE share=" + formattedShare + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
+        }
     }
 
-    private boolean reserveTokens(String originId, String destinationId, String linkKey) {
+    private boolean reserveTokens(City origin, City destination, String linkKey) {
+        String originId = origin != null ? origin.id : null;
+        String destinationId = destination != null ? destination.id : null;
         TokenBucket global = settings.rate.globalPerInterval > 0 ? globalBucket : null;
         TokenBucket originBucket = settings.rate.perOriginPerInterval > 0
                 ? getBucket(originBuckets, originId, settings.rate.perOriginPerInterval)
@@ -467,15 +645,27 @@ public class MigrationService implements Runnable {
                 : null;
 
         if (global != null && !global.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "global rate limit reached.");
+            }
             return false;
         }
         if (originBucket != null && !originBucket.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "origin rate limit reached.");
+            }
             return false;
         }
         if (destinationBucket != null && !destinationBucket.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "destination rate limit reached.");
+            }
             return false;
         }
         if (linkBucket != null && !linkBucket.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "link rate limit reached.");
+            }
             return false;
         }
 
@@ -519,15 +709,29 @@ public class MigrationService implements Runnable {
             City origin = cityManager.get(move.originId);
             City destination = cityManager.get(move.destinationId);
             if (origin == null || destination == null) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Approved migration failed to resolve cities (originId=" + move.originId + ", destinationId=" + move.destinationId + ").");
+                }
                 return;
             }
+            if (debugManager.isEnabled()) {
+                debugInfo("Executing approved migration " + describeMove(origin, destination) + ".");
+            }
+
+            boolean destinationWasZeroPop = destination.population <= 0;
 
             Location originAnchor = stationAnchor(origin);
             if (originAnchor == null) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " aborted - origin anchor unavailable.");
+                }
                 return;
             }
             villager = selectVillager(origin, originAnchor, nowMillis);
             if (villager == null) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " aborted - no eligible villager near " + describeLocation(originAnchor) + ".");
+                }
                 return;
             }
 
@@ -541,7 +745,13 @@ public class MigrationService implements Runnable {
             if (hasPrevalidated) {
                 target = selectPlatformTarget(destination, stationSpots, settings.teleport);
                 if (target == null) {
+                    if (debugManager.isEnabled()) {
+                        debugFailure("Migration " + describeMove(origin, destination) + " aborted - no validated platform slots available.");
+                    }
                     return;
+                }
+                if (debugManager.isEnabled()) {
+                    debugInfo("Using validated platform target for " + describeCity(destination) + ".");
                 }
             } else {
                 if (platformResolver != null) {
@@ -549,26 +759,52 @@ public class MigrationService implements Runnable {
                 }
                 Location fallbackAnchor = preferredFallbackAnchor(stationSpots, destinationAnchor);
                 if (fallbackAnchor == null) {
+                    if (debugManager.isEnabled()) {
+                        debugFailure("Migration " + describeMove(origin, destination) + " aborted - no fallback anchor found.");
+                    }
                     return;
                 }
                 int clampY = fallbackAnchor.getBlockY() + 1;
                 int fallbackRadiusLimit = Math.max(FALLBACK_SIGN_RADIUS, Math.max(0, settings.teleport.radius));
                 target = findDestinationSpot(fallbackAnchor, settings.teleport, fallbackRadiusLimit, clampY);
                 if (target == null) {
+                    if (debugManager.isEnabled()) {
+                        debugFailure("Migration " + describeMove(origin, destination) + " aborted - no safe fallback destination found.");
+                    }
                     return;
+                }
+                if (debugManager.isEnabled()) {
+                    debugInfo("Using fallback destination search for " + describeCity(destination) + ".");
                 }
             }
             if (!ensureChunkLoaded(target.getWorld(), target.getBlockX(), target.getBlockZ())) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " aborted - destination chunk failed to load at " + describeLocation(target) + ".");
+                }
                 return;
             }
             if (!villager.teleport(target)) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " failed - teleportation was blocked.");
+                }
                 return;
             }
             villager.setFallDistance(0f);
             applyCooldown(villager, nowMillis);
+            resetVillagerProfession(villager);
             recordDeparture(origin, destination);
             recordArrival(destination, origin);
+            updateZeroPopulationArrivals(destination.id, destinationWasZeroPop);
             success = true;
+            if (debugManager.isEnabled()) {
+                debugSuccess(String.format(Locale.US,
+                        "Migrated %s villager from %s to %s at %s.",
+                        villager.getProfession(),
+                        describeCity(origin),
+                        describeCity(destination),
+                        describeLocation(target)
+                ));
+            }
         } finally {
             if (!success && villager != null) {
                 villager.setFallDistance(0f);
@@ -624,24 +860,63 @@ public class MigrationService implements Runnable {
     }
 
     private boolean isStatsFresh(City city, long nowMillis) {
-        if (settings.logic.freshnessMillis <= 0) {
+        long freshnessLimit = computeFreshnessLimitMillis();
+        if (freshnessLimit <= 0L) {
             return true;
         }
         StatsTimestamps stats = lastStatsTimestamp(city);
         long last = stats.maxTimestamp();
         if (last <= 0L) {
-            logStaleStatsSkip(city, nowMillis, stats);
+            logStaleStatsSkip(city, nowMillis, stats, freshnessLimit);
             return false;
         }
-        boolean fresh = nowMillis - last <= settings.logic.freshnessMillis;
+        boolean fresh = nowMillis - last <= freshnessLimit;
         if (!fresh) {
-            logStaleStatsSkip(city, nowMillis, stats);
+            logStaleStatsSkip(city, nowMillis, stats, freshnessLimit);
             return false;
         }
         if (city != null && city.id != null) {
             staleStatsLogTick.remove(city.id);
         }
         return true;
+    }
+
+    private long computeFreshnessLimitMillis() {
+        if (settings == null || settings.logic == null) {
+            return TimeUnit.SECONDS.toMillis(180);
+        }
+        long base = settings.logic.freshnessBaseMillis;
+        long slack = settings.logic.freshnessQueueSlackMillis;
+        double backlogWeight = settings.logic.freshnessBacklogWeight;
+        long queueMillis = estimateQueueMillis(backlogWeight);
+        long limit = Math.max(base, queueMillis + slack);
+        return Math.max(base, limit);
+    }
+
+    private long estimateQueueMillis(double backlogWeight) {
+        if (statsService == null) {
+            return TimeUnit.SECONDS.toMillis(60);
+        }
+        FreshnessSnapshot snapshot = statsService.getFreshnessSnapshot();
+        if (snapshot == null) {
+            return TimeUnit.SECONDS.toMillis(60);
+        }
+        long intervalTicks = Math.max(1L, snapshot.statsIntervalTicks());
+        double intervalSeconds = intervalTicks / 20.0d;
+        int maxCitiesPerTick = Math.max(1, snapshot.maxCitiesPerTick());
+        int cityCount = Math.max(1, snapshot.cityCount());
+        int scheduled = Math.max(0, snapshot.scheduledCount());
+        int pending = Math.max(0, snapshot.pendingCount());
+        int active = Math.max(0, snapshot.activeCount());
+        int effectiveCities = Math.max(cityCount, scheduled + pending);
+        double cycles = Math.max(1.0d, effectiveCities / (double) maxCitiesPerTick);
+        double estimatedSeconds = cycles * intervalSeconds;
+        if (pending > 0 || active > 0) {
+            double backlogUnits = (pending + active) / (double) Math.max(1, maxCitiesPerTick);
+            estimatedSeconds += backlogUnits * intervalSeconds * Math.max(0.0d, backlogWeight);
+        }
+        long millis = (long) Math.round(estimatedSeconds * 1000.0d);
+        return Math.max(TimeUnit.SECONDS.toMillis(30), millis);
     }
 
     private StatsTimestamps lastStatsTimestamp(City city) {
@@ -667,7 +942,7 @@ public class MigrationService implements Runnable {
         return new StatsTimestamps(maxTimestamp, Collections.unmodifiableMap(sources));
     }
 
-    private void logStaleStatsSkip(City city, long nowMillis, StatsTimestamps timestamps) {
+    private void logStaleStatsSkip(City city, long nowMillis, StatsTimestamps timestamps, long freshnessLimitMillis) {
         if (city == null || city.id == null) {
             return;
         }
@@ -681,15 +956,18 @@ public class MigrationService implements Runnable {
         String baseMessage;
         if (lastTimestamp > 0L) {
             long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - lastTimestamp)));
-            long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, settings.logic.freshnessMillis)));
-            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
+            long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, freshnessLimitMillis)));
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") - stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
         } else {
-            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats have never completed.";
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") - stats have never completed.";
         }
         if (plugin.getLogger().isLoggable(Level.FINE)) {
             plugin.getLogger().fine(baseMessage + " Sources=" + timestamps.describeSources(nowMillis) + ", max=" + lastTimestamp);
         } else {
             plugin.getLogger().fine(baseMessage);
+        }
+        if (debugManager.isEnabled()) {
+            debugWarning(baseMessage + " Sources=" + timestamps.describeSources(nowMillis) + ".");
         }
     }
 
@@ -705,10 +983,83 @@ public class MigrationService implements Runnable {
         String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
         boolean requireWallSign = teleportSettings != null && teleportSettings.requireWallSign;
         if (requireWallSign && sawNonWallSigns) {
-            plugin.getLogger().info("No platform candidates were cached for '" + cityLabel + "' — stations in range use non-wall signs while migration.teleport.require_wall_sign=true.");
+            String message = "No platform candidates were cached for '" + cityLabel + "' - stations in range use non-wall signs while migration.teleport.require_wall_sign=true.";
+            plugin.getLogger().info(message);
+            if (debugManager.isEnabled()) {
+                debugWarning(message);
+            }
             return;
         }
-        plugin.getLogger().info("No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.");
+        String message = "No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.";
+        plugin.getLogger().info(message);
+        if (debugManager.isEnabled()) {
+            debugWarning(message);
+        }
+    }
+
+    private void debugInfo(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logInfo(message);
+        }
+    }
+
+    private void debugSuccess(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logSuccess(message);
+        }
+    }
+
+    private void debugWarning(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logWarning(message);
+        }
+    }
+
+    private void debugFailure(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logFailure(message);
+        }
+    }
+
+    private void debugOriginSkip(City city, String reason) {
+        if (!debugManager.isEnabled() || city == null) {
+            return;
+        }
+        debugManager.logWarning("Skipping origin " + describeCity(city) + " - " + reason);
+    }
+
+    private void debugCandidateSkip(City origin, City destination, String reason) {
+        if (!debugManager.isEnabled()) {
+            return;
+        }
+        StringBuilder builder = new StringBuilder("Skipping link ");
+        builder.append(describeCity(origin)).append(" -> ").append(describeCity(destination));
+        if (reason != null && !reason.isBlank()) {
+            builder.append(" - ").append(reason);
+        }
+        debugManager.logWarning(builder.toString());
+    }
+
+    private String describeCity(City city) {
+        if (city == null) {
+            return "unknown city";
+        }
+        String name = city.name != null && !city.name.isBlank() ? city.name : "(unnamed)";
+        String id = city.id != null ? city.id : "?";
+        return name + " (" + id + ")";
+    }
+
+    private String describeMove(City origin, City destination) {
+        return describeCity(origin) + " -> " + describeCity(destination);
+    }
+
+    private String describeLocation(Location location) {
+        if (location == null) {
+            return "unknown";
+        }
+        World world = location.getWorld();
+        String worldName = world != null ? world.getName() : "unknown";
+        return worldName + " (" + location.getBlockX() + ", " + location.getBlockY() + ", " + location.getBlockZ() + ")";
     }
 
     private String linkKey(String originId, String destinationId) {
@@ -923,7 +1274,7 @@ public class MigrationService implements Runnable {
                 if (!isCandidateValid(world, candidateX, floorY, candidateZ, teleportSettings)) {
                     continue;
                 }
-                return new Location(world, candidateX + 0.5, floorY + 0.1, candidateZ + 0.5);
+                return new Location(world, candidateX + 0.5, floorY + 1.01, candidateZ + 0.5);
             }
         }
         return null;
@@ -1043,8 +1394,37 @@ public class MigrationService implements Runnable {
      * Ensures the chunk containing the supplied block coordinates is loaded, synchronously loading if necessary.
      * Migration approvals are rate-limited, so the occasional sync load stays within safe server budgets.
      */
+
+    private void resetVillagerProfession(Villager villager) {
+        if (villager == null) {
+            return;
+        }
+        if (villager.getProfession() != Profession.NONE) {
+            villager.setProfession(Profession.NONE);
+        }
+        villager.setVillagerLevel(1);
+        villager.setVillagerExperience(0);
+    }
+
+    private int arrivalCount(String cityId) {
+        return zeroPopulationArrivals.getOrDefault(cityId, 0);
+    }
+
+    private void updateZeroPopulationArrivals(String cityId, boolean destinationWasZeroPop) {
+        if (cityId == null) {
+            return;
+        }
+        if (destinationWasZeroPop) {
+            zeroPopulationArrivals.merge(cityId, 1, Integer::sum);
+        } else {
+            zeroPopulationArrivals.remove(cityId);
+        }
+    }
     private boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
         if (world == null) {
+            if (debugManager.isEnabled()) {
+                debugFailure("Chunk load failed - world unavailable for coordinates (" + blockX + ", " + blockZ + ").");
+            }
             return false;
         }
         int chunkX = blockX >> 4;
@@ -1053,7 +1433,11 @@ public class MigrationService implements Runnable {
             return true;
         }
         world.loadChunk(chunkX, chunkZ);
-        return world.isChunkLoaded(chunkX, chunkZ);
+        boolean loaded = world.isChunkLoaded(chunkX, chunkZ);
+        if (!loaded && debugManager.isEnabled()) {
+            debugFailure("Chunk load failed in world '" + world.getName() + "' at chunk (" + chunkX + ", " + chunkZ + ").");
+        }
+        return loaded;
     }
 
     private Location stationAnchor(City city) {
@@ -1425,8 +1809,8 @@ public class MigrationService implements Runnable {
                 return disabled();
             }
             boolean enabled = config.getBoolean("migration.enabled", false);
-            int interval = Math.max(0, config.getInt("migration.interval_ticks", 100));
-            int maxMoves = Math.max(0, config.getInt("migration.max_moves_per_tick", 2));
+            int interval = Math.max(0, config.getInt("migration.interval_ticks", 200));
+            int maxMoves = Math.max(0, config.getInt("migration.max_moves_per_tick", 1));
             int cooldownMinutes = Math.max(0, config.getInt("migration.cooldown_minutes", 10));
             long cooldownMillis = TimeUnit.MINUTES.toMillis(cooldownMinutes);
             int populationFloor = Math.max(0, config.getInt("migration.min_city_population_floor", 10));
@@ -1438,30 +1822,46 @@ public class MigrationService implements Runnable {
     }
 
     private static class LogicSettings {
-        final long freshnessMillis;
+        final long freshnessBaseMillis;
+        final long freshnessQueueSlackMillis;
+        final double freshnessBacklogWeight;
         final int requireConsistencyScans;
         final double minProsperityDelta;
         final double destMinHousingRatio;
         final double destMinEmploymentFloor;
         final double postMoveHousingFloor;
+        final boolean allowZeroPopulationDestinations;
+        final double zeroPopulationProsperityBoost;
+        final int zeroPopulationEmploymentGrace;
+        final int zeroPopulationMinBeds;
         final ScoreWeights scoreWeights;
         final UnemploymentSettings unemployment;
 
-        private LogicSettings(long freshnessMillis, int requireConsistencyScans, double minProsperityDelta,
+        private LogicSettings(long freshnessBaseMillis, long freshnessQueueSlackMillis, double freshnessBacklogWeight,
+                              int requireConsistencyScans, double minProsperityDelta,
                               double destMinHousingRatio, double destMinEmploymentFloor, double postMoveHousingFloor,
+                              boolean allowZeroPopulationDestinations, double zeroPopulationProsperityBoost,
+                              int zeroPopulationEmploymentGrace, int zeroPopulationMinBeds,
                               ScoreWeights scoreWeights, UnemploymentSettings unemployment) {
-            this.freshnessMillis = freshnessMillis;
+            this.freshnessBaseMillis = freshnessBaseMillis;
+            this.freshnessQueueSlackMillis = freshnessQueueSlackMillis;
+            this.freshnessBacklogWeight = freshnessBacklogWeight;
             this.requireConsistencyScans = requireConsistencyScans;
             this.minProsperityDelta = minProsperityDelta;
             this.destMinHousingRatio = destMinHousingRatio;
             this.destMinEmploymentFloor = destMinEmploymentFloor;
             this.postMoveHousingFloor = postMoveHousingFloor;
+            this.allowZeroPopulationDestinations = allowZeroPopulationDestinations;
+            this.zeroPopulationProsperityBoost = zeroPopulationProsperityBoost;
+            this.zeroPopulationEmploymentGrace = Math.max(0, zeroPopulationEmploymentGrace);
+            this.zeroPopulationMinBeds = Math.max(0, zeroPopulationMinBeds);
             this.scoreWeights = scoreWeights;
             this.unemployment = unemployment;
         }
 
         static LogicSettings defaults() {
-            return new LogicSettings(TimeUnit.SECONDS.toMillis(60), 3, 5.0d, 1.05d, 0.75d, 1.0d,
+            return new LogicSettings(TimeUnit.SECONDS.toMillis(240), TimeUnit.SECONDS.toMillis(60), 1.0d,
+                    3, 5.0d, 1.05d, 0.75d, 1.0d, true, 5.0d, 3, 1,
                     new ScoreWeights(0.6d, 0.3d), UnemploymentSettings.defaults());
         }
 
@@ -1469,12 +1869,18 @@ public class MigrationService implements Runnable {
             if (config == null) {
                 return defaults();
             }
-            long freshnessMillis = TimeUnit.SECONDS.toMillis(Math.max(0, config.getLong("migration.logic.freshness_max_secs", 60)));
+            long baseSecs = config.isSet("migration.logic.freshness_base_secs")
+                    ? config.getLong("migration.logic.freshness_base_secs", 240)
+                    : config.getLong("migration.logic.freshness_max_secs", 240);
+            long slackSecs = config.getLong("migration.logic.freshness_queue_slack_secs", 60);
+            double backlogWeight = Math.max(0.0d, config.getDouble("migration.logic.freshness_backlog_weight", 1.0d));
             int consistency = Math.max(1, config.getInt("migration.logic.require_consistency_scans", 3));
             double minProsperityDelta = config.getDouble("migration.logic.min_prosperity_delta", 5.0d);
             double destHousing = config.getDouble("migration.logic.dest_min_housing_ratio", 1.05d);
             double destEmployment = config.getDouble("migration.logic.dest_min_employment_floor", 0.75d);
             double postMoveHousing = config.getDouble("migration.logic.post_move_housing_floor", 1.0d);
+            boolean allowZeroPop = config.getBoolean("migration.logic.allow_zero_population_destinations", true);
+            double zeroPopBoost = config.getDouble("migration.logic.zero_population_prosperity_boost", 5.0d);
             double linkWeight = config.getDouble("migration.logic.score_weights.link_strength", 0.6d);
             double prosperityWeight = config.getDouble("migration.logic.score_weights.prosperity_delta", 0.3d);
             if (config.contains("migration.logic.score_weights.vacancies") && plugin != null) {
@@ -1487,8 +1893,15 @@ public class MigrationService implements Runnable {
             double reliefRatio = config.getDouble("migration.logic.unemployment.nitwit_relief_ratio", 1.0d);
             UnemploymentSettings unemployment = UnemploymentSettings.from(softCap, hardCap, reliefRatio);
 
-            return new LogicSettings(freshnessMillis, consistency, minProsperityDelta, destHousing, destEmployment,
-                    postMoveHousing, weights, unemployment);
+            int zeroPopGrace = Math.max(0, config.getInt("migration.logic.zero_population_employment_grace", 3));
+            int zeroPopMinBeds = Math.max(0, config.getInt("migration.logic.zero_population_min_beds", 1));
+
+            long baseMillis = TimeUnit.SECONDS.toMillis(Math.max(0, baseSecs));
+            long slackMillis = TimeUnit.SECONDS.toMillis(Math.max(0, slackSecs));
+
+            return new LogicSettings(baseMillis, slackMillis, backlogWeight, consistency, minProsperityDelta,
+                    destHousing, destEmployment, postMoveHousing, allowZeroPop, zeroPopBoost, zeroPopGrace, zeroPopMinBeds,
+                    weights, unemployment);
         }
 
         static final class UnemploymentSettings {

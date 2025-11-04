@@ -75,7 +75,7 @@ public class CityScanRunner {
             }
             boolean done = job.process(maxEntityChunks, maxBedBlocks);
             if (done) {
-                completed.add(new CompletedJob(job, job.consumeRerunRequest()));
+                completed.add(new CompletedJob(job, job.consumeRerunRequest(), job.workload()));
             } else {
                 toRequeue.add(job);
             }
@@ -100,6 +100,6 @@ public class CityScanRunner {
         return Map.copyOf(activeCityJobs);
     }
 
-    public record CompletedJob(CityScanJob job, RerunRequest rerunRequest) {
+    public record CompletedJob(CityScanJob job, RerunRequest rerunRequest, CityScanJob.ScanWorkload workload) {
     }
 }
