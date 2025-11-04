@@ -6,6 +6,8 @@ import dev.citysim.city.CityManager;
 import dev.citysim.stats.schedule.ScanScheduler;
 import dev.citysim.stats.scan.CityScanCallbacks;
 import dev.citysim.stats.scan.CityScanRunner;
+import dev.citysim.stats.scan.CityScanJob;
+import dev.citysim.stats.scan.CityScanRunner.CompletedJob;
 import dev.citysim.stats.scan.ScanContext;
 import dev.citysim.stats.scan.ScanDebugManager;
 import dev.citysim.stats.scan.ScanRequest;
@@ -14,7 +16,6 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Level;
@@ -34,6 +35,7 @@ public class StatsService {
     private volatile StationCounter stationCounter;
     private StationCountingMode stationCountingMode = StationCountingMode.MANUAL;
     private boolean stationCountingWarningLogged = false;
+    private int scanProgressTaskId = -1;
 
     public StatsService(Plugin plugin, CityManager cityManager, StationCounter stationCounter) {
         this(plugin, cityManager, stationCounter, null, null, null);
@@ -71,6 +73,7 @@ public class StatsService {
             return;
         }
         scanScheduler.clear();
+        startProgressTask();
         scheduleInitialStartupScans();
         statsUpdateScheduler.start();
     }
@@ -78,12 +81,15 @@ public class StatsService {
     public void stop() {
         statsUpdateScheduler.stop();
         scanScheduler.clear();
+        stopProgressTask();
     }
 
     public void restartTask() {
         updateConfig();
         statsUpdateScheduler.stop();
         scanScheduler.clear();
+        stopProgressTask();
+        startProgressTask();
         scheduleInitialStartupScans();
         statsUpdateScheduler.start();
     }
@@ -153,7 +159,7 @@ public class StatsService {
     }
 
     private void tick() {
-        scanScheduler.tick();
+        scanScheduler.startJobs(true);
     }
 
     private void scheduleInitialStartupScans() {
@@ -166,7 +172,15 @@ public class StatsService {
             if (city == null || city.id == null || city.id.isEmpty()) {
                 continue;
             }
-            scanRunner.runSynchronously(city, new ScanRequest(true, true, "initial startup", null));
+            HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(true, true, "initial startup", null));
+            long completedAt = System.currentTimeMillis();
+            if (result != null) {
+                applyScanCompletion(city, result, completedAt, true);
+            } else {
+                HappinessBreakdown fallback = new HappinessBreakdown();
+                fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
+                applyScanCompletion(city, fallback, completedAt, false);
+            }
         }
     }
 
@@ -180,16 +194,14 @@ public class StatsService {
         }
         cancelActiveJob(city);
         HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
+        long completedAt = System.currentTimeMillis();
         if (result != null) {
-            result.setGhostTown(city.isGhostTown() || result.isGhostTown());
-            updateDerivedMetrics(city);
-            city.statsTimestamp = System.currentTimeMillis();
+            applyScanCompletion(city, result, completedAt, true);
             return result;
         }
         HappinessBreakdown fallback = new HappinessBreakdown();
         fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
-        updateDerivedMetrics(city);
-        city.statsTimestamp = System.currentTimeMillis();
+        applyScanCompletion(city, fallback, completedAt, false);
         return fallback;
     }
 
@@ -417,5 +429,68 @@ public class StatsService {
             return max;
         }
         return value;
+    }
+
+    private void applyScanCompletion(City city, HappinessBreakdown breakdown, long completedAtMillis, boolean metricsComputed) {
+        if (city == null) {
+            return;
+        }
+        HappinessBreakdown effective = breakdown;
+        if (effective == null) {
+            effective = city.happinessBreakdown;
+        }
+        if (effective != null) {
+            boolean ghostTown = city.isGhostTown() || city.population <= 0;
+            effective.setGhostTown(ghostTown || effective.isGhostTown());
+            city.happinessBreakdown = effective;
+            city.happiness = effective.total;
+        }
+        if (!metricsComputed) {
+            updateDerivedMetrics(city);
+        }
+        city.statsTimestamp = completedAtMillis;
+    }
+
+    private void startProgressTask() {
+        if (scanProgressTaskId != -1) {
+            return;
+        }
+        try {
+            scanProgressTaskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, this::progressActiveScans, 1L, 1L);
+        } catch (IllegalStateException ex) {
+            scanProgressTaskId = -1;
+        }
+    }
+
+    private void stopProgressTask() {
+        if (scanProgressTaskId == -1) {
+            return;
+        }
+        try {
+            Bukkit.getScheduler().cancelTask(scanProgressTaskId);
+        } catch (IllegalStateException ignored) {
+        }
+        scanProgressTaskId = -1;
+    }
+
+    private void progressActiveScans() {
+        List<CompletedJob> completedJobs = scanScheduler.progressActiveJobs();
+        if (!completedJobs.isEmpty()) {
+            long completedAt = System.currentTimeMillis();
+            for (CompletedJob entry : completedJobs) {
+                CityScanJob job = entry.job();
+                if (job == null || job.isCancelled()) {
+                    continue;
+                }
+                City city = job.city();
+                if (city == null) {
+                    continue;
+                }
+                HappinessBreakdown result = job.getResult();
+                boolean metricsComputed = result != null;
+                applyScanCompletion(city, result, completedAt, metricsComputed);
+            }
+        }
+        scanScheduler.startJobs(false);
     }
 }

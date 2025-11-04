@@ -68,7 +68,7 @@ public class CityCommand implements CommandExecutor {
         register(new DisplayCommand(titleService, bossBarService, scoreboardService));
         register(new TopCommand(cityManager));
         register(new ReloadCommand(plugin));
-        register(new DebugCommand(statsService));
+        register(new DebugCommand(statsService, migrationService));
     }
 
     public CitySubcommandRegistry getRegistry() {

@@ -13,6 +13,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -67,6 +68,7 @@ public class MigrationService implements Runnable {
     private final Map<String, Long> staleStatsLogTick = new HashMap<>();
     private final Map<String, Long> platformHintsLogTick = new HashMap<>();
     private final Map<String, Long> unemploymentGateLogTick = new HashMap<>();
+    private final MigrationDebugManager debugManager = new MigrationDebugManager();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
@@ -78,6 +80,10 @@ public class MigrationService implements Runnable {
         this.linkService = linkService;
         this.cooldownKey = new NamespacedKey(plugin, "migrate_until");
         this.platformResolver = platformResolver;
+    }
+
+    public boolean toggleDebug(Player player) {
+        return debugManager.toggle(player);
     }
 
     public void reload(FileConfiguration config) {
@@ -133,20 +139,53 @@ public class MigrationService implements Runnable {
     }
 
     private void tick() {
-        if (!settings.enabled || settings.maxMovesPerTick <= 0) {
+        if (!settings.enabled) {
+            debugInfo("Migration tick skipped - service disabled in configuration.");
+            return;
+        }
+        if (settings.maxMovesPerTick <= 0) {
+            debugInfo("Migration tick skipped - maxMovesPerTick=0.");
             return;
         }
         if (linkService == null || !linkService.isEnabled()) {
+            debugInfo("Migration tick skipped - link service unavailable.");
             return;
         }
 
         long now = System.currentTimeMillis();
         logicalTick += Math.max(1, settings.intervalTicks);
 
+        if (debugManager.isEnabled()) {
+            int approvalsQueued = delayedQueue.size();
+            int inflight = 0;
+            for (Integer value : inflightToDest.values()) {
+                if (value != null) {
+                    inflight += value;
+                }
+            }
+            int pending = 0;
+            for (Integer value : pendingFromOrigin.values()) {
+                if (value != null) {
+                    pending += value;
+                }
+            }
+            debugInfo(String.format(
+                    Locale.US,
+                    "Tick %d - queued approvals=%d, inflight=%d, pending=%d",
+                    logicalTick,
+                    approvalsQueued,
+                    inflight,
+                    pending
+            ));
+        }
+
         processDelayedQueue(now);
 
         Collection<City> cities = cityManager.all();
         if (cities.isEmpty()) {
+            if (debugManager.isEnabled()) {
+                debugInfo("Tick " + logicalTick + " - no cities available for migration checks.");
+            }
             return;
         }
 
@@ -171,29 +210,61 @@ public class MigrationService implements Runnable {
                 pairConsistency.remove(origin.id);
                 continue;
             }
+            if (debugManager.isEnabled()) {
+                debugInfo("Origin " + describeCity(origin) + " eligible - streak=" + originStreak + "/" + settings.logic.requireConsistencyScans);
+            }
             if (originStreak < settings.logic.requireConsistencyScans) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Origin " + describeCity(origin) + " waiting for consistency streak (current=" + originStreak + ").");
+                }
                 continue;
             }
             if (!hasPopulationBudget(origin)) {
+                if (debugManager.isEnabled()) {
+                    int pending = pendingFromOrigin.getOrDefault(origin.id, 0);
+                    debugWarning("Origin " + describeCity(origin) + " exhausted population budget (pending=" + pending + ", population=" + Math.max(0, origin.population) + ").");
+                }
                 continue;
             }
 
             List<CityLink> links = new ArrayList<>(linkService.computeLinks(origin));
             if (links.isEmpty()) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Origin " + describeCity(origin) + " has no eligible links.");
+                }
                 continue;
             }
 
             List<DestinationCandidate> candidates = evaluateCandidates(origin, links, now);
             if (candidates.isEmpty()) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Origin " + describeCity(origin) + " produced no destination candidates this tick.");
+                }
                 continue;
             }
 
             for (DestinationCandidate candidate : candidates) {
                 if (approvals >= settings.maxMovesPerTick) {
+                    if (debugManager.isEnabled()) {
+                        debugInfo("Reached max approvals for tick (" + approvals + "/" + settings.maxMovesPerTick + ").");
+                    }
                     return;
                 }
                 if (!hasPopulationBudget(origin)) {
+                    if (debugManager.isEnabled()) {
+                        debugWarning("Origin " + describeCity(origin) + " ran out of population budget mid-loop.");
+                    }
                     break;
+                }
+                if (debugManager.isEnabled()) {
+                    debugInfo(String.format(
+                            Locale.US,
+                            "Evaluating link %s - score=%.3f, strength=%.3f, prosperityDelta=%.3f",
+                            describeMove(origin, candidate.destination),
+                            candidate.score,
+                            candidate.linkStrength,
+                            candidate.prosperityDelta
+                    ));
                 }
                 if (tryApproveMove(origin, candidate.destination, now)) {
                     approvals++;
@@ -241,15 +312,33 @@ public class MigrationService implements Runnable {
             return false;
         }
         if (!isStatsFresh(city, nowMillis)) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, "stats are stale.");
+            }
             return false;
         }
         CityEma ema = cityEmas.get(city.id);
         if (ema == null || !ema.isInitialized()) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, "waiting for rolling averages.");
+            }
             return false;
         }
         boolean employmentPressure = ema.employment() < 0.75d;
         boolean housingPressure = ema.housing() < 1.0d;
-        return (employmentPressure || housingPressure) && city.population > settings.minPopulationFloor;
+        if (city.population <= settings.minPopulationFloor) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, "population at floor (" + Math.max(0, city.population) + ").");
+            }
+            return false;
+        }
+        if (!employmentPressure && !housingPressure) {
+            if (debugManager.isEnabled()) {
+                debugOriginSkip(city, String.format(Locale.US, "no pressure (employment=%.2f, housing=%.2f).", ema.employment(), ema.housing()));
+            }
+            return false;
+        }
+        return true;
     }
 
     private boolean hasPopulationBudget(City origin) {
@@ -274,15 +363,24 @@ public class MigrationService implements Runnable {
         for (CityLink link : links) {
             City destination = link != null ? link.neighbor() : null;
             if (destination == null || destination.id == null || destination == origin) {
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "link missing destination metadata.");
+                }
                 continue;
             }
             if (!isStatsFresh(destination, nowMillis)) {
                 updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "destination stats are stale.");
+                }
                 continue;
             }
             CityEma destEma = cityEmas.get(destination.id);
             if (destEma == null || !destEma.isInitialized()) {
                 updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "destination averages not initialized.");
+                }
                 continue;
             }
             boolean housingOk = destEma.housing() >= settings.logic.destMinHousingRatio;
@@ -291,16 +389,27 @@ public class MigrationService implements Runnable {
             boolean prosperityOk = prosperityDelta >= settings.logic.minProsperityDelta;
             if (!housingOk || !employmentOk || !prosperityOk) {
                 updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    String reason = String.format(Locale.US,
+                            "destination gates failed (housing=%.2f, employment=%.2f, prosperityDelta=%.2f).",
+                            destEma.housing(),
+                            destEma.employment(),
+                            prosperityDelta);
+                    debugCandidateSkip(origin, destination, reason);
+                }
                 continue;
             }
 
-            if (!passesUnemploymentGate(destination)) {
+            if (!passesUnemploymentGate(origin, destination)) {
                 updatePairConsistency(origin.id, destination.id, false);
                 continue;
             }
 
             int pairStreak = updatePairConsistency(origin.id, destination.id, true);
             if (pairStreak < settings.logic.requireConsistencyScans) {
+                if (debugManager.isEnabled()) {
+                    debugInfo("Link " + describeMove(origin, destination) + " waiting for consistency streak (current=" + pairStreak + ").");
+                }
                 continue;
             }
 
@@ -349,23 +458,32 @@ public class MigrationService implements Runnable {
 
     private boolean tryApproveMove(City origin, City destination, long nowMillis) {
         if (origin == null || destination == null || origin.id == null || destination.id == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "missing city metadata.");
+            }
             return false;
         }
-        if (!passesPostMoveGuard(destination)) {
+        if (!passesPostMoveGuard(origin, destination)) {
             return false;
         }
 
         Location originAnchor = stationAnchor(origin);
         if (originAnchor == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "no origin station anchor.");
+            }
             return false;
         }
 
         Location destinationAnchor = stationAnchor(destination);
         if (destinationAnchor == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "no destination station anchor.");
+            }
             return false;
         }
 
-        if (!reserveTokens(origin.id, destination.id, linkKey(origin.id, destination.id))) {
+        if (!reserveTokens(origin, destination, linkKey(origin.id, destination.id))) {
             return false;
         }
 
@@ -377,11 +495,21 @@ public class MigrationService implements Runnable {
         inflightToDest.merge(destination.id, 1, Integer::sum);
         pendingFromOrigin.merge(origin.id, 1, Integer::sum);
         delayedQueue.add(new DelayedMove(executeTick, origin.id, destination.id));
+        if (debugManager.isEnabled()) {
+            debugSuccess(String.format(Locale.US,
+                    "Approved migration %s - executeTick=%d (jitter=%d).",
+                    describeMove(origin, destination),
+                    executeTick,
+                    jitter));
+        }
         return true;
     }
 
-    private boolean passesPostMoveGuard(City destination) {
+    private boolean passesPostMoveGuard(City origin, City destination) {
         if (destination == null || destination.id == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "destination missing for post-move guard.");
+            }
             return false;
         }
         if (settings.logic.postMoveHousingFloor <= 0) {
@@ -392,14 +520,30 @@ public class MigrationService implements Runnable {
         int beds = Math.max(0, destination.beds);
         int denominator = population + inflight + 1;
         if (denominator <= 0) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "post-move guard denominator invalid.");
+            }
             return false;
         }
         double effectiveHousing = beds / (double) denominator;
-        return effectiveHousing >= settings.logic.postMoveHousingFloor;
+        boolean allowed = effectiveHousing >= settings.logic.postMoveHousingFloor;
+        if (!allowed && debugManager.isEnabled()) {
+            debugCandidateSkip(origin, destination, String.format(Locale.US,
+                    "post-move housing guard (%.2f < %.2f) [beds=%d, inflight=%d, population=%d].",
+                    effectiveHousing,
+                    settings.logic.postMoveHousingFloor,
+                    beds,
+                    inflight,
+                    population));
+        }
+        return allowed;
     }
 
-    private boolean passesUnemploymentGate(City destination) {
+    private boolean passesUnemploymentGate(City origin, City destination) {
         if (destination == null || destination.id == null) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "destination missing for unemployment gate.");
+            }
             return false;
         }
         LogicSettings.UnemploymentSettings unemployment = settings.logic.unemployment;
@@ -415,25 +559,22 @@ public class MigrationService implements Runnable {
         double noneShare = none / (double) adults;
 
         if (noneShare > unemployment.hardCap()) {
-            logUnemploymentGate(destination, "hard_cap", noneShare, none, nitwit);
+            logUnemploymentGate(origin, destination, "hard_cap", noneShare, none, nitwit);
             return false;
         }
         if (noneShare > unemployment.softCap()) {
             double reliefThreshold = unemployment.nitwitReliefRatio() * none;
             boolean relief = nitwit >= reliefThreshold;
             if (!relief) {
-                logUnemploymentGate(destination, "soft_cap", noneShare, none, nitwit);
+                logUnemploymentGate(origin, destination, "soft_cap", noneShare, none, nitwit);
                 return false;
             }
         }
         return true;
     }
 
-    private void logUnemploymentGate(City destination, String reasonKey, double noneShare, int none, int nitwit) {
+    private void logUnemploymentGate(City origin, City destination, String reasonKey, double noneShare, int none, int nitwit) {
         if (destination == null || destination.id == null) {
-            return;
-        }
-        if (!plugin.getLogger().isLoggable(Level.FINE)) {
             return;
         }
         String key = destination.id + ':' + reasonKey;
@@ -449,12 +590,19 @@ public class MigrationService implements Runnable {
             default -> "unemployment gate";
         };
         String formattedShare = String.format(Locale.US, "%.2f", noneShare);
-        plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + destination.id
-                + ") — " + reason + " (NONE share=" + formattedShare
-                + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
+        if (plugin.getLogger().isLoggable(Level.FINE)) {
+            plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + destination.id
+                    + ") - " + reason + " (NONE share=" + formattedShare
+                    + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
+        }
+        if (debugManager.isEnabled()) {
+            debugCandidateSkip(origin, destination, reason + " (NONE share=" + formattedShare + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
+        }
     }
 
-    private boolean reserveTokens(String originId, String destinationId, String linkKey) {
+    private boolean reserveTokens(City origin, City destination, String linkKey) {
+        String originId = origin != null ? origin.id : null;
+        String destinationId = destination != null ? destination.id : null;
         TokenBucket global = settings.rate.globalPerInterval > 0 ? globalBucket : null;
         TokenBucket originBucket = settings.rate.perOriginPerInterval > 0
                 ? getBucket(originBuckets, originId, settings.rate.perOriginPerInterval)
@@ -467,15 +615,27 @@ public class MigrationService implements Runnable {
                 : null;
 
         if (global != null && !global.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "global rate limit reached.");
+            }
             return false;
         }
         if (originBucket != null && !originBucket.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "origin rate limit reached.");
+            }
             return false;
         }
         if (destinationBucket != null && !destinationBucket.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "destination rate limit reached.");
+            }
             return false;
         }
         if (linkBucket != null && !linkBucket.hasTokens(logicalTick, settings.rate.intervalTicks)) {
+            if (debugManager.isEnabled()) {
+                debugCandidateSkip(origin, destination, "link rate limit reached.");
+            }
             return false;
         }
 
@@ -519,15 +679,27 @@ public class MigrationService implements Runnable {
             City origin = cityManager.get(move.originId);
             City destination = cityManager.get(move.destinationId);
             if (origin == null || destination == null) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Approved migration failed to resolve cities (originId=" + move.originId + ", destinationId=" + move.destinationId + ").");
+                }
                 return;
+            }
+            if (debugManager.isEnabled()) {
+                debugInfo("Executing approved migration " + describeMove(origin, destination) + ".");
             }
 
             Location originAnchor = stationAnchor(origin);
             if (originAnchor == null) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " aborted - origin anchor unavailable.");
+                }
                 return;
             }
             villager = selectVillager(origin, originAnchor, nowMillis);
             if (villager == null) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " aborted - no eligible villager near " + describeLocation(originAnchor) + ".");
+                }
                 return;
             }
 
@@ -541,7 +713,13 @@ public class MigrationService implements Runnable {
             if (hasPrevalidated) {
                 target = selectPlatformTarget(destination, stationSpots, settings.teleport);
                 if (target == null) {
+                    if (debugManager.isEnabled()) {
+                        debugFailure("Migration " + describeMove(origin, destination) + " aborted - no validated platform slots available.");
+                    }
                     return;
+                }
+                if (debugManager.isEnabled()) {
+                    debugInfo("Using validated platform target for " + describeCity(destination) + ".");
                 }
             } else {
                 if (platformResolver != null) {
@@ -549,19 +727,34 @@ public class MigrationService implements Runnable {
                 }
                 Location fallbackAnchor = preferredFallbackAnchor(stationSpots, destinationAnchor);
                 if (fallbackAnchor == null) {
+                    if (debugManager.isEnabled()) {
+                        debugFailure("Migration " + describeMove(origin, destination) + " aborted - no fallback anchor found.");
+                    }
                     return;
                 }
                 int clampY = fallbackAnchor.getBlockY() + 1;
                 int fallbackRadiusLimit = Math.max(FALLBACK_SIGN_RADIUS, Math.max(0, settings.teleport.radius));
                 target = findDestinationSpot(fallbackAnchor, settings.teleport, fallbackRadiusLimit, clampY);
                 if (target == null) {
+                    if (debugManager.isEnabled()) {
+                        debugFailure("Migration " + describeMove(origin, destination) + " aborted - no safe fallback destination found.");
+                    }
                     return;
+                }
+                if (debugManager.isEnabled()) {
+                    debugInfo("Using fallback destination search for " + describeCity(destination) + ".");
                 }
             }
             if (!ensureChunkLoaded(target.getWorld(), target.getBlockX(), target.getBlockZ())) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " aborted - destination chunk failed to load at " + describeLocation(target) + ".");
+                }
                 return;
             }
             if (!villager.teleport(target)) {
+                if (debugManager.isEnabled()) {
+                    debugFailure("Migration " + describeMove(origin, destination) + " failed - teleportation was blocked.");
+                }
                 return;
             }
             villager.setFallDistance(0f);
@@ -569,6 +762,15 @@ public class MigrationService implements Runnable {
             recordDeparture(origin, destination);
             recordArrival(destination, origin);
             success = true;
+            if (debugManager.isEnabled()) {
+                debugSuccess(String.format(Locale.US,
+                        "Migrated %s villager from %s to %s at %s.",
+                        villager.getProfession(),
+                        describeCity(origin),
+                        describeCity(destination),
+                        describeLocation(target)
+                ));
+            }
         } finally {
             if (!success && villager != null) {
                 villager.setFallDistance(0f);
@@ -682,14 +884,17 @@ public class MigrationService implements Runnable {
         if (lastTimestamp > 0L) {
             long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - lastTimestamp)));
             long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, settings.logic.freshnessMillis)));
-            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") - stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
         } else {
-            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats have never completed.";
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") - stats have never completed.";
         }
         if (plugin.getLogger().isLoggable(Level.FINE)) {
             plugin.getLogger().fine(baseMessage + " Sources=" + timestamps.describeSources(nowMillis) + ", max=" + lastTimestamp);
         } else {
             plugin.getLogger().fine(baseMessage);
+        }
+        if (debugManager.isEnabled()) {
+            debugWarning(baseMessage + " Sources=" + timestamps.describeSources(nowMillis) + ".");
         }
     }
 
@@ -705,10 +910,83 @@ public class MigrationService implements Runnable {
         String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
         boolean requireWallSign = teleportSettings != null && teleportSettings.requireWallSign;
         if (requireWallSign && sawNonWallSigns) {
-            plugin.getLogger().info("No platform candidates were cached for '" + cityLabel + "' — stations in range use non-wall signs while migration.teleport.require_wall_sign=true.");
+            String message = "No platform candidates were cached for '" + cityLabel + "' - stations in range use non-wall signs while migration.teleport.require_wall_sign=true.";
+            plugin.getLogger().info(message);
+            if (debugManager.isEnabled()) {
+                debugWarning(message);
+            }
             return;
         }
-        plugin.getLogger().info("No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.");
+        String message = "No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.";
+        plugin.getLogger().info(message);
+        if (debugManager.isEnabled()) {
+            debugWarning(message);
+        }
+    }
+
+    private void debugInfo(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logInfo(message);
+        }
+    }
+
+    private void debugSuccess(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logSuccess(message);
+        }
+    }
+
+    private void debugWarning(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logWarning(message);
+        }
+    }
+
+    private void debugFailure(String message) {
+        if (debugManager.isEnabled()) {
+            debugManager.logFailure(message);
+        }
+    }
+
+    private void debugOriginSkip(City city, String reason) {
+        if (!debugManager.isEnabled() || city == null) {
+            return;
+        }
+        debugManager.logWarning("Skipping origin " + describeCity(city) + " - " + reason);
+    }
+
+    private void debugCandidateSkip(City origin, City destination, String reason) {
+        if (!debugManager.isEnabled()) {
+            return;
+        }
+        StringBuilder builder = new StringBuilder("Skipping link ");
+        builder.append(describeCity(origin)).append(" -> ").append(describeCity(destination));
+        if (reason != null && !reason.isBlank()) {
+            builder.append(" - ").append(reason);
+        }
+        debugManager.logWarning(builder.toString());
+    }
+
+    private String describeCity(City city) {
+        if (city == null) {
+            return "unknown city";
+        }
+        String name = city.name != null && !city.name.isBlank() ? city.name : "(unnamed)";
+        String id = city.id != null ? city.id : "?";
+        return name + " (" + id + ")";
+    }
+
+    private String describeMove(City origin, City destination) {
+        return describeCity(origin) + " -> " + describeCity(destination);
+    }
+
+    private String describeLocation(Location location) {
+        if (location == null) {
+            return "unknown";
+        }
+        World world = location.getWorld();
+        String worldName = world != null ? world.getName() : "unknown";
+        return worldName + " (" + location.getBlockX() + ", " + location.getBlockY() + ", " + location.getBlockZ() + ")";
     }
 
     private String linkKey(String originId, String destinationId) {
@@ -1045,6 +1323,9 @@ public class MigrationService implements Runnable {
      */
     private boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
         if (world == null) {
+            if (debugManager.isEnabled()) {
+                debugFailure("Chunk load failed - world unavailable for coordinates (" + blockX + ", " + blockZ + ").");
+            }
             return false;
         }
         int chunkX = blockX >> 4;
@@ -1053,7 +1334,11 @@ public class MigrationService implements Runnable {
             return true;
         }
         world.loadChunk(chunkX, chunkZ);
-        return world.isChunkLoaded(chunkX, chunkZ);
+        boolean loaded = world.isChunkLoaded(chunkX, chunkZ);
+        if (!loaded && debugManager.isEnabled()) {
+            debugFailure("Chunk load failed in world '" + world.getName() + "' at chunk (" + chunkX + ", " + chunkZ + ").");
+        }
+        return loaded;
     }
 
     private Location stationAnchor(City city) {

@@ -56,7 +56,7 @@ public class ScanScheduler {
         scheduledCityQueue.remove(cityId);
     }
 
-    public void tick() {
+    public List<CompletedJob> progressActiveJobs() {
         List<CompletedJob> completed = cityScanRunner.progressJobs(maxCitiesPerTick, maxEntityChunksPerTick, maxBedBlocksPerTick);
         for (CompletedJob entry : completed) {
             RerunRequest rerun = entry.rerunRequest();
@@ -64,19 +64,32 @@ public class ScanScheduler {
                 queueCity(entry.job().cityId(), rerun.forceRefresh(), rerun.forceChunkLoad(), rerun.reason(), rerun.context());
             }
         }
+        return completed;
+    }
 
-        int processed = 0;
+    public int startJobs(boolean includeScheduled) {
+        int started = 0;
         int target = Math.max(1, maxCitiesPerTick);
-        while (processed < target) {
-            boolean started = processNextPendingCity();
-            if (!started) {
-                started = processNextScheduledCity();
+        while (started < target) {
+            if (processNextPendingCity()) {
+                started++;
+                continue;
             }
-            if (!started) {
+            if (!includeScheduled) {
                 break;
             }
-            processed++;
+            if (!processNextScheduledCity()) {
+                break;
+            }
+            started++;
         }
+        return started;
+    }
+
+    public List<CompletedJob> tick() {
+        List<CompletedJob> completed = progressActiveJobs();
+        startJobs(true);
+        return completed;
     }
 
     public void cancel(String cityId) {
