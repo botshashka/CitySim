@@ -21,6 +21,7 @@ public class City {
     public int employed = 0;
     public int unemployed = 0;
     public int beds = 0;
+    public int vacanciesTotal = 0;
     public int happiness = 50;
     public int stations = 0;
 

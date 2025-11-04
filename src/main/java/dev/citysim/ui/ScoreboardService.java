@@ -229,6 +229,7 @@ public class ScoreboardService {
         raw.add(ChatColor.GOLD + "Prosperity: " + ChatColor.WHITE + prosperityValue);
         raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
         raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
+        raw.add(ChatColor.DARK_GREEN + "Job vacancies: " + ChatColor.WHITE + Math.max(0, city.vacanciesTotal));
         if (showStations) {
             raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
         }

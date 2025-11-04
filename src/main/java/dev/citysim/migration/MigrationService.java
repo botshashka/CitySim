@@ -108,7 +108,14 @@ public class MigrationService implements Runnable {
             if (!isOriginEligible(origin)) {
                 continue;
             }
-            List<CityLink> links = linkService.computeLinks(origin);
+            List<CityLink> links = new ArrayList<>(linkService.computeLinks(origin));
+            links.sort(Comparator
+                    .comparingInt((CityLink link) -> Math.max(0, link.neighbor().vacanciesTotal))
+                    .reversed()
+                    .thenComparingInt(CityLink::strength)
+                    .reversed()
+                    .thenComparing(link -> link.neighbor().name, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                    .thenComparing(link -> link.neighbor().id, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)));
             if (links.isEmpty()) {
                 continue;
             }
