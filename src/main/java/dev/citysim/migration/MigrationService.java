@@ -394,18 +394,34 @@ public class MigrationService implements Runnable {
                 }
                 continue;
             }
-            boolean housingOk = destEma.housing() >= settings.logic.destMinHousingRatio;
-            boolean employmentOk = destEma.employment() >= settings.logic.destMinEmploymentFloor;
+            boolean destinationEmpty = destination.population <= 0;
+            boolean housingOk = destinationEmpty
+                    ? destination.beds >= settings.logic.zeroPopulationMinBeds
+                    : destEma.housing() >= settings.logic.destMinHousingRatio;
+            boolean employmentOk = destinationEmpty
+                    ? destination.population < settings.logic.zeroPopulationEmploymentGrace
+                    : destEma.employment() >= settings.logic.destMinEmploymentFloor;
             double prosperityDelta = destEma.prosperity() - originEma.prosperity();
-            boolean prosperityOk = prosperityDelta >= settings.logic.minProsperityDelta;
+            if (destinationEmpty) {
+                prosperityDelta = Math.max(prosperityDelta, settings.logic.zeroPopulationProsperityBoost);
+            }
+            boolean prosperityOk = destinationEmpty || prosperityDelta >= settings.logic.minProsperityDelta;
             if (!housingOk || !employmentOk || !prosperityOk) {
                 updatePairConsistency(origin.id, destination.id, false);
                 if (debugManager.isEnabled()) {
-                    String reason = String.format(Locale.US,
-                            "destination gates failed (housing=%.2f, employment=%.2f, prosperityDelta=%.2f).",
-                            destEma.housing(),
-                            destEma.employment(),
-                            prosperityDelta);
+                    String reason;
+                    if (destinationEmpty) {
+                        reason = String.format(Locale.US,
+                                "destination zero-pop gates failed (beds=%d, prosperityDelta=%.2f).",
+                                Math.max(0, destination.beds),
+                                prosperityDelta);
+                    } else {
+                        reason = String.format(Locale.US,
+                                "destination gates failed (housing=%.2f, employment=%.2f, prosperityDelta=%.2f).",
+                                destEma.housing(),
+                                destEma.employment(),
+                                prosperityDelta);
+                    }
                     debugCandidateSkip(origin, destination, reason);
                 }
                 continue;
@@ -1782,14 +1798,18 @@ public class MigrationService implements Runnable {
         final double destMinEmploymentFloor;
         final double postMoveHousingFloor;
         final boolean allowZeroPopulationDestinations;
+        final double zeroPopulationProsperityBoost;
+        final int zeroPopulationEmploymentGrace;
+        final int zeroPopulationMinBeds;
         final ScoreWeights scoreWeights;
         final UnemploymentSettings unemployment;
 
         private LogicSettings(long freshnessBaseMillis, long freshnessQueueSlackMillis, double freshnessBacklogWeight,
                               int requireConsistencyScans, double minProsperityDelta,
                               double destMinHousingRatio, double destMinEmploymentFloor, double postMoveHousingFloor,
-                              boolean allowZeroPopulationDestinations, ScoreWeights scoreWeights,
-                              UnemploymentSettings unemployment) {
+                              boolean allowZeroPopulationDestinations, double zeroPopulationProsperityBoost,
+                              int zeroPopulationEmploymentGrace, int zeroPopulationMinBeds,
+                              ScoreWeights scoreWeights, UnemploymentSettings unemployment) {
             this.freshnessBaseMillis = freshnessBaseMillis;
             this.freshnessQueueSlackMillis = freshnessQueueSlackMillis;
             this.freshnessBacklogWeight = freshnessBacklogWeight;
@@ -1799,13 +1819,16 @@ public class MigrationService implements Runnable {
             this.destMinEmploymentFloor = destMinEmploymentFloor;
             this.postMoveHousingFloor = postMoveHousingFloor;
             this.allowZeroPopulationDestinations = allowZeroPopulationDestinations;
+            this.zeroPopulationProsperityBoost = zeroPopulationProsperityBoost;
+            this.zeroPopulationEmploymentGrace = Math.max(0, zeroPopulationEmploymentGrace);
+            this.zeroPopulationMinBeds = Math.max(0, zeroPopulationMinBeds);
             this.scoreWeights = scoreWeights;
             this.unemployment = unemployment;
         }
 
         static LogicSettings defaults() {
             return new LogicSettings(TimeUnit.SECONDS.toMillis(240), TimeUnit.SECONDS.toMillis(60), 1.0d,
-                    3, 5.0d, 1.05d, 0.75d, 1.0d, true,
+                    3, 5.0d, 1.05d, 0.75d, 1.0d, true, 5.0d, 3, 1,
                     new ScoreWeights(0.6d, 0.3d), UnemploymentSettings.defaults());
         }
 
@@ -1824,6 +1847,7 @@ public class MigrationService implements Runnable {
             double destEmployment = config.getDouble("migration.logic.dest_min_employment_floor", 0.75d);
             double postMoveHousing = config.getDouble("migration.logic.post_move_housing_floor", 1.0d);
             boolean allowZeroPop = config.getBoolean("migration.logic.allow_zero_population_destinations", true);
+            double zeroPopBoost = config.getDouble("migration.logic.zero_population_prosperity_boost", 5.0d);
             double linkWeight = config.getDouble("migration.logic.score_weights.link_strength", 0.6d);
             double prosperityWeight = config.getDouble("migration.logic.score_weights.prosperity_delta", 0.3d);
             if (config.contains("migration.logic.score_weights.vacancies") && plugin != null) {
@@ -1836,11 +1860,15 @@ public class MigrationService implements Runnable {
             double reliefRatio = config.getDouble("migration.logic.unemployment.nitwit_relief_ratio", 1.0d);
             UnemploymentSettings unemployment = UnemploymentSettings.from(softCap, hardCap, reliefRatio);
 
+            int zeroPopGrace = Math.max(0, config.getInt("migration.logic.zero_population_employment_grace", 3));
+            int zeroPopMinBeds = Math.max(0, config.getInt("migration.logic.zero_population_min_beds", 1));
+
             long baseMillis = TimeUnit.SECONDS.toMillis(Math.max(0, baseSecs));
             long slackMillis = TimeUnit.SECONDS.toMillis(Math.max(0, slackSecs));
 
             return new LogicSettings(baseMillis, slackMillis, backlogWeight, consistency, minProsperityDelta,
-                    destHousing, destEmployment, postMoveHousing, allowZeroPop, weights, unemployment);
+                    destHousing, destEmployment, postMoveHousing, allowZeroPop, zeroPopBoost, zeroPopGrace, zeroPopMinBeds,
+                    weights, unemployment);
         }
 
         static final class UnemploymentSettings {

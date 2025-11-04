@@ -139,6 +139,9 @@ migration:
     dest_min_employment_floor: 0.75
     post_move_housing_floor: 1.00
     allow_zero_population_destinations: true
+    zero_population_prosperity_boost: 5.0
+    zero_population_employment_grace: 3
+    zero_population_min_beds: 1
     score_weights:
       link_strength: 0.6
       prosperity_delta: 0.3
