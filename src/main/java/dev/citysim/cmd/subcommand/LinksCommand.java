@@ -6,6 +6,9 @@ import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
+import dev.citysim.migration.MigrationService;
+import dev.citysim.migration.MigrationService.CityMigrationSnapshot;
+import dev.citysim.migration.MigrationService.LinkMigrationSnapshot;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
@@ -13,6 +16,7 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class LinksCommand implements CitySubcommand {
@@ -21,10 +25,12 @@ public class LinksCommand implements CitySubcommand {
 
     private final CityManager cityManager;
     private final LinkService linkService;
+    private final MigrationService migrationService;
 
-    public LinksCommand(CityManager cityManager, LinkService linkService) {
+    public LinksCommand(CityManager cityManager, LinkService linkService, MigrationService migrationService) {
         this.cityManager = cityManager;
         this.linkService = linkService;
+        this.migrationService = migrationService;
     }
 
     @Override
@@ -69,6 +75,7 @@ public class LinksCommand implements CitySubcommand {
         }
 
         List<CityLink> display = links.size() <= DISPLAY_LIMIT ? links : links.subList(0, DISPLAY_LIMIT);
+        CityMigrationSnapshot snapshot = migrationService != null ? migrationService.snapshot(city) : new CityMigrationSnapshot(0L, 0L, Map.of());
         CommandFeedback.sendInfo(player, "City links for " + city.name + " (" + links.size() + "):");
         for (CityLink link : display) {
             City neighbor = link.neighbor();
@@ -82,6 +89,19 @@ public class LinksCommand implements CitySubcommand {
                     .append(Component.text("  ", NamedTextColor.DARK_GRAY))
                     .append(Component.text("Distance: ", NamedTextColor.AQUA))
                     .append(Component.text(distance + "m", NamedTextColor.WHITE))
+                    .build());
+            LinkMigrationSnapshot linkStats = snapshot.links().getOrDefault(neighbor.id, new LinkMigrationSnapshot(0L, 0L));
+            long net = linkStats.net();
+            String netDisplay = net > 0 ? "+" + net : Long.toString(net);
+            player.sendMessage(Component.text()
+                    .append(Component.text("    Arrivals: ", NamedTextColor.GREEN))
+                    .append(Component.text(Long.toString(linkStats.arrivals()), NamedTextColor.WHITE))
+                    .append(Component.text("  ", NamedTextColor.DARK_GRAY))
+                    .append(Component.text("Departures: ", NamedTextColor.RED))
+                    .append(Component.text(Long.toString(linkStats.departures()), NamedTextColor.WHITE))
+                    .append(Component.text("  ", NamedTextColor.DARK_GRAY))
+                    .append(Component.text("Net: ", NamedTextColor.GOLD))
+                    .append(Component.text(netDisplay, NamedTextColor.WHITE))
                     .build());
         }
         if (display.size() < links.size()) {
