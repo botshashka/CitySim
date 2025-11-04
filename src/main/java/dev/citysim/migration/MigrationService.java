@@ -5,6 +5,8 @@ import dev.citysim.city.CityManager;
 import dev.citysim.city.Cuboid;
 import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
+import dev.citysim.stats.StatsService;
+import dev.citysim.stats.StatsService.FreshnessSnapshot;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -50,6 +52,7 @@ public class MigrationService implements Runnable {
     private final Plugin plugin;
     private final CityManager cityManager;
     private final LinkService linkService;
+    private final StatsService statsService;
     private final NamespacedKey cooldownKey;
     private final StationPlatformResolver platformResolver;
 
@@ -74,9 +77,10 @@ public class MigrationService implements Runnable {
     private BukkitTask task;
     private long logicalTick = 0L;
 
-    public MigrationService(Plugin plugin, CityManager cityManager, LinkService linkService, StationPlatformResolver platformResolver) {
+    public MigrationService(Plugin plugin, CityManager cityManager, StatsService statsService, LinkService linkService, StationPlatformResolver platformResolver) {
         this.plugin = plugin;
         this.cityManager = cityManager;
+        this.statsService = statsService;
         this.linkService = linkService;
         this.cooldownKey = new NamespacedKey(plugin, "migrate_until");
         this.platformResolver = platformResolver;
@@ -372,6 +376,13 @@ public class MigrationService implements Runnable {
                 updatePairConsistency(origin.id, destination.id, false);
                 if (debugManager.isEnabled()) {
                     debugCandidateSkip(origin, destination, "destination stats are stale.");
+                }
+                continue;
+            }
+            if (!settings.logic.allowZeroPopulationDestinations && destination.population <= 0) {
+                updatePairConsistency(origin.id, destination.id, false);
+                if (debugManager.isEnabled()) {
+                    debugCandidateSkip(origin, destination, "destination population is zero (disabled by config).");
                 }
                 continue;
             }
@@ -826,24 +837,63 @@ public class MigrationService implements Runnable {
     }
 
     private boolean isStatsFresh(City city, long nowMillis) {
-        if (settings.logic.freshnessMillis <= 0) {
+        long freshnessLimit = computeFreshnessLimitMillis();
+        if (freshnessLimit <= 0L) {
             return true;
         }
         StatsTimestamps stats = lastStatsTimestamp(city);
         long last = stats.maxTimestamp();
         if (last <= 0L) {
-            logStaleStatsSkip(city, nowMillis, stats);
+            logStaleStatsSkip(city, nowMillis, stats, freshnessLimit);
             return false;
         }
-        boolean fresh = nowMillis - last <= settings.logic.freshnessMillis;
+        boolean fresh = nowMillis - last <= freshnessLimit;
         if (!fresh) {
-            logStaleStatsSkip(city, nowMillis, stats);
+            logStaleStatsSkip(city, nowMillis, stats, freshnessLimit);
             return false;
         }
         if (city != null && city.id != null) {
             staleStatsLogTick.remove(city.id);
         }
         return true;
+    }
+
+    private long computeFreshnessLimitMillis() {
+        if (settings == null || settings.logic == null) {
+            return TimeUnit.SECONDS.toMillis(180);
+        }
+        long base = settings.logic.freshnessBaseMillis;
+        long slack = settings.logic.freshnessQueueSlackMillis;
+        double backlogWeight = settings.logic.freshnessBacklogWeight;
+        long queueMillis = estimateQueueMillis(backlogWeight);
+        long limit = Math.max(base, queueMillis + slack);
+        return Math.max(base, limit);
+    }
+
+    private long estimateQueueMillis(double backlogWeight) {
+        if (statsService == null) {
+            return TimeUnit.SECONDS.toMillis(60);
+        }
+        FreshnessSnapshot snapshot = statsService.getFreshnessSnapshot();
+        if (snapshot == null) {
+            return TimeUnit.SECONDS.toMillis(60);
+        }
+        long intervalTicks = Math.max(1L, snapshot.statsIntervalTicks());
+        double intervalSeconds = intervalTicks / 20.0d;
+        int maxCitiesPerTick = Math.max(1, snapshot.maxCitiesPerTick());
+        int cityCount = Math.max(1, snapshot.cityCount());
+        int scheduled = Math.max(0, snapshot.scheduledCount());
+        int pending = Math.max(0, snapshot.pendingCount());
+        int active = Math.max(0, snapshot.activeCount());
+        int effectiveCities = Math.max(cityCount, scheduled + pending);
+        double cycles = Math.max(1.0d, effectiveCities / (double) maxCitiesPerTick);
+        double estimatedSeconds = cycles * intervalSeconds;
+        if (pending > 0 || active > 0) {
+            double backlogUnits = (pending + active) / (double) Math.max(1, maxCitiesPerTick);
+            estimatedSeconds += backlogUnits * intervalSeconds * Math.max(0.0d, backlogWeight);
+        }
+        long millis = (long) Math.round(estimatedSeconds * 1000.0d);
+        return Math.max(TimeUnit.SECONDS.toMillis(30), millis);
     }
 
     private StatsTimestamps lastStatsTimestamp(City city) {
@@ -869,7 +919,7 @@ public class MigrationService implements Runnable {
         return new StatsTimestamps(maxTimestamp, Collections.unmodifiableMap(sources));
     }
 
-    private void logStaleStatsSkip(City city, long nowMillis, StatsTimestamps timestamps) {
+    private void logStaleStatsSkip(City city, long nowMillis, StatsTimestamps timestamps, long freshnessLimitMillis) {
         if (city == null || city.id == null) {
             return;
         }
@@ -883,7 +933,7 @@ public class MigrationService implements Runnable {
         String baseMessage;
         if (lastTimestamp > 0L) {
             long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - lastTimestamp)));
-            long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, settings.logic.freshnessMillis)));
+            long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, freshnessLimitMillis)));
             baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") - stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
         } else {
             baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") - stats have never completed.";
@@ -1710,8 +1760,8 @@ public class MigrationService implements Runnable {
                 return disabled();
             }
             boolean enabled = config.getBoolean("migration.enabled", false);
-            int interval = Math.max(0, config.getInt("migration.interval_ticks", 100));
-            int maxMoves = Math.max(0, config.getInt("migration.max_moves_per_tick", 2));
+            int interval = Math.max(0, config.getInt("migration.interval_ticks", 200));
+            int maxMoves = Math.max(0, config.getInt("migration.max_moves_per_tick", 1));
             int cooldownMinutes = Math.max(0, config.getInt("migration.cooldown_minutes", 10));
             long cooldownMillis = TimeUnit.MINUTES.toMillis(cooldownMinutes);
             int populationFloor = Math.max(0, config.getInt("migration.min_city_population_floor", 10));
@@ -1723,30 +1773,39 @@ public class MigrationService implements Runnable {
     }
 
     private static class LogicSettings {
-        final long freshnessMillis;
+        final long freshnessBaseMillis;
+        final long freshnessQueueSlackMillis;
+        final double freshnessBacklogWeight;
         final int requireConsistencyScans;
         final double minProsperityDelta;
         final double destMinHousingRatio;
         final double destMinEmploymentFloor;
         final double postMoveHousingFloor;
+        final boolean allowZeroPopulationDestinations;
         final ScoreWeights scoreWeights;
         final UnemploymentSettings unemployment;
 
-        private LogicSettings(long freshnessMillis, int requireConsistencyScans, double minProsperityDelta,
+        private LogicSettings(long freshnessBaseMillis, long freshnessQueueSlackMillis, double freshnessBacklogWeight,
+                              int requireConsistencyScans, double minProsperityDelta,
                               double destMinHousingRatio, double destMinEmploymentFloor, double postMoveHousingFloor,
-                              ScoreWeights scoreWeights, UnemploymentSettings unemployment) {
-            this.freshnessMillis = freshnessMillis;
+                              boolean allowZeroPopulationDestinations, ScoreWeights scoreWeights,
+                              UnemploymentSettings unemployment) {
+            this.freshnessBaseMillis = freshnessBaseMillis;
+            this.freshnessQueueSlackMillis = freshnessQueueSlackMillis;
+            this.freshnessBacklogWeight = freshnessBacklogWeight;
             this.requireConsistencyScans = requireConsistencyScans;
             this.minProsperityDelta = minProsperityDelta;
             this.destMinHousingRatio = destMinHousingRatio;
             this.destMinEmploymentFloor = destMinEmploymentFloor;
             this.postMoveHousingFloor = postMoveHousingFloor;
+            this.allowZeroPopulationDestinations = allowZeroPopulationDestinations;
             this.scoreWeights = scoreWeights;
             this.unemployment = unemployment;
         }
 
         static LogicSettings defaults() {
-            return new LogicSettings(TimeUnit.SECONDS.toMillis(60), 3, 5.0d, 1.05d, 0.75d, 1.0d,
+            return new LogicSettings(TimeUnit.SECONDS.toMillis(240), TimeUnit.SECONDS.toMillis(60), 1.0d,
+                    3, 5.0d, 1.05d, 0.75d, 1.0d, true,
                     new ScoreWeights(0.6d, 0.3d), UnemploymentSettings.defaults());
         }
 
@@ -1754,12 +1813,17 @@ public class MigrationService implements Runnable {
             if (config == null) {
                 return defaults();
             }
-            long freshnessMillis = TimeUnit.SECONDS.toMillis(Math.max(0, config.getLong("migration.logic.freshness_max_secs", 60)));
+            long baseSecs = config.isSet("migration.logic.freshness_base_secs")
+                    ? config.getLong("migration.logic.freshness_base_secs", 240)
+                    : config.getLong("migration.logic.freshness_max_secs", 240);
+            long slackSecs = config.getLong("migration.logic.freshness_queue_slack_secs", 60);
+            double backlogWeight = Math.max(0.0d, config.getDouble("migration.logic.freshness_backlog_weight", 1.0d));
             int consistency = Math.max(1, config.getInt("migration.logic.require_consistency_scans", 3));
             double minProsperityDelta = config.getDouble("migration.logic.min_prosperity_delta", 5.0d);
             double destHousing = config.getDouble("migration.logic.dest_min_housing_ratio", 1.05d);
             double destEmployment = config.getDouble("migration.logic.dest_min_employment_floor", 0.75d);
             double postMoveHousing = config.getDouble("migration.logic.post_move_housing_floor", 1.0d);
+            boolean allowZeroPop = config.getBoolean("migration.logic.allow_zero_population_destinations", true);
             double linkWeight = config.getDouble("migration.logic.score_weights.link_strength", 0.6d);
             double prosperityWeight = config.getDouble("migration.logic.score_weights.prosperity_delta", 0.3d);
             if (config.contains("migration.logic.score_weights.vacancies") && plugin != null) {
@@ -1772,8 +1836,11 @@ public class MigrationService implements Runnable {
             double reliefRatio = config.getDouble("migration.logic.unemployment.nitwit_relief_ratio", 1.0d);
             UnemploymentSettings unemployment = UnemploymentSettings.from(softCap, hardCap, reliefRatio);
 
-            return new LogicSettings(freshnessMillis, consistency, minProsperityDelta, destHousing, destEmployment,
-                    postMoveHousing, weights, unemployment);
+            long baseMillis = TimeUnit.SECONDS.toMillis(Math.max(0, baseSecs));
+            long slackMillis = TimeUnit.SECONDS.toMillis(Math.max(0, slackSecs));
+
+            return new LogicSettings(baseMillis, slackMillis, backlogWeight, consistency, minProsperityDelta,
+                    destHousing, destEmployment, postMoveHousing, allowZeroPop, weights, unemployment);
         }
 
         static final class UnemploymentSettings {

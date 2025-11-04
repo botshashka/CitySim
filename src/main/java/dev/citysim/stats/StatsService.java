@@ -36,6 +36,9 @@ public class StatsService {
     private StationCountingMode stationCountingMode = StationCountingMode.MANUAL;
     private boolean stationCountingWarningLogged = false;
     private int scanProgressTaskId = -1;
+    private int configuredMaxCitiesPerTick = 1;
+    private int configuredMaxEntityChunksPerTick = 2;
+    private int configuredMaxBedBlocksPerTick = 2048;
 
     public StatsService(Plugin plugin, CityManager cityManager, StationCounter stationCounter) {
         this(plugin, cityManager, stationCounter, null, null, null);
@@ -350,6 +353,11 @@ public class StatsService {
         }
 
         scanScheduler.setLimits(maxCitiesPerTick, maxEntityChunksPerTick, maxBedBlocksPerTick);
+        long sweepIntervalMillis = Math.max(1L, statsUpdateScheduler.getStatsIntervalTicks()) * 50L;
+        scanScheduler.setBaseSweepIntervalMillis(sweepIntervalMillis);
+        configuredMaxCitiesPerTick = maxCitiesPerTick;
+        configuredMaxEntityChunksPerTick = maxEntityChunksPerTick;
+        configuredMaxBedBlocksPerTick = maxBedBlocksPerTick;
 
         happinessCalculator.setLightNeutral(lightNeutral);
         happinessCalculator.setLightMaxPts(lightMaxPts);
@@ -451,6 +459,31 @@ public class StatsService {
         city.statsTimestamp = completedAtMillis;
     }
 
+    public FreshnessSnapshot getFreshnessSnapshot() {
+        int cityCount = cityManager.all().size();
+        long statsIntervalTicks = statsUpdateScheduler != null ? statsUpdateScheduler.getStatsIntervalTicks() : 100L;
+        return new FreshnessSnapshot(
+                cityCount,
+                configuredMaxCitiesPerTick,
+                configuredMaxEntityChunksPerTick,
+                configuredMaxBedBlocksPerTick,
+                statsIntervalTicks,
+                scanScheduler.pendingCount(),
+                scanScheduler.scheduledCount(),
+                scanScheduler.activeCount()
+        );
+    }
+
+    public record FreshnessSnapshot(int cityCount,
+                                    int maxCitiesPerTick,
+                                    int maxEntityChunksPerTick,
+                                    int maxBedBlocksPerTick,
+                                    long statsIntervalTicks,
+                                    int pendingCount,
+                                    int scheduledCount,
+                                    int activeCount) {
+    }
+
     private void startProgressTask() {
         if (scanProgressTaskId != -1) {
             return;
@@ -491,6 +524,9 @@ public class StatsService {
                 applyScanCompletion(city, result, completedAt, metricsComputed);
             }
         }
-        scanScheduler.startJobs(false);
+        int pendingStarted = scanScheduler.startJobs(false);
+        if (pendingStarted == 0 && scanScheduler.activeCount() < configuredMaxCitiesPerTick) {
+            scanScheduler.startJobs(true);
+        }
     }
 }
