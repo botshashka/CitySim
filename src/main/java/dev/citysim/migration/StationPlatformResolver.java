@@ -160,6 +160,13 @@ public class StationPlatformResolver implements Listener {
         plugin.getLogger().warning("No wall-sign stations found for " + cityLabel + "; set migration.teleport.require_wall_sign=false if you use standing/post signs.");
     }
 
+    public boolean hasOnlyNonWallSignStations(String cityId) {
+        if (cityId == null) {
+            return false;
+        }
+        return wallSignWarnings.contains(cityId);
+    }
+
     private void clearAll() {
         cache.clear();
         metadata.clear();
@@ -410,6 +417,10 @@ public class StationPlatformResolver implements Listener {
         }
     }
 
+    /**
+     * Ensures the chunk that backs the provided block coordinates is loaded, synchronously loading if required.
+     * Platform rebuilds are throttled, so the occasional sync load should remain lightweight.
+     */
     private static boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
         int chunkX = blockX >> 4;
         int chunkZ = blockZ >> 4;

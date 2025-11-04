@@ -145,7 +145,7 @@ migration:
   min_city_population_floor: 10
 
   logic:
-    freshness_max_secs: 60
+    freshness_max_secs: 60 # Migration now keys off the newest timestamp across stats + scan caches; newer sources keep moves flowing
     require_consistency_scans: 3
     min_prosperity_delta: 5
     dest_min_housing_ratio: 1.05
@@ -182,7 +182,7 @@ migration:
       - [ 1, +1, -1]
       - [-1, +1,  1]
       - [-1, +1, -1]
-    require_wall_sign: true
+    require_wall_sign: true # Leave true for wall-mounted TrainCarts signs; set to false if your stations use standing/post signs
     max_candidates_per_station: 8
     cache_ttl_ticks: 200
     rebuild_per_tick: 8

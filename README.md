@@ -132,6 +132,11 @@ for tweaking:
   ignore station scoring entirely.
 - **`migration`** – Governs the automated villager migration system, including teleport safety rules.
   - `teleport.require_wall_sign` – Defaults to `true`. When enabled, migration only considers TrainCarts stations that use wall-mounted signs for teleport anchors. Set this to `false` if your network relies on standing/post signs so they are eligible; the plugin logs a warning when no wall-sign stations are found and the restriction blocks every candidate.
+
+### Troubleshooting migration targets
+- Migration freshness checks now look at the newest timestamp across the city stats row and every populated scan cache (block + entity). If one cache lags behind, the DEBUG log prints each timestamp and which one was chosen so you can spot the stale source. Adjust `migration.logic.freshness_max_secs` if your scan cadence is intentionally slower.
+- If your TrainCarts stations rely on standing or frame signs, set `migration.teleport.require_wall_sign: false`. When the flag stays true and only non-wall signs exist, the resolver emits an INFO hint explaining that platform caching is blocked by the requirement.
+- When no prevalidated platforms are in cache (for example after a station rebuild), the fallback sampler automatically widens to the configured `migration.teleport.radius` so villagers can still land on a safe, non-rail floor that honors every existing safety rule.
 - **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
 - **`titles`** – Enables or disables entry titles, sets the cooldown, and defines the MiniMessage text players see in different
   situations (keep `{city}` as the placeholder for the city name).

@@ -36,6 +36,7 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class MigrationService implements Runnable {
 
@@ -64,6 +65,7 @@ public class MigrationService implements Runnable {
     private final TokenBucket globalBucket = new TokenBucket();
     private final Map<String, Integer> platformIndices = new HashMap<>();
     private final Map<String, Long> staleStatsLogTick = new HashMap<>();
+    private final Map<String, Long> platformHintsLogTick = new HashMap<>();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
@@ -117,6 +119,7 @@ public class MigrationService implements Runnable {
         linkBuckets.clear();
         platformIndices.clear();
         staleStatsLogTick.clear();
+        platformHintsLogTick.clear();
         globalBucket.configure(settings.rate.globalPerInterval);
         globalBucket.reset();
         logicalTick = 0L;
@@ -144,6 +147,8 @@ public class MigrationService implements Runnable {
         if (cities.isEmpty()) {
             return;
         }
+
+        prunePlatformRoundRobin(cities);
 
         for (City city : cities) {
             if (city == null || city.id == null) {
@@ -204,6 +209,24 @@ public class MigrationService implements Runnable {
             delayedQueue.poll();
             executeApprovedMove(move, nowMillis);
         }
+    }
+
+    private void prunePlatformRoundRobin(Collection<City> cities) {
+        if (platformIndices.isEmpty() || cities == null || cities.isEmpty()) {
+            return;
+        }
+        Set<String> activeIds = new HashSet<>();
+        for (City city : cities) {
+            if (city == null || city.id == null) {
+                continue;
+            }
+            activeIds.add(city.id);
+        }
+        if (activeIds.isEmpty()) {
+            platformIndices.clear();
+            return;
+        }
+        platformIndices.keySet().removeIf(id -> !activeIds.contains(id));
     }
 
     private void updateEma(City city) {
@@ -475,7 +498,8 @@ public class MigrationService implements Runnable {
                     return;
                 }
                 int clampY = fallbackAnchor.getBlockY() + 1;
-                target = findDestinationSpot(fallbackAnchor, settings.teleport, FALLBACK_SIGN_RADIUS, clampY);
+                int fallbackRadiusLimit = Math.max(FALLBACK_SIGN_RADIUS, Math.max(0, settings.teleport.radius));
+                target = findDestinationSpot(fallbackAnchor, settings.teleport, fallbackRadiusLimit, clampY);
                 if (target == null) {
                     return;
                 }
@@ -549,14 +573,15 @@ public class MigrationService implements Runnable {
         if (settings.logic.freshnessMillis <= 0) {
             return true;
         }
-        long last = lastStatsTimestamp(city);
+        StatsTimestamps stats = lastStatsTimestamp(city);
+        long last = stats.maxTimestamp();
         if (last <= 0L) {
-            logStaleStatsSkip(city, nowMillis, last);
+            logStaleStatsSkip(city, nowMillis, stats);
             return false;
         }
         boolean fresh = nowMillis - last <= settings.logic.freshnessMillis;
         if (!fresh) {
-            logStaleStatsSkip(city, nowMillis, last);
+            logStaleStatsSkip(city, nowMillis, stats);
             return false;
         }
         if (city != null && city.id != null) {
@@ -565,23 +590,30 @@ public class MigrationService implements Runnable {
         return true;
     }
 
-    private long lastStatsTimestamp(City city) {
+    private StatsTimestamps lastStatsTimestamp(City city) {
+        Map<String, Long> sources = new LinkedHashMap<>();
+        long maxTimestamp = 0L;
         if (city == null) {
-            return 0L;
+            return new StatsTimestamps(0L, Map.of());
         }
-        long timestamp = Math.max(0L, city.statsTimestamp);
+        long statsTimestamp = Math.max(0L, city.statsTimestamp);
+        sources.put("stats", statsTimestamp);
+        maxTimestamp = Math.max(maxTimestamp, statsTimestamp);
+
         City.BlockScanCache blockCache = city.blockScanCache;
-        if (blockCache != null) {
-            timestamp = Math.max(timestamp, blockCache.timestamp);
-        }
+        long blockTimestamp = blockCache != null ? Math.max(0L, blockCache.timestamp) : 0L;
+        sources.put("block_scan", blockTimestamp);
+        maxTimestamp = Math.max(maxTimestamp, blockTimestamp);
+
         City.EntityScanCache entityCache = city.entityScanCache;
-        if (entityCache != null) {
-            timestamp = Math.max(timestamp, entityCache.timestamp);
-        }
-        return timestamp;
+        long entityTimestamp = entityCache != null ? Math.max(0L, entityCache.timestamp) : 0L;
+        sources.put("entity_scan", entityTimestamp);
+        maxTimestamp = Math.max(maxTimestamp, entityTimestamp);
+
+        return new StatsTimestamps(maxTimestamp, Collections.unmodifiableMap(sources));
     }
 
-    private void logStaleStatsSkip(City city, long nowMillis, long lastTimestamp) {
+    private void logStaleStatsSkip(City city, long nowMillis, StatsTimestamps timestamps) {
         if (city == null || city.id == null) {
             return;
         }
@@ -591,13 +623,38 @@ public class MigrationService implements Runnable {
         }
         staleStatsLogTick.put(city.id, logicalTick);
         String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        long lastTimestamp = timestamps.maxTimestamp();
+        String baseMessage;
         if (lastTimestamp > 0L) {
             long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - lastTimestamp)));
             long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, settings.logic.freshnessMillis)));
-            plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats " + ageSeconds + "s old (max " + maxSeconds + "s).");
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
         } else {
-            plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats have never completed.");
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats have never completed.";
         }
+        if (plugin.getLogger().isLoggable(Level.FINE)) {
+            plugin.getLogger().fine(baseMessage + " Sources=" + timestamps.describeSources(nowMillis) + ", max=" + lastTimestamp);
+        } else {
+            plugin.getLogger().fine(baseMessage);
+        }
+    }
+
+    private void logNoPlatformCandidates(City city, TeleportSettings teleportSettings, boolean sawNonWallSigns) {
+        if (city == null || city.id == null) {
+            return;
+        }
+        long lastTick = platformHintsLogTick.getOrDefault(city.id, Long.MIN_VALUE);
+        if (lastTick == logicalTick) {
+            return;
+        }
+        platformHintsLogTick.put(city.id, logicalTick);
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        boolean requireWallSign = teleportSettings != null && teleportSettings.requireWallSign;
+        if (requireWallSign && sawNonWallSigns) {
+            plugin.getLogger().info("No platform candidates were cached for '" + cityLabel + "' — stations in range use non-wall signs while migration.teleport.require_wall_sign=true.");
+            return;
+        }
+        plugin.getLogger().info("No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.");
     }
 
     private String linkKey(String originId, String destinationId) {
@@ -657,6 +714,9 @@ public class MigrationService implements Runnable {
 
     private Location selectPlatformTarget(City city, List<StationPlatformResolver.StationSpots> stationSpots, TeleportSettings teleportSettings) {
         if (city == null || city.id == null || stationSpots == null || stationSpots.isEmpty()) {
+            if (city != null && city.id != null) {
+                platformIndices.remove(city.id);
+            }
             return null;
         }
         List<Location> candidates = new ArrayList<>();
@@ -666,7 +726,10 @@ public class MigrationService implements Runnable {
             }
             candidates.addAll(station.spots());
         }
+        boolean sawNonWallSigns = platformResolver != null && platformResolver.hasOnlyNonWallSignStations(city.id);
         if (candidates.isEmpty()) {
+            platformIndices.remove(city.id);
+            logNoPlatformCandidates(city, teleportSettings, sawNonWallSigns);
             return null;
         }
         int startIndex = Math.max(0, platformIndices.getOrDefault(city.id, 0));
@@ -692,7 +755,8 @@ public class MigrationService implements Runnable {
             platformIndices.put(city.id, (idx + 1) % candidates.size());
             return candidate.clone();
         }
-        platformIndices.put(city.id, 0);
+        platformIndices.remove(city.id);
+        logNoPlatformCandidates(city, teleportSettings, sawNonWallSigns);
         if (platformResolver != null) {
             platformResolver.invalidateCity(city);
         }
@@ -921,6 +985,10 @@ public class MigrationService implements Runnable {
         return centerY;
     }
 
+    /**
+     * Ensures the chunk containing the supplied block coordinates is loaded, synchronously loading if necessary.
+     * Migration approvals are rate-limited, so the occasional sync load stays within safe server budgets.
+     */
     private boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
         if (world == null) {
             return false;
@@ -1064,6 +1132,32 @@ public class MigrationService implements Runnable {
     private record CityBounds(int minX, int maxX, int minZ, int maxZ, int centerX, int centerZ) {
         double maxDimension() {
             return Math.max(maxX - minX, maxZ - minZ);
+        }
+    }
+
+    private record StatsTimestamps(long maxTimestamp, Map<String, Long> perSource) {
+        String describeSources(long nowMillis) {
+            if (perSource == null || perSource.isEmpty()) {
+                return "{}";
+            }
+            StringBuilder builder = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<String, Long> entry : perSource.entrySet()) {
+                if (!first) {
+                    builder.append(", ");
+                }
+                first = false;
+                long timestamp = entry.getValue() != null ? entry.getValue() : 0L;
+                builder.append(entry.getKey()).append('=');
+                if (timestamp <= 0L) {
+                    builder.append("never");
+                    continue;
+                }
+                long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - timestamp)));
+                builder.append(timestamp).append(" (age ").append(ageSeconds).append("s)");
+            }
+            builder.append('}');
+            return builder.toString();
         }
     }
 
