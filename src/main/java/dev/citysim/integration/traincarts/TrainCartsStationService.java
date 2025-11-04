@@ -57,8 +57,34 @@ public class TrainCartsStationService implements StationCounter {
 
     @Override
     public Optional<StationCountResult> countStations(City city) {
+        Optional<List<Block>> blocks = resolveStationBlocks(city);
+        if (blocks.isEmpty()) {
+            return Optional.empty();
+        }
+        int total = blocks.get().size();
+        int stations = (total >>> 1) + (total & 1);
+        failureLogged = false;
+        return Optional.of(new StationCountResult(stations, total));
+    }
+
+    public Optional<List<Block>> resolveStationBlocks(City city) {
+        Optional<StationBlockResult> result = enumerateStationBlocks(city);
+        if (result.isEmpty()) {
+            return Optional.empty();
+        }
+        StationBlockResult blocks = result.get();
+        if (blocks.failure() != null) {
+            Failure failure = blocks.failure();
+            logFailureOnce(failure.context(), failure.exception());
+            return Optional.empty();
+        }
+        failureLogged = false;
+        return Optional.of(blocks.blocks());
+    }
+
+    private Optional<StationBlockResult> enumerateStationBlocks(City city) {
         if (city == null || city.cuboids == null || city.cuboids.isEmpty()) {
-            return Optional.of(new StationCountResult(0, 0));
+            return Optional.of(new StationBlockResult(List.of(), null));
         }
 
         Map<World, List<Cuboid>> cuboidsByWorld = new HashMap<>();
@@ -74,21 +100,21 @@ public class TrainCartsStationService implements StationCounter {
         }
 
         if (cuboidsByWorld.isEmpty()) {
-            return Optional.of(new StationCountResult(0, 0));
+            return Optional.of(new StationBlockResult(List.of(), null));
         }
 
         Object signController;
         try {
             signController = binding.getSignController();
         } catch (ReflectiveOperationException ex) {
-            return logFailure("accessing TrainCarts sign controller", ex);
+            return Optional.of(new StationBlockResult(List.of(), new Failure("accessing TrainCarts sign controller", ex)));
         }
         if (signController == null) {
             return Optional.empty();
         }
 
         Set<String> counted = new HashSet<>();
-        int total = 0;
+        List<Block> blocks = new ArrayList<>();
 
         try {
             for (Map.Entry<World, List<Cuboid>> entry : cuboidsByWorld.entrySet()) {
@@ -131,27 +157,35 @@ public class TrainCartsStationService implements StationCounter {
                         }
                         String key = blockKey(world, block.getX(), block.getY(), block.getZ());
                         if (counted.add(key)) {
-                            total++;
+                            blocks.add(block);
                         }
                     }
                 }
             }
         } catch (ReflectiveOperationException ex) {
-            return logFailure("counting TrainCarts station signs", ex);
+            return Optional.of(new StationBlockResult(List.of(), new Failure("counting TrainCarts station signs", ex)));
         }
 
-        failureLogged = false;
-        int stations = (total >>> 1) + (total & 1);
-        return Optional.of(new StationCountResult(stations, total));
+        return Optional.of(new StationBlockResult(List.copyOf(blocks), null));
     }
 
     private Optional<StationCountResult> logFailure(String context, Exception ex) {
+        logFailureOnce(context, ex);
+        return Optional.empty();
+    }
+
+    private void logFailureOnce(String context, Exception ex) {
         if (!failureLogged) {
             plugin.getLogger().log(Level.WARNING,
                     "Failed while " + context + " for TrainCarts integration: " + ex.getMessage(), ex);
             failureLogged = true;
         }
-        return Optional.empty();
+    }
+
+    private record StationBlockResult(List<Block> blocks, Failure failure) {
+    }
+
+    private record Failure(String context, Exception exception) {
     }
 
     private boolean isInsideAny(List<Cuboid> cuboids, int x, int y, int z) {

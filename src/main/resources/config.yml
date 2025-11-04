@@ -172,10 +172,33 @@ migration:
     disallow_below_rail: true
     rail_avoid_horiz_radius: 1
     rail_avoid_vert_above: 3
+    platform_offsets:
+      - [ 0, +1,  0]
+      - [ 1, +1,  0]
+      - [-1, +1,  0]
+      - [ 0, +1,  1]
+      - [ 0, +1, -1]
+      - [ 1, +1,  1]
+      - [ 1, +1, -1]
+      - [-1, +1,  1]
+      - [-1, +1, -1]
+    require_wall_sign: true
+    max_candidates_per_station: 8
+    cache_ttl_ticks: 200
+    rebuild_per_tick: 8
     floor_allowlist: []
     floor_block_blacklist:
       - tag:CARPETS
       - tag:TRAPDOORS
+      - FENCE
+      - NETHER_BRICK_FENCE
+      - COBBLESTONE_WALL
+      - MOSSY_COBBLESTONE_WALL
+      - GLASS_PANE
+      - IRON_BARS
+      - WATER
+      - LAVA
+      # Use explicit variants if tags are unavailable in your loader
       - SCAFFOLDING
       - ICE
       - PACKED_ICE

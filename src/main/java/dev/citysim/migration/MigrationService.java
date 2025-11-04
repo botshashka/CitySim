@@ -15,7 +15,6 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
-import org.bukkit.Tag;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -44,11 +43,13 @@ public class MigrationService implements Runnable {
     private static final double FALLBACK_VERTICAL_RANGE = 6.0;
     private static final double FALLBACK_VERTICAL_RANGE_WIDE = 8.0;
     private static final double MAX_FALLBACK_RADIUS = 64.0;
+    private static final int FALLBACK_SIGN_RADIUS = 4;
 
     private final Plugin plugin;
     private final CityManager cityManager;
     private final LinkService linkService;
     private final NamespacedKey cooldownKey;
+    private final StationPlatformResolver platformResolver;
 
     private final Map<String, CityMigrationCounters> counters = new HashMap<>();
     private final Map<String, CityEma> cityEmas = new HashMap<>();
@@ -61,20 +62,25 @@ public class MigrationService implements Runnable {
     private final Map<String, Integer> pendingFromOrigin = new HashMap<>();
     private final PriorityQueue<DelayedMove> delayedQueue = new PriorityQueue<>(Comparator.comparingLong(DelayedMove::executeTick));
     private final TokenBucket globalBucket = new TokenBucket();
+    private final Map<String, Integer> platformIndices = new HashMap<>();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
     private long logicalTick = 0L;
 
-    public MigrationService(Plugin plugin, CityManager cityManager, LinkService linkService) {
+    public MigrationService(Plugin plugin, CityManager cityManager, LinkService linkService, StationPlatformResolver platformResolver) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.linkService = linkService;
         this.cooldownKey = new NamespacedKey(plugin, "migrate_until");
+        this.platformResolver = platformResolver;
     }
 
     public void reload(FileConfiguration config) {
         this.settings = MigrationSettings.fromConfig(plugin, config);
+        if (platformResolver != null) {
+            platformResolver.updateTeleportSettings(settings.teleport);
+        }
         restart();
     }
 
@@ -108,6 +114,7 @@ public class MigrationService implements Runnable {
         originBuckets.clear();
         destinationBuckets.clear();
         linkBuckets.clear();
+        platformIndices.clear();
         globalBucket.configure(settings.rate.globalPerInterval);
         globalBucket.reset();
         logicalTick = 0L;
@@ -446,12 +453,30 @@ public class MigrationService implements Runnable {
             }
 
             Location destinationAnchor = stationAnchor(destination);
-            if (destinationAnchor == null) {
-                return;
-            }
-            Location target = findDestinationSpot(destinationAnchor, settings.teleport);
-            if (target == null) {
-                return;
+            List<StationPlatformResolver.StationSpots> stationSpots = platformResolver != null
+                    ? platformResolver.resolveStations(destination)
+                    : List.of();
+            boolean hasPrevalidated = stationSpots.stream().anyMatch(spots -> spots != null && !spots.spots().isEmpty());
+
+            Location target;
+            if (hasPrevalidated) {
+                target = selectPlatformTarget(destination, stationSpots, settings.teleport);
+                if (target == null) {
+                    return;
+                }
+            } else {
+                if (platformResolver != null) {
+                    platformResolver.invalidateCity(destination);
+                }
+                Location fallbackAnchor = preferredFallbackAnchor(stationSpots, destinationAnchor);
+                if (fallbackAnchor == null) {
+                    return;
+                }
+                int clampY = fallbackAnchor.getBlockY() + 1;
+                target = findDestinationSpot(fallbackAnchor, settings.teleport, FALLBACK_SIGN_RADIUS, clampY);
+                if (target == null) {
+                    return;
+                }
             }
             if (!ensureChunkLoaded(target.getWorld(), target.getBlockX(), target.getBlockZ())) {
                 return;
@@ -599,6 +624,65 @@ public class MigrationService implements Runnable {
         return results;
     }
 
+    private Location selectPlatformTarget(City city, List<StationPlatformResolver.StationSpots> stationSpots, TeleportSettings teleportSettings) {
+        if (city == null || city.id == null || stationSpots == null || stationSpots.isEmpty()) {
+            return null;
+        }
+        List<Location> candidates = new ArrayList<>();
+        for (StationPlatformResolver.StationSpots station : stationSpots) {
+            if (station == null) {
+                continue;
+            }
+            candidates.addAll(station.spots());
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        int startIndex = Math.max(0, platformIndices.getOrDefault(city.id, 0));
+        for (int i = 0; i < candidates.size(); i++) {
+            int idx = (startIndex + i) % candidates.size();
+            Location candidate = candidates.get(idx);
+            if (candidate == null) {
+                continue;
+            }
+            World world = candidate.getWorld();
+            if (world == null) {
+                continue;
+            }
+            int x = candidate.getBlockX();
+            int z = candidate.getBlockZ();
+            if (!ensureChunkLoaded(world, x, z)) {
+                continue;
+            }
+            int floorY = candidate.getBlockY();
+            if (!isCandidateValid(world, x, floorY, z, teleportSettings)) {
+                continue;
+            }
+            platformIndices.put(city.id, (idx + 1) % candidates.size());
+            return candidate.clone();
+        }
+        platformIndices.put(city.id, 0);
+        if (platformResolver != null) {
+            platformResolver.invalidateCity(city);
+        }
+        return null;
+    }
+
+    private Location preferredFallbackAnchor(List<StationPlatformResolver.StationSpots> stationSpots, Location defaultAnchor) {
+        if (stationSpots != null) {
+            for (StationPlatformResolver.StationSpots station : stationSpots) {
+                if (station == null) {
+                    continue;
+                }
+                Location sign = station.signLocation();
+                if (sign != null) {
+                    return sign.clone();
+                }
+            }
+        }
+        return defaultAnchor != null ? defaultAnchor.clone() : null;
+    }
+
     private boolean isVillagerEligible(Villager villager, City city, long now) {
         if (villager == null || !villager.isValid() || villager.isDead()) {
             return false;
@@ -622,6 +706,13 @@ public class MigrationService implements Runnable {
     }
 
     private Location findDestinationSpot(Location anchor, TeleportSettings teleportSettings) {
+        return findDestinationSpot(anchor, teleportSettings, teleportSettings.radius, Integer.MAX_VALUE);
+    }
+
+    private Location findDestinationSpot(Location anchor, TeleportSettings teleportSettings, int radiusLimit, int maxStartY) {
+        if (anchor == null || teleportSettings == null) {
+            return null;
+        }
         World world = anchor.getWorld();
         if (world == null) {
             return null;
@@ -635,7 +726,7 @@ public class MigrationService implements Runnable {
         }
 
         int railY = findLocalRailY(world, baseX, baseY, baseZ, teleportSettings);
-        int radius = Math.max(0, teleportSettings.radius);
+        int radius = Math.max(0, Math.min(teleportSettings.radius, Math.max(0, radiusLimit)));
         int maxSamples = Math.max(1, teleportSettings.maxSamples);
 
         Set<Long> visited = new HashSet<>();
@@ -673,7 +764,7 @@ public class MigrationService implements Runnable {
 
             int surfaceY = Math.max(world.getMinHeight(), world.getHighestBlockYAt(candidateX, candidateZ));
             int startY = teleportSettings.requireYAtLeastRail ? Math.max(surfaceY, railY) : surfaceY;
-            startY = Math.min(startY, world.getMaxHeight() - 1);
+            startY = Math.min(startY, Math.min(world.getMaxHeight() - 1, Math.max(world.getMinHeight(), maxStartY)));
 
             for (int down = 0; down <= 2; down++) {
                 int floorY = startY - down;
@@ -1263,112 +1354,4 @@ public class MigrationService implements Runnable {
         }
     }
 
-    private static class TeleportSettings {
-        final int radius;
-        final int maxSamples;
-        final boolean requireYAtLeastRail;
-        final boolean disallowOnRail;
-        final boolean disallowBelowRail;
-        final int railAvoidHorizRadius;
-        final int railAvoidVertAbove;
-        final Set<Material> floorAllowlist;
-        final Set<Material> floorBlacklist;
-        final Set<Material> railMaterials;
-
-        private TeleportSettings(int radius, int maxSamples, boolean requireYAtLeastRail, boolean disallowOnRail,
-                                 boolean disallowBelowRail, int railAvoidHorizRadius, int railAvoidVertAbove,
-                                 Set<Material> floorAllowlist, Set<Material> floorBlacklist, Set<Material> railMaterials) {
-            this.radius = radius;
-            this.maxSamples = maxSamples;
-            this.requireYAtLeastRail = requireYAtLeastRail;
-            this.disallowOnRail = disallowOnRail;
-            this.disallowBelowRail = disallowBelowRail;
-            this.railAvoidHorizRadius = railAvoidHorizRadius;
-            this.railAvoidVertAbove = railAvoidVertAbove;
-            this.floorAllowlist = floorAllowlist == null ? Set.of() : floorAllowlist;
-            this.floorBlacklist = floorBlacklist == null ? Set.of() : floorBlacklist;
-            this.railMaterials = railMaterials == null ? Set.of() : railMaterials;
-        }
-
-        static TeleportSettings defaults() {
-            return new TeleportSettings(0, 1, true, true, true, 1, 3, Set.of(), Set.of(), Set.of());
-        }
-
-        static TeleportSettings fromConfig(Plugin plugin, FileConfiguration config, String path) {
-            int radius = Math.max(0, config.getInt(path + ".radius", 8));
-            int maxSamples = Math.max(1, config.getInt(path + ".max_samples", 24));
-            boolean requireY = config.getBoolean(path + ".require_y_at_least_rail", true);
-            boolean disallowOnRail = config.getBoolean(path + ".disallow_on_rail", true);
-            boolean disallowBelowRail = config.getBoolean(path + ".disallow_below_rail", true);
-            int avoidHoriz = Math.max(0, config.getInt(path + ".rail_avoid_horiz_radius", 1));
-            int avoidVert = Math.max(0, config.getInt(path + ".rail_avoid_vert_above", 3));
-            Set<Material> allow = materialSet(plugin, config.getStringList(path + ".floor_allowlist"), path + ".floor_allowlist");
-            Set<Material> blacklist = materialSet(plugin, config.getStringList(path + ".floor_block_blacklist"), path + ".floor_block_blacklist");
-            Set<Material> rails = materialSet(plugin, config.getStringList(path + ".rail_materials"), path + ".rail_materials");
-            return new TeleportSettings(radius, maxSamples, requireY, disallowOnRail, disallowBelowRail, avoidHoriz, avoidVert,
-                    allow, blacklist, rails);
-        }
-
-        private static Set<Material> materialSet(Plugin plugin, List<String> entries, String path) {
-            if (entries == null || entries.isEmpty()) {
-                return Collections.emptySet();
-            }
-            EnumSet<Material> set = EnumSet.noneOf(Material.class);
-            for (String entry : entries) {
-                if (entry == null || entry.isEmpty()) {
-                    continue;
-                }
-                boolean tagEntry = isTagEntry(entry);
-                Tag<Material> tag = resolveMaterialTag(entry);
-                if (tag != null) {
-                    addTagMaterials(set, tag);
-                    continue;
-                }
-                if (tagEntry) {
-                    if (plugin != null) {
-                        plugin.getLogger().warning("Unknown material tag '" + entry + "' in " + path);
-                    }
-                    continue;
-                }
-                Material material = Material.matchMaterial(entry.toUpperCase(Locale.ROOT));
-                if (material != null) {
-                    set.add(material);
-                } else if (plugin != null) {
-                    plugin.getLogger().warning("Unknown material '" + entry + "' in " + path);
-                }
-            }
-            return Collections.unmodifiableSet(set);
-        }
-
-        private static boolean isTagEntry(String entry) {
-            if (entry == null) {
-                return false;
-            }
-            return entry.trim().regionMatches(true, 0, "tag:", 0, 4);
-        }
-
-        private static Tag<Material> resolveMaterialTag(String entry) {
-            String value = entry.trim();
-            if (!value.regionMatches(true, 0, "tag:", 0, 4)) {
-                return null;
-            }
-            String tagName = value.substring(4).trim().toUpperCase(Locale.ROOT);
-            return switch (tagName) {
-                case "CARPETS" -> Tag.CARPETS;
-                case "TRAPDOORS" -> Tag.TRAPDOORS;
-                default -> null;
-            };
-        }
-
-        private static void addTagMaterials(EnumSet<Material> set, Tag<Material> tag) {
-            if (tag == null) {
-                return;
-            }
-            for (Material material : tag.getValues()) {
-                if (material != null) {
-                    set.add(material);
-                }
-            }
-        }
-    }
 }
