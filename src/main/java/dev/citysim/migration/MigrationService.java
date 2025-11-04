@@ -66,6 +66,7 @@ public class MigrationService implements Runnable {
     private final Map<String, Integer> platformIndices = new HashMap<>();
     private final Map<String, Long> staleStatsLogTick = new HashMap<>();
     private final Map<String, Long> platformHintsLogTick = new HashMap<>();
+    private final Map<String, Long> unemploymentGateLogTick = new HashMap<>();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
@@ -120,6 +121,7 @@ public class MigrationService implements Runnable {
         platformIndices.clear();
         staleStatsLogTick.clear();
         platformHintsLogTick.clear();
+        unemploymentGateLogTick.clear();
         globalBucket.configure(settings.rate.globalPerInterval);
         globalBucket.reset();
         logicalTick = 0L;
@@ -268,7 +270,6 @@ public class MigrationService implements Runnable {
         List<DestinationCandidate> rawCandidates = new ArrayList<>();
         double maxStrength = 0.0d;
         double maxProsperityDelta = 0.0d;
-        double maxVacancies = 0.0d;
 
         for (CityLink link : links) {
             City destination = link != null ? link.neighbor() : null;
@@ -293,15 +294,19 @@ public class MigrationService implements Runnable {
                 continue;
             }
 
+            if (!passesUnemploymentGate(destination)) {
+                updatePairConsistency(origin.id, destination.id, false);
+                continue;
+            }
+
             int pairStreak = updatePairConsistency(origin.id, destination.id, true);
             if (pairStreak < settings.logic.requireConsistencyScans) {
                 continue;
             }
 
-            double vacancies = Math.max(0, destination.vacanciesTotal);
             double strength = Math.max(0, link.strength());
 
-            DestinationCandidate candidate = new DestinationCandidate(destination, link, strength, prosperityDelta, vacancies);
+            DestinationCandidate candidate = new DestinationCandidate(destination, link, strength, prosperityDelta);
             rawCandidates.add(candidate);
 
             if (strength > maxStrength) {
@@ -309,9 +314,6 @@ public class MigrationService implements Runnable {
             }
             if (prosperityDelta > maxProsperityDelta) {
                 maxProsperityDelta = prosperityDelta;
-            }
-            if (vacancies > maxVacancies) {
-                maxVacancies = vacancies;
             }
         }
 
@@ -321,15 +323,11 @@ public class MigrationService implements Runnable {
 
         double maxStrengthFinal = maxStrength;
         double maxProsperityFinal = maxProsperityDelta;
-        double maxVacanciesFinal = maxVacancies;
-
         for (DestinationCandidate candidate : rawCandidates) {
             double linkScore = maxStrengthFinal > 0 ? candidate.linkStrength / maxStrengthFinal : 0.0d;
             double prosperityScore = maxProsperityFinal > 0 ? candidate.prosperityDelta / maxProsperityFinal : 0.0d;
-            double vacanciesScore = maxVacanciesFinal > 0 ? candidate.vacancies / maxVacanciesFinal : 0.0d;
             candidate.score = settings.logic.scoreWeights.linkStrength * clamp01(linkScore)
-                    + settings.logic.scoreWeights.prosperityDelta * clamp01(prosperityScore)
-                    + settings.logic.scoreWeights.vacancies * clamp01(vacanciesScore);
+                    + settings.logic.scoreWeights.prosperityDelta * clamp01(prosperityScore);
         }
 
         rawCandidates.sort(Comparator
@@ -398,6 +396,62 @@ public class MigrationService implements Runnable {
         }
         double effectiveHousing = beds / (double) denominator;
         return effectiveHousing >= settings.logic.postMoveHousingFloor;
+    }
+
+    private boolean passesUnemploymentGate(City destination) {
+        if (destination == null || destination.id == null) {
+            return false;
+        }
+        LogicSettings.UnemploymentSettings unemployment = settings.logic.unemployment;
+        if (unemployment == null) {
+            return true;
+        }
+        int adults = Math.max(0, destination.adultPopulation);
+        if (adults <= 0) {
+            return true;
+        }
+        int none = Math.max(0, destination.adultNone);
+        int nitwit = Math.max(0, destination.adultNitwit);
+        double noneShare = none / (double) adults;
+
+        if (noneShare > unemployment.hardCap()) {
+            logUnemploymentGate(destination, "hard_cap", noneShare, none, nitwit);
+            return false;
+        }
+        if (noneShare > unemployment.softCap()) {
+            double reliefThreshold = unemployment.nitwitReliefRatio() * none;
+            boolean relief = nitwit >= reliefThreshold;
+            if (!relief) {
+                logUnemploymentGate(destination, "soft_cap", noneShare, none, nitwit);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void logUnemploymentGate(City destination, String reasonKey, double noneShare, int none, int nitwit) {
+        if (destination == null || destination.id == null) {
+            return;
+        }
+        if (!plugin.getLogger().isLoggable(Level.FINE)) {
+            return;
+        }
+        String key = destination.id + ':' + reasonKey;
+        long lastTick = unemploymentGateLogTick.getOrDefault(key, Long.MIN_VALUE);
+        if (lastTick == logicalTick) {
+            return;
+        }
+        unemploymentGateLogTick.put(key, logicalTick);
+        String cityLabel = destination.name != null && !destination.name.isBlank() ? destination.name : destination.id;
+        String reason = switch (reasonKey) {
+            case "hard_cap" -> "dest NONE share > hard cap";
+            case "soft_cap" -> "soft cap, no nitwit relief";
+            default -> "unemployment gate";
+        };
+        String formattedShare = String.format(Locale.US, "%.2f", noneShare);
+        plugin.getLogger().fine("Skipping migration for city '" + cityLabel + "' (" + destination.id
+                + ") — " + reason + " (NONE share=" + formattedShare
+                + ", NONE=" + none + ", NITWIT=" + nitwit + ").");
     }
 
     private boolean reserveTokens(String originId, String destinationId, String linkKey) {
@@ -1237,15 +1291,13 @@ public class MigrationService implements Runnable {
         final CityLink link;
         final double linkStrength;
         final double prosperityDelta;
-        final double vacancies;
         double score;
 
-        DestinationCandidate(City destination, CityLink link, double linkStrength, double prosperityDelta, double vacancies) {
+        DestinationCandidate(City destination, CityLink link, double linkStrength, double prosperityDelta) {
             this.destination = destination;
             this.link = link;
             this.linkStrength = linkStrength;
             this.prosperityDelta = prosperityDelta;
-            this.vacancies = vacancies;
         }
     }
 
@@ -1379,7 +1431,7 @@ public class MigrationService implements Runnable {
             long cooldownMillis = TimeUnit.MINUTES.toMillis(cooldownMinutes);
             int populationFloor = Math.max(0, config.getInt("migration.min_city_population_floor", 10));
             TeleportSettings teleport = TeleportSettings.fromConfig(plugin, config, "migration.teleport");
-            LogicSettings logic = LogicSettings.fromConfig(config);
+            LogicSettings logic = LogicSettings.fromConfig(plugin, config);
             RateSettings rate = RateSettings.fromConfig(config);
             return new MigrationSettings(enabled, interval, maxMoves, cooldownMillis, populationFloor, teleport, logic, rate);
         }
@@ -1393,10 +1445,11 @@ public class MigrationService implements Runnable {
         final double destMinEmploymentFloor;
         final double postMoveHousingFloor;
         final ScoreWeights scoreWeights;
+        final UnemploymentSettings unemployment;
 
         private LogicSettings(long freshnessMillis, int requireConsistencyScans, double minProsperityDelta,
                               double destMinHousingRatio, double destMinEmploymentFloor, double postMoveHousingFloor,
-                              ScoreWeights scoreWeights) {
+                              ScoreWeights scoreWeights, UnemploymentSettings unemployment) {
             this.freshnessMillis = freshnessMillis;
             this.requireConsistencyScans = requireConsistencyScans;
             this.minProsperityDelta = minProsperityDelta;
@@ -1404,14 +1457,18 @@ public class MigrationService implements Runnable {
             this.destMinEmploymentFloor = destMinEmploymentFloor;
             this.postMoveHousingFloor = postMoveHousingFloor;
             this.scoreWeights = scoreWeights;
+            this.unemployment = unemployment;
         }
 
         static LogicSettings defaults() {
             return new LogicSettings(TimeUnit.SECONDS.toMillis(60), 3, 5.0d, 1.05d, 0.75d, 1.0d,
-                    new ScoreWeights(0.6d, 0.3d, 0.1d));
+                    new ScoreWeights(0.6d, 0.3d), UnemploymentSettings.defaults());
         }
 
-        static LogicSettings fromConfig(FileConfiguration config) {
+        static LogicSettings fromConfig(Plugin plugin, FileConfiguration config) {
+            if (config == null) {
+                return defaults();
+            }
             long freshnessMillis = TimeUnit.SECONDS.toMillis(Math.max(0, config.getLong("migration.logic.freshness_max_secs", 60)));
             int consistency = Math.max(1, config.getInt("migration.logic.require_consistency_scans", 3));
             double minProsperityDelta = config.getDouble("migration.logic.min_prosperity_delta", 5.0d);
@@ -1420,28 +1477,76 @@ public class MigrationService implements Runnable {
             double postMoveHousing = config.getDouble("migration.logic.post_move_housing_floor", 1.0d);
             double linkWeight = config.getDouble("migration.logic.score_weights.link_strength", 0.6d);
             double prosperityWeight = config.getDouble("migration.logic.score_weights.prosperity_delta", 0.3d);
-            double vacanciesWeight = config.getDouble("migration.logic.score_weights.vacancies", 0.1d);
-            ScoreWeights weights = new ScoreWeights(linkWeight, prosperityWeight, vacanciesWeight);
-            return new LogicSettings(freshnessMillis, consistency, minProsperityDelta, destHousing, destEmployment, postMoveHousing, weights);
+            if (config.contains("migration.logic.score_weights.vacancies") && plugin != null) {
+                plugin.getLogger().warning("migration.logic.score_weights.vacancies is deprecated and ignored.");
+            }
+            ScoreWeights weights = new ScoreWeights(linkWeight, prosperityWeight);
+
+            double softCap = config.getDouble("migration.logic.unemployment.none_share_soft_cap", 0.10d);
+            double hardCap = config.getDouble("migration.logic.unemployment.none_share_hard_cap", 0.20d);
+            double reliefRatio = config.getDouble("migration.logic.unemployment.nitwit_relief_ratio", 1.0d);
+            UnemploymentSettings unemployment = UnemploymentSettings.from(softCap, hardCap, reliefRatio);
+
+            return new LogicSettings(freshnessMillis, consistency, minProsperityDelta, destHousing, destEmployment,
+                    postMoveHousing, weights, unemployment);
+        }
+
+        static final class UnemploymentSettings {
+            private final double softCap;
+            private final double hardCap;
+            private final double nitwitReliefRatio;
+
+            private UnemploymentSettings(double softCap, double hardCap, double nitwitReliefRatio) {
+                this.softCap = softCap;
+                this.hardCap = hardCap;
+                this.nitwitReliefRatio = nitwitReliefRatio;
+            }
+
+            static UnemploymentSettings defaults() {
+                return new UnemploymentSettings(0.10d, 0.20d, 1.0d);
+            }
+
+            static UnemploymentSettings from(double softCap, double hardCap, double reliefRatio) {
+                double clampedSoft = clamp01(softCap);
+                double clampedHard = Math.max(clampedSoft, clamp01(hardCap));
+                double ratio = Math.max(0.0d, reliefRatio);
+                return new UnemploymentSettings(clampedSoft, clampedHard, ratio);
+            }
+
+            double softCap() {
+                return softCap;
+            }
+
+            double hardCap() {
+                return hardCap;
+            }
+
+            double nitwitReliefRatio() {
+                return nitwitReliefRatio;
+            }
+
+            private static double clamp01(double value) {
+                return Math.max(0.0d, Math.min(1.0d, value));
+            }
         }
     }
 
     private static class ScoreWeights {
         final double linkStrength;
         final double prosperityDelta;
-        final double vacancies;
 
-        ScoreWeights(double linkStrength, double prosperityDelta, double vacancies) {
-            double total = linkStrength + prosperityDelta + vacancies;
+        ScoreWeights(double linkStrength, double prosperityDelta) {
+            double total = linkStrength + prosperityDelta;
             if (total <= 0) {
-                this.linkStrength = 0.6d;
-                this.prosperityDelta = 0.3d;
-                this.vacancies = 0.1d;
+                double defaultLink = 0.6d;
+                double defaultProsperity = 0.3d;
+                double defaultTotal = defaultLink + defaultProsperity;
+                this.linkStrength = defaultLink / defaultTotal;
+                this.prosperityDelta = defaultProsperity / defaultTotal;
             } else {
                 double scale = 1.0d / total;
                 this.linkStrength = linkStrength * scale;
                 this.prosperityDelta = prosperityDelta * scale;
-                this.vacancies = vacancies * scale;
             }
         }
     }

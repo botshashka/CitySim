@@ -10,21 +10,6 @@ updates:
   # Lighting samples for non-high-rise cities focus on parcels with beds; high-rises
   # continue to scan their full claimed volume because interior light drives happiness.
 
-job_sites:
-  armorer: [BLAST_FURNACE]
-  butcher: [SMOKER]
-  cartographer: [CARTOGRAPHY_TABLE]
-  cleric: [BREWING_STAND]
-  farmer: [COMPOSTER]
-  fisherman: [BARREL]
-  fletcher: [FLETCHING_TABLE]
-  leatherworker: [CAULDRON]
-  librarian: [LECTERN]
-  mason: [STONECUTTER]
-  shepherd: [LOOM]
-  toolsmith: [SMITHING_TABLE]
-  weaponsmith: [GRINDSTONE]
-
 visualization:
   enabled: true
   particle: DUST
@@ -154,7 +139,10 @@ migration:
     score_weights:
       link_strength: 0.6
       prosperity_delta: 0.3
-      vacancies: 0.1
+    unemployment:
+      none_share_soft_cap: 0.10
+      none_share_hard_cap: 0.20
+      nitwit_relief_ratio: 1.0
 
   rate:
     interval_ticks: 200

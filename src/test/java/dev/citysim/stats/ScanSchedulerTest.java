@@ -2,8 +2,6 @@ package dev.citysim.stats;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
-import dev.citysim.stats.jobs.JobSiteAssignments;
-import dev.citysim.stats.jobs.JobSiteTracker;
 import dev.citysim.stats.schedule.ScanScheduler;
 import dev.citysim.stats.scan.CityScanCallbacks;
 import dev.citysim.stats.scan.CityScanRunner;
@@ -77,15 +75,6 @@ class ScanSchedulerTest {
             return breakdown;
         }
 
-        @Override
-        public JobSiteAssignments jobSiteAssignments() {
-            return JobSiteAssignments.empty();
-        }
-
-        @Override
-        public JobSiteTracker jobSiteTracker() {
-            return null;
-        }
     }
 
     private static final class DummyPlugin implements Plugin {

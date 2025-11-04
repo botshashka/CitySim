@@ -3,8 +3,6 @@ package dev.citysim.stats;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
-import dev.citysim.stats.jobs.JobSiteAssignments;
-import dev.citysim.stats.jobs.JobSiteTracker;
 import dev.citysim.stats.schedule.ScanScheduler;
 import dev.citysim.stats.scan.CityScanCallbacks;
 import dev.citysim.stats.scan.CityScanRunner;
@@ -33,7 +31,6 @@ public class StatsService {
     private final CityScanRunner scanRunner;
     private final ScanScheduler scanScheduler;
     private final StatsUpdateScheduler statsUpdateScheduler;
-    private final JobSiteTracker jobSiteTracker;
     private volatile StationCounter stationCounter;
     private StationCountingMode stationCountingMode = StationCountingMode.MANUAL;
     private boolean stationCountingWarningLogged = false;
@@ -57,15 +54,6 @@ public class StatsService {
         this.scanRunner = new CityScanRunner(scanCallbacks, scanDebugManager);
         this.scanScheduler = new ScanScheduler(cityManager, scanRunner);
         this.statsUpdateScheduler = statsUpdateScheduler != null ? statsUpdateScheduler : new StatsUpdateScheduler(plugin, this::tick);
-        this.jobSiteTracker = new JobSiteTracker(plugin, cityManager, this);
-        try {
-            var server = plugin.getServer();
-            if (server != null && server.getPluginManager() != null) {
-                server.getPluginManager().registerEvents(jobSiteTracker, plugin);
-            }
-        } catch (RuntimeException | LinkageError ignored) {
-            // Unit tests may run without a fully initialized Bukkit server.
-        }
         updateConfig();
     }
 
@@ -117,13 +105,6 @@ public class StatsService {
             return;
         }
         addPendingCity(city.id, forceRefresh, reason, createContext(triggerLocation));
-    }
-
-    public void requestCityUpdateWithContext(City city, boolean forceRefresh, String reason, ScanContext context) {
-        if (city == null || city.id == null) {
-            return;
-        }
-        addPendingCity(city.id, forceRefresh, false, reason, context);
     }
 
     public void requestCityUpdate(Location location) {
@@ -310,7 +291,6 @@ public class StatsService {
     public void updateConfig() {
         var config = plugin.getConfig();
 
-        jobSiteTracker.updateConfig(config);
         statsUpdateScheduler.updateConfig(config);
         blockScanService.updateConfig(config);
 
@@ -386,15 +366,6 @@ public class StatsService {
             return StatsService.this.calculateHappinessBreakdown(city, cache);
         }
 
-        @Override
-        public JobSiteAssignments jobSiteAssignments() {
-            return jobSiteTracker.assignments();
-        }
-
-        @Override
-        public JobSiteTracker jobSiteTracker() {
-            return StatsService.this.jobSiteTracker;
-        }
     }
 
     private void updateDerivedMetrics(City city) {
