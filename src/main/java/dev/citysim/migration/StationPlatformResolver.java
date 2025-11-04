@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 public class StationPlatformResolver implements Listener {
 
@@ -281,6 +282,24 @@ public class StationPlatformResolver implements Listener {
         }
     }
 
+    private void logPlatformDebug(Block signBlock, Block candidate, String reason) {
+        if (plugin == null) {
+            return;
+        }
+        String signDesc = describeBlock(signBlock);
+        String candidateDesc = describeBlock(candidate);
+        plugin.getLogger().info("[StationPlatformResolver] " + reason + " (sign=" + signDesc + ", candidate=" + candidateDesc + ")");
+    }
+
+    private String describeBlock(Block block) {
+        if (block == null) {
+            return "null";
+        }
+        World world = block.getWorld();
+        String worldName = world != null ? world.getName() : "unknown";
+        return worldName + "@" + block.getX() + "," + block.getY() + "," + block.getZ();
+    }
+
     private Block offsetFromSign(Block signBlock, TeleportSettings.PlatformOffset offset) {
         if (signBlock == null || offset == null) {
             return null;
@@ -317,7 +336,18 @@ public class StationPlatformResolver implements Listener {
         int x = start.getX();
         int z = start.getZ();
         int startY = start.getY();
-        int maxY = Math.max(startY, signBlock.getY() + teleportSettings.platformVerticalSearch);
+        int signY = signBlock.getY();
+        if (startY - 1 >= signY) {
+            int downY = startY - 1;
+            if (!ensureChunkLoaded(world, x, z)) {
+                return null;
+            }
+            Block below = world.getBlockAt(x, downY, z);
+            if (isValidPlatform(signBlock, below)) {
+                return below;
+            }
+        }
+        int maxY = Math.max(startY, signY + teleportSettings.platformVerticalSearch);
         for (int y = startY; y <= maxY; y++) {
             if (!ensureChunkLoaded(world, x, z)) {
                 return null;
@@ -366,37 +396,47 @@ public class StationPlatformResolver implements Listener {
     private boolean isValidPlatform(Block signBlock, Block floor) {
         World world = floor.getWorld();
         if (world == null) {
+            logPlatformDebug(signBlock, floor, "rejected: world missing");
             return false;
         }
         if (floor.getY() < signBlock.getY()) {
+            logPlatformDebug(signBlock, floor, "rejected: below sign Y");
             return false;
         }
         Material type = floor.getType();
         if (!type.isSolid() || !type.isOccluding()) {
+            logPlatformDebug(signBlock, floor, "rejected: non-solid/occluding floor (" + type + ")");
             return false;
         }
         if (!teleportSettings.floorAllowlist.isEmpty() && !teleportSettings.floorAllowlist.contains(type)) {
+            logPlatformDebug(signBlock, floor, "rejected: not in floor allowlist");
             return false;
         }
         if (teleportSettings.floorBlacklist.contains(type)) {
+            logPlatformDebug(signBlock, floor, "rejected: in floor blacklist");
             return false;
         }
         if (teleportSettings.disallowOnRail) {
             if (teleportSettings.railMaterials.contains(type)) {
+                logPlatformDebug(signBlock, floor, "rejected: floor is rail block");
                 return false;
             }
             Material feetType = world.getBlockAt(floor.getX(), floor.getY() + 1, floor.getZ()).getType();
             if (teleportSettings.railMaterials.contains(feetType)) {
+                logPlatformDebug(signBlock, floor, "rejected: landing space is rail");
                 return false;
             }
         }
         if (!hasHeadroom(world, floor.getY(), floor.getX(), floor.getZ())) {
+            logPlatformDebug(signBlock, floor, "rejected: insufficient headroom");
             return false;
         }
         if (teleportSettings.disallowBelowRail && isBelowAnyRail(world, floor.getX(), floor.getY(), floor.getZ())) {
+            logPlatformDebug(signBlock, floor, "rejected: rail above within disallowBelowRail");
             return false;
         }
         if (teleportSettings.railAvoidHorizRadius > 0 && railsNearSameY(world, floor.getX(), floor.getY(), floor.getZ())) {
+            logPlatformDebug(signBlock, floor, "rejected: rail nearby on same Y");
             return false;
         }
         return true;
@@ -428,12 +468,15 @@ public class StationPlatformResolver implements Listener {
 
     private boolean railsNearSameY(World world, int x, int floorY, int z) {
         int radius = teleportSettings.railAvoidHorizRadius;
+        if (radius <= 0) {
+            return false;
+        }
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
                 if (dx == 0 && dz == 0) {
                     continue;
                 }
-                Material type = world.getBlockAt(x + dx, floorY + 1, z + dz).getType();
+                Material type = world.getBlockAt(x + dx, floorY, z + dz).getType();
                 if (teleportSettings.railMaterials.contains(type)) {
                     return true;
                 }

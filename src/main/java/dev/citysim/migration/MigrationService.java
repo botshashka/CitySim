@@ -1000,24 +1000,28 @@ public class MigrationService implements Runnable {
     private void debugInfo(String message) {
         if (debugManager.isEnabled()) {
             debugManager.logInfo(message);
+            plugin.getLogger().info(message);
         }
     }
 
     private void debugSuccess(String message) {
         if (debugManager.isEnabled()) {
             debugManager.logSuccess(message);
+            plugin.getLogger().info(message);
         }
     }
 
     private void debugWarning(String message) {
         if (debugManager.isEnabled()) {
             debugManager.logWarning(message);
+            plugin.getLogger().warning(message);
         }
     }
 
     private void debugFailure(String message) {
         if (debugManager.isEnabled()) {
             debugManager.logFailure(message);
+            plugin.getLogger().warning(message);
         }
     }
 
