@@ -202,11 +202,13 @@ public class StatsService {
         if (result != null) {
             result.setGhostTown(city.isGhostTown() || result.isGhostTown());
             updateDerivedMetrics(city);
+            city.statsTimestamp = System.currentTimeMillis();
             return result;
         }
         HappinessBreakdown fallback = new HappinessBreakdown();
         fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
         updateDerivedMetrics(city);
+        city.statsTimestamp = System.currentTimeMillis();
         return fallback;
     }
 

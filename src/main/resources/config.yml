@@ -174,8 +174,8 @@ migration:
     rail_avoid_vert_above: 3
     floor_allowlist: []
     floor_block_blacklist:
-      - CARPET
-      - TRAPDOOR
+      - tag:CARPETS
+      - tag:TRAPDOORS
       - SCAFFOLDING
       - ICE
       - PACKED_ICE

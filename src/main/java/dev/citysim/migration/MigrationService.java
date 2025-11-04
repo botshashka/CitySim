@@ -15,6 +15,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
+import org.bukkit.Tag;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -36,8 +37,6 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-
-import java.util.UUID;
 
 public class MigrationService implements Runnable {
 
@@ -303,7 +302,7 @@ public class MigrationService implements Runnable {
 
         rawCandidates.sort(Comparator
                 .comparingDouble((DestinationCandidate c) -> c.score).reversed()
-                .thenComparingDouble(c -> c.link.distance()));
+                .thenComparingDouble(c -> horizDistance(origin, c.destination)));
 
         return rawCandidates;
     }
@@ -331,11 +330,6 @@ public class MigrationService implements Runnable {
             return false;
         }
 
-        Villager villager = selectVillager(origin, originAnchor, nowMillis);
-        if (villager == null) {
-            return false;
-        }
-
         Location destinationAnchor = stationAnchor(destination);
         if (destinationAnchor == null) {
             return false;
@@ -352,7 +346,7 @@ public class MigrationService implements Runnable {
 
         inflightToDest.merge(destination.id, 1, Integer::sum);
         pendingFromOrigin.merge(origin.id, 1, Integer::sum);
-        delayedQueue.add(new DelayedMove(executeTick, villager.getUniqueId(), origin.id, destination.id));
+        delayedQueue.add(new DelayedMove(executeTick, origin.id, destination.id));
         return true;
     }
 
@@ -442,14 +436,12 @@ public class MigrationService implements Runnable {
                 return;
             }
 
-            Entity entity = move.villagerId != null ? Bukkit.getEntity(move.villagerId) : null;
-            if (entity instanceof Villager v) {
-                villager = v;
-            }
-            if (villager == null || !villager.isValid() || villager.isDead()) {
+            Location originAnchor = stationAnchor(origin);
+            if (originAnchor == null) {
                 return;
             }
-            if (!isVillagerEligible(villager, origin, nowMillis)) {
+            villager = selectVillager(origin, originAnchor, nowMillis);
+            if (villager == null) {
                 return;
             }
 
@@ -541,7 +533,10 @@ public class MigrationService implements Runnable {
         if (city == null) {
             return 0L;
         }
-        long timestamp = 0L;
+        long timestamp = city.statsTimestamp;
+        if (timestamp > 0L) {
+            return timestamp;
+        }
         City.BlockScanCache cache = city.blockScanCache;
         if (cache != null) {
             timestamp = Math.max(timestamp, cache.timestamp);
@@ -838,7 +833,7 @@ public class MigrationService implements Runnable {
         return new Location(world, x + 0.5, y, z + 0.5);
     }
 
-    private CityBounds computeBounds(City city) {
+    private static CityBounds computeBounds(City city) {
         if (city == null || city.cuboids == null || city.cuboids.isEmpty()) {
             return null;
         }
@@ -866,6 +861,27 @@ public class MigrationService implements Runnable {
         int centerX = (int) Math.round((minX + maxX) / 2.0);
         int centerZ = (int) Math.round((minZ + maxZ) / 2.0);
         return new CityBounds(minX, maxX, minZ, maxZ, centerX, centerZ);
+    }
+
+    private static double[] centroidXZ(City city) {
+        CityBounds bounds = computeBounds(city);
+        if (bounds == null) {
+            return new double[]{0.0d, 0.0d};
+        }
+        double centerX = (bounds.minX + bounds.maxX) * 0.5d;
+        double centerZ = (bounds.minZ + bounds.maxZ) * 0.5d;
+        return new double[]{centerX, centerZ};
+    }
+
+    private static double horizDistance(City a, City b) {
+        if (a == null || b == null) {
+            return Double.MAX_VALUE;
+        }
+        double[] ca = centroidXZ(a);
+        double[] cb = centroidXZ(b);
+        double dx = ca[0] - cb[0];
+        double dz = ca[1] - cb[1];
+        return Math.sqrt(dx * dx + dz * dz);
     }
 
     private void recordDeparture(City origin, City destination) {
@@ -1019,13 +1035,11 @@ public class MigrationService implements Runnable {
 
     private static class DelayedMove {
         final long executeTick;
-        final UUID villagerId;
         final String originId;
         final String destinationId;
 
-        DelayedMove(long executeTick, UUID villagerId, String originId, String destinationId) {
+        DelayedMove(long executeTick, String originId, String destinationId) {
             this.executeTick = executeTick;
-            this.villagerId = villagerId;
             this.originId = originId;
             this.destinationId = destinationId;
         }
@@ -1055,6 +1069,11 @@ public class MigrationService implements Runnable {
         }
     }
 
+    /**
+     * Token bucket with coarse refill windows. Buckets refill when {@code logicalTick - lastRefillTick}
+     * meets or exceeds {@code migration.rate.interval_ticks}. {@code logicalTick} advances by
+     * {@code migration.interval_ticks} every service run, so approvals are capped per configured window.
+     */
     private static class TokenBucket {
         private int capacity = 0;
         private int tokens = Integer.MAX_VALUE;
@@ -1299,6 +1318,18 @@ public class MigrationService implements Runnable {
                 if (entry == null || entry.isEmpty()) {
                     continue;
                 }
+                boolean tagEntry = isTagEntry(entry);
+                Tag<Material> tag = resolveMaterialTag(entry);
+                if (tag != null) {
+                    addTagMaterials(set, tag);
+                    continue;
+                }
+                if (tagEntry) {
+                    if (plugin != null) {
+                        plugin.getLogger().warning("Unknown material tag '" + entry + "' in " + path);
+                    }
+                    continue;
+                }
                 Material material = Material.matchMaterial(entry.toUpperCase(Locale.ROOT));
                 if (material != null) {
                     set.add(material);
@@ -1308,6 +1339,36 @@ public class MigrationService implements Runnable {
             }
             return Collections.unmodifiableSet(set);
         }
+
+        private static boolean isTagEntry(String entry) {
+            if (entry == null) {
+                return false;
+            }
+            return entry.trim().regionMatches(true, 0, "tag:", 0, 4);
+        }
+
+        private static Tag<Material> resolveMaterialTag(String entry) {
+            String value = entry.trim();
+            if (!value.regionMatches(true, 0, "tag:", 0, 4)) {
+                return null;
+            }
+            String tagName = value.substring(4).trim().toUpperCase(Locale.ROOT);
+            return switch (tagName) {
+                case "CARPETS" -> Tag.CARPETS;
+                case "TRAPDOORS" -> Tag.TRAPDOORS;
+                default -> null;
+            };
+        }
+
+        private static void addTagMaterials(EnumSet<Material> set, Tag<Material> tag) {
+            if (tag == null) {
+                return;
+            }
+            for (Material material : tag.getValues()) {
+                if (material != null) {
+                    set.add(material);
+                }
+            }
+        }
     }
 }
-

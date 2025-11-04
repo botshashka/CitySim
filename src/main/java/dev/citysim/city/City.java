@@ -32,6 +32,7 @@ public class City {
     public double employmentRate = 0.0;
     public double housingRatio = 1.0;
     public double transitCoverage = 0.0;
+    public long statsTimestamp = 0L;
 
     public double gdp = 0.0;
     public double gdpPerCapita = 0.0;
