@@ -144,6 +144,26 @@ migration:
   cooldown_minutes: 10
   min_city_population_floor: 10
 
+  logic:
+    freshness_max_secs: 60
+    require_consistency_scans: 3
+    min_prosperity_delta: 5
+    dest_min_housing_ratio: 1.05
+    dest_min_employment_floor: 0.75
+    post_move_housing_floor: 1.00
+    score_weights:
+      link_strength: 0.6
+      prosperity_delta: 0.3
+      vacancies: 0.1
+
+  rate:
+    interval_ticks: 200
+    global_per_interval: 10
+    per_origin_per_interval: 2
+    per_destination_per_interval: 2
+    per_link_per_interval: 1
+    jitter_ticks_max: 40
+
   teleport:
     radius: 8
     max_samples: 24
