@@ -65,6 +65,7 @@ public class MigrationService implements Runnable {
     private final Map<String, TokenBucket> linkBuckets = new HashMap<>();
     private final Map<String, Integer> inflightToDest = new HashMap<>();
     private final Map<String, Integer> pendingFromOrigin = new HashMap<>();
+    private final Map<String, Integer> zeroPopulationArrivals = new HashMap<>();
     private final PriorityQueue<DelayedMove> delayedQueue = new PriorityQueue<>(Comparator.comparingLong(DelayedMove::executeTick));
     private final TokenBucket globalBucket = new TokenBucket();
     private final Map<String, Integer> platformIndices = new HashMap<>();
@@ -398,8 +399,9 @@ public class MigrationService implements Runnable {
             boolean housingOk = destinationEmpty
                     ? destination.beds >= settings.logic.zeroPopulationMinBeds
                     : destEma.housing() >= settings.logic.destMinHousingRatio;
+            int arrivalGraceUsed = Math.max(destination.population, arrivalCount(destination.id));
             boolean employmentOk = destinationEmpty
-                    ? destination.population < settings.logic.zeroPopulationEmploymentGrace
+                    ? arrivalGraceUsed < settings.logic.zeroPopulationEmploymentGrace
                     : destEma.employment() >= settings.logic.destMinEmploymentFloor;
             double prosperityDelta = destEma.prosperity() - originEma.prosperity();
             if (destinationEmpty) {
@@ -412,8 +414,9 @@ public class MigrationService implements Runnable {
                     String reason;
                     if (destinationEmpty) {
                         reason = String.format(Locale.US,
-                                "destination zero-pop gates failed (beds=%d, prosperityDelta=%.2f).",
+                                "destination zero-pop gates failed (beds=%d, arrivals=%d, prosperityDelta=%.2f).",
                                 Math.max(0, destination.beds),
+                                arrivalGraceUsed,
                                 prosperityDelta);
                     } else {
                         reason = String.format(Locale.US,
@@ -715,6 +718,8 @@ public class MigrationService implements Runnable {
                 debugInfo("Executing approved migration " + describeMove(origin, destination) + ".");
             }
 
+            boolean destinationWasZeroPop = destination.population <= 0;
+
             Location originAnchor = stationAnchor(origin);
             if (originAnchor == null) {
                 if (debugManager.isEnabled()) {
@@ -786,8 +791,10 @@ public class MigrationService implements Runnable {
             }
             villager.setFallDistance(0f);
             applyCooldown(villager, nowMillis);
+            resetVillagerProfession(villager);
             recordDeparture(origin, destination);
             recordArrival(destination, origin);
+            updateZeroPopulationArrivals(destination.id, destinationWasZeroPop);
             success = true;
             if (debugManager.isEnabled()) {
                 debugSuccess(String.format(Locale.US,
@@ -1267,7 +1274,7 @@ public class MigrationService implements Runnable {
                 if (!isCandidateValid(world, candidateX, floorY, candidateZ, teleportSettings)) {
                     continue;
                 }
-                return new Location(world, candidateX + 0.5, floorY + 0.1, candidateZ + 0.5);
+                return new Location(world, candidateX + 0.5, floorY + 1.01, candidateZ + 0.5);
             }
         }
         return null;
@@ -1387,6 +1394,32 @@ public class MigrationService implements Runnable {
      * Ensures the chunk containing the supplied block coordinates is loaded, synchronously loading if necessary.
      * Migration approvals are rate-limited, so the occasional sync load stays within safe server budgets.
      */
+
+    private void resetVillagerProfession(Villager villager) {
+        if (villager == null) {
+            return;
+        }
+        if (villager.getProfession() != Profession.NONE) {
+            villager.setProfession(Profession.NONE);
+        }
+        villager.setVillagerLevel(1);
+        villager.setVillagerExperience(0);
+    }
+
+    private int arrivalCount(String cityId) {
+        return zeroPopulationArrivals.getOrDefault(cityId, 0);
+    }
+
+    private void updateZeroPopulationArrivals(String cityId, boolean destinationWasZeroPop) {
+        if (cityId == null) {
+            return;
+        }
+        if (destinationWasZeroPop) {
+            zeroPopulationArrivals.merge(cityId, 1, Integer::sum);
+        } else {
+            zeroPopulationArrivals.remove(cityId);
+        }
+    }
     private boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
         if (world == null) {
             if (debugManager.isEnabled()) {

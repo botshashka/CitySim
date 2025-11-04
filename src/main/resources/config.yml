@@ -180,6 +180,8 @@ migration:
     max_candidates_per_station: 8
     cache_ttl_ticks: 200
     rebuild_per_tick: 8
+    platform_vertical_search: 6
+    platform_horizontal_offset: 0.4
     floor_allowlist: []
     floor_block_blacklist:
       - tag:CARPETS

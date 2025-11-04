@@ -3,6 +3,7 @@ package dev.citysim.stats.schedule;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.stats.scan.CityScanJob;
+import dev.citysim.stats.scan.CityScanJob.ScanWorkload;
 import dev.citysim.stats.scan.CityScanRunner;
 import dev.citysim.stats.scan.CityScanRunner.CompletedJob;
 import dev.citysim.stats.scan.RerunRequest;
@@ -31,6 +32,7 @@ public class ScanScheduler {
     private int maxEntityChunksPerTick = 2;
     private int maxBedBlocksPerTick = 2048;
     private long baseSweepIntervalMillis = TimeUnit.SECONDS.toMillis(5);
+    private final Map<String, CityScanStats> cityStats = new HashMap<>();
 
     public ScanScheduler(CityManager cityManager, CityScanRunner cityScanRunner) {
         this.cityManager = cityManager;
@@ -70,11 +72,11 @@ public class ScanScheduler {
         List<CompletedJob> completed = cityScanRunner.progressJobs(maxCitiesPerTick, maxEntityChunksPerTick, maxBedBlocksPerTick);
         if (!completed.isEmpty()) {
             long now = System.currentTimeMillis();
-            long delay = computeSweepDelayMillis();
             for (CompletedJob entry : completed) {
                 CityScanJob job = entry.job();
                 if (job != null && job.cityId() != null && !job.isCancelled()) {
-                    scheduleCity(job.cityId(), now + delay);
+                    registerCompletedJob(job.cityId(), entry.workload(), now);
+                    scheduleCity(job.cityId(), nextEligibleMillis(job.cityId(), now));
                 }
                 RerunRequest rerun = entry.rerunRequest();
                 if (rerun.requested() && job != null && job.cityId() != null) {
@@ -193,9 +195,25 @@ public class ScanScheduler {
         return job != null && !alreadyActive;
     }
 
+    private void registerCompletedJob(String cityId, ScanWorkload workload, long completedAtMillis) {
+        if (cityId == null) {
+            return;
+        }
+        CityScanStats stats = cityStats.computeIfAbsent(cityId, id -> new CityScanStats());
+        stats.recordCompletion(workload, completedAtMillis);
+    }
+
+    private long nextEligibleMillis(String cityId, long nowMillis) {
+        CityScanStats stats = cityStats.get(cityId);
+        long base = Math.max(1L, baseSweepIntervalMillis);
+        if (stats == null || stats.lastCompletionMillis <= 0L) {
+            return nowMillis;
+        }
+        return Math.max(stats.lastCompletionMillis + base, nowMillis);
+    }
+
     private void ensureSweepEntries() {
         long now = System.currentTimeMillis();
-        long delay = computeSweepDelayMillis();
         for (City city : cityManager.all()) {
             if (city == null || city.id == null) {
                 continue;
@@ -206,12 +224,7 @@ public class ScanScheduler {
             if (scheduledEntries.containsKey(city.id)) {
                 continue;
             }
-            long lastStats = Math.max(0L, city.statsTimestamp);
-            long nextEligible = Math.min(lastStats, now);
-            if (nextEligible <= 0L || nextEligible < now - delay) {
-                nextEligible = now - delay;
-            }
-            scheduleCity(city.id, nextEligible);
+            scheduleCity(city.id, nextEligibleMillis(city.id, now));
         }
     }
 
@@ -231,20 +244,30 @@ public class ScanScheduler {
         sweepQueue.add(entry);
     }
 
-    private long computeSweepDelayMillis() {
-        long base = Math.max(TimeUnit.SECONDS.toMillis(1), baseSweepIntervalMillis);
-        int cityCount = Math.max(1, cityManager.all().size());
-        int concurrency = Math.max(1, maxCitiesPerTick);
-        double cycles = Math.ceil(cityCount / (double) concurrency);
-        long adjusted = (long) Math.max(base, base * cycles);
-        return Math.max(base, adjusted);
-    }
-
     public void setBaseSweepIntervalMillis(long millis) {
         if (millis <= 0L) {
             baseSweepIntervalMillis = TimeUnit.SECONDS.toMillis(5);
         } else {
             baseSweepIntervalMillis = millis;
+        }
+    }
+
+    private static final class CityScanStats {
+        private long lastCompletionMillis;
+        private long totalDurationMillis;
+        private int scans;
+        private long lastDurationMillis;
+
+        void recordCompletion(ScanWorkload workload, long completedAtMillis) {
+            long duration = workload != null ? Math.max(1L, workload.durationMillis()) : 1L;
+            lastCompletionMillis = completedAtMillis;
+            lastDurationMillis = duration;
+            totalDurationMillis += duration;
+            scans++;
+        }
+
+        long averageDurationMillis() {
+            return scans == 0 ? 0L : totalDurationMillis / scans;
         }
     }
 

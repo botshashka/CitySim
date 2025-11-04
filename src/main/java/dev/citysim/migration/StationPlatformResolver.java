@@ -8,6 +8,10 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.type.WallSign;
+import org.bukkit.block.data.type.Sign;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -215,20 +219,148 @@ public class StationPlatformResolver implements Listener {
             if (spots.size() >= max) {
                 break;
             }
-            Block floor = signBlock.getRelative(offset.dx(), offset.dy(), offset.dz());
-            if (floor == null || floor.getWorld() == null) {
+            Block base = offsetFromSign(signBlock, offset);
+            if (base == null || base.getWorld() == null) {
                 continue;
             }
-            if (!ensureChunkLoaded(floor.getWorld(), floor.getX(), floor.getZ())) {
+            if (!ensureChunkLoaded(base.getWorld(), base.getX(), base.getZ())) {
                 continue;
             }
-            if (!isValidPlatform(signBlock, floor)) {
+            Block floor = findPlatformFloor(signBlock, base);
+            if (floor == null) {
                 continue;
             }
-            Location location = new Location(floor.getWorld(), floor.getX() + 0.5, floor.getY() + 0.1, floor.getZ() + 0.5);
+            Location location = new Location(floor.getWorld(), floor.getX() + 0.5, floor.getY() + 1.01, floor.getZ() + 0.5);
+            applyPlatformBackoff(signBlock, location);
             spots.add(location);
         }
+        if (spots.isEmpty()) {
+            collectFallbackSpots(signBlock, spots, max);
+        }
         return spots;
+    }
+
+    private void collectFallbackSpots(Block signBlock, List<Location> spots, int max) {
+        BlockFace facing = resolveSignFacing(signBlock);
+        if (!isHorizontal(facing)) {
+            return;
+        }
+        Block anchor = signBlock.getRelative(facing);
+        if (anchor == null || anchor.getWorld() == null) {
+            return;
+        }
+        World world = anchor.getWorld();
+        int forwardX = facing.getModX();
+        int forwardZ = facing.getModZ();
+        int rightX = forwardZ;
+        int rightZ = -forwardX;
+        int forwardRange = Math.max(1, Math.min(teleportSettings.radius > 0 ? teleportSettings.radius : 3, 4));
+        int sidewaysRange = 2;
+        for (int dz = 0; dz <= forwardRange && spots.size() < max; dz++) {
+            for (int dx = -sidewaysRange; dx <= sidewaysRange && spots.size() < max; dx++) {
+                for (int dy = 1; dy <= 2; dy++) {
+                    int worldDx = rightX * dx + forwardX * dz;
+                    int worldDz = rightZ * dx + forwardZ * dz;
+                    Block base = anchor.getRelative(worldDx, dy, worldDz);
+                    if (base == null || base.getWorld() == null) {
+                        continue;
+                    }
+                    if (!ensureChunkLoaded(world, base.getX(), base.getZ())) {
+                        continue;
+                    }
+                    Block floor = findPlatformFloor(signBlock, base);
+                    if (floor == null) {
+                        continue;
+                    }
+                    Location location = new Location(floor.getWorld(), floor.getX() + 0.5, floor.getY() + 1.01, floor.getZ() + 0.5);
+                    applyPlatformBackoff(signBlock, location);
+                    spots.add(location);
+                    break;
+                }
+            }
+        }
+    }
+
+    private Block offsetFromSign(Block signBlock, TeleportSettings.PlatformOffset offset) {
+        if (signBlock == null || offset == null) {
+            return null;
+        }
+        BlockFace facing = resolveSignFacing(signBlock);
+        if (!isHorizontal(facing)) {
+            return signBlock.getRelative(offset.dx(), offset.dy(), offset.dz());
+        }
+        Block anchor = signBlock.getRelative(facing);
+        if (anchor == null || anchor.getWorld() == null) {
+            return null;
+        }
+        int forwardX = facing.getModX();
+        int forwardZ = facing.getModZ();
+        int rightX = forwardZ;
+        int rightZ = -forwardX;
+        int worldDx = rightX * offset.dx() + forwardX * offset.dz();
+        int worldDz = rightZ * offset.dx() + forwardZ * offset.dz();
+        return anchor.getRelative(worldDx, offset.dy(), worldDz);
+    }
+
+    private boolean isHorizontal(BlockFace face) {
+        return face != null && (face == BlockFace.NORTH || face == BlockFace.SOUTH || face == BlockFace.EAST || face == BlockFace.WEST);
+    }
+
+    private Block findPlatformFloor(Block signBlock, Block start) {
+        if (start == null || signBlock == null) {
+            return null;
+        }
+        World world = start.getWorld();
+        if (world == null) {
+            return null;
+        }
+        int x = start.getX();
+        int z = start.getZ();
+        int startY = start.getY();
+        int maxY = Math.max(startY, signBlock.getY() + teleportSettings.platformVerticalSearch);
+        for (int y = startY; y <= maxY; y++) {
+            if (!ensureChunkLoaded(world, x, z)) {
+                return null;
+            }
+            Block candidate = world.getBlockAt(x, y, z);
+            if (isValidPlatform(signBlock, candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private void applyPlatformBackoff(Block signBlock, Location location) {
+        if (signBlock == null || location == null || teleportSettings.platformHorizontalOffset <= 0.0d) {
+            return;
+        }
+        BlockFace facing = resolveSignFacing(signBlock);
+        if (facing == null || !isHorizontal(facing)) {
+            return;
+        }
+        double offset = teleportSettings.platformHorizontalOffset;
+        int modX = facing.getModX();
+        int modZ = facing.getModZ();
+        if (modX != 0 || modZ != 0) {
+            double length = Math.sqrt(modX * modX + modZ * modZ);
+            if (length > 0.0d) {
+                location.add(-(modX / length) * offset, 0.0d, -(modZ / length) * offset);
+            }
+        }
+    }
+
+    private BlockFace resolveSignFacing(Block signBlock) {
+        if (signBlock == null) {
+            return null;
+        }
+        BlockData data = signBlock.getBlockData();
+        if (data instanceof WallSign wall) {
+            return wall.getFacing();
+        }
+        if (data instanceof org.bukkit.block.data.type.Sign standing) {
+            return standing.getRotation();
+        }
+        return null;
     }
 
     private boolean isValidPlatform(Block signBlock, Block floor) {
@@ -236,7 +368,7 @@ public class StationPlatformResolver implements Listener {
         if (world == null) {
             return false;
         }
-        if (floor.getY() < signBlock.getY() + 1) {
+        if (floor.getY() < signBlock.getY()) {
             return false;
         }
         Material type = floor.getType();

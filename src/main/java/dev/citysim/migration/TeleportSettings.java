@@ -29,6 +29,8 @@ final class TeleportSettings {
     final int maxCandidatesPerStation;
     final int cacheTtlTicks;
     final int rebuildPerTick;
+    final int platformVerticalSearch;
+    final double platformHorizontalOffset;
 
     private TeleportSettings(int radius,
                              int maxSamples,
@@ -44,7 +46,9 @@ final class TeleportSettings {
                              boolean requireWallSign,
                              int maxCandidatesPerStation,
                              int cacheTtlTicks,
-                             int rebuildPerTick) {
+                             int rebuildPerTick,
+                             int platformVerticalSearch,
+                             double platformHorizontalOffset) {
         this.radius = radius;
         this.maxSamples = maxSamples;
         this.requireYAtLeastRail = requireYAtLeastRail;
@@ -60,6 +64,8 @@ final class TeleportSettings {
         this.maxCandidatesPerStation = maxCandidatesPerStation;
         this.cacheTtlTicks = cacheTtlTicks;
         this.rebuildPerTick = rebuildPerTick;
+        this.platformVerticalSearch = platformVerticalSearch;
+        this.platformHorizontalOffset = platformHorizontalOffset;
     }
 
     static TeleportSettings defaults() {
@@ -70,7 +76,7 @@ final class TeleportSettings {
                 true,
                 true,
                 1,
-                3,
+                6,
                 Set.of(),
                 Set.of(),
                 Set.of(),
@@ -78,7 +84,9 @@ final class TeleportSettings {
                 true,
                 8,
                 200,
-                8
+                8,
+                3,
+                0.4d
         );
     }
 
@@ -98,9 +106,11 @@ final class TeleportSettings {
         int maxCandidates = Math.max(1, config.getInt(path + ".max_candidates_per_station", 8));
         int cacheTtlTicks = Math.max(20, config.getInt(path + ".cache_ttl_ticks", 200));
         int rebuildPerTick = Math.max(1, config.getInt(path + ".rebuild_per_tick", 8));
+        int platformVerticalSearch = Math.max(0, config.getInt(path + ".platform_vertical_search", 6));
+        double platformHorizontalOffset = Math.max(0.0d, config.getDouble(path + ".platform_horizontal_offset", 0.4d));
         return new TeleportSettings(radius, maxSamples, requireY, disallowOnRail, disallowBelowRail,
                 avoidHoriz, avoidVert, allow, blacklist, rails, platformOffsets,
-                requireWallSign, maxCandidates, cacheTtlTicks, rebuildPerTick);
+                requireWallSign, maxCandidates, cacheTtlTicks, rebuildPerTick, platformVerticalSearch, platformHorizontalOffset);
     }
 
     private static List<PlatformOffset> parseOffsets(List<?> rawOffsets) {

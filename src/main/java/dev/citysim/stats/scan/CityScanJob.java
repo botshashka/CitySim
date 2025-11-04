@@ -67,6 +67,10 @@ public class CityScanJob {
     private final CityScanCallbacks callbacks;
     private final ScanDebugManager debugManager;
 
+    private int entityChunksProcessed = 0;
+    private int bedBlocksProcessed = 0;
+    private ScanWorkload workloadSnapshot = ScanWorkload.EMPTY;
+
     public CityScanJob(City city, ScanRequest request, CityScanCallbacks callbacks, ScanDebugManager debugManager) {
         this.city = city;
         boolean refresh = request != null && request.forceRefresh();
@@ -102,6 +106,11 @@ public class CityScanJob {
         if (stage == Stage.BLOCK_CACHE) {
             finalizeCity();
             stage = Stage.COMPLETE;
+            workloadSnapshot = new ScanWorkload(
+                    Math.max(1L, System.currentTimeMillis() - startedAtMillis),
+                    entityChunksProcessed,
+                    bedBlocksProcessed
+            );
             if (debugManager.isEnabled()) {
                 debugManager.logJobCompleted(this);
             }
@@ -166,6 +175,7 @@ public class CityScanJob {
                 }
             }
             processed++;
+            entityChunksProcessed++;
         }
         return entityChunkIndex >= entityChunks.size();
     }
@@ -225,6 +235,7 @@ public class CityScanJob {
                     residentialBedChunks.add(new City.ChunkPosition(worldName, chunkX, chunkZ));
                 }
                 processed++;
+                bedBlocksProcessed++;
                 if (!advanceBedCursor(cuboid)) {
                     bedCuboidIndex++;
                     bedInitialized = false;
@@ -395,6 +406,35 @@ public class CityScanJob {
 
     public String cityId() {
         return city.id;
+    }
+
+
+    public ScanWorkload workload() {
+        return workloadSnapshot;
+    }
+    public static final class ScanWorkload {
+        public static final ScanWorkload EMPTY = new ScanWorkload(0L, 0, 0);
+        private final long durationMillis;
+        private final int entityChunks;
+        private final int bedBlockChecks;
+
+        public ScanWorkload(long durationMillis, int entityChunks, int bedBlockChecks) {
+            this.durationMillis = durationMillis;
+            this.entityChunks = entityChunks;
+            this.bedBlockChecks = bedBlockChecks;
+        }
+
+        public long durationMillis() {
+            return durationMillis;
+        }
+
+        public int entityChunks() {
+            return entityChunks;
+        }
+
+        public int bedBlockChecks() {
+            return bedBlockChecks;
+        }
     }
 
     public boolean isCancelled() {
@@ -576,3 +616,5 @@ public class CityScanJob {
         };
     }
 }
+
+    
