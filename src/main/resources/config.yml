@@ -145,7 +145,7 @@ migration:
   min_city_population_floor: 10
 
   logic:
-    freshness_max_secs: 60
+    freshness_max_secs: 60 # Migration now keys off the newest timestamp across stats + scan caches; newer sources keep moves flowing
     require_consistency_scans: 3
     min_prosperity_delta: 5
     dest_min_housing_ratio: 1.05
@@ -172,10 +172,33 @@ migration:
     disallow_below_rail: true
     rail_avoid_horiz_radius: 1
     rail_avoid_vert_above: 3
+    platform_offsets:
+      - [ 0, +1,  0]
+      - [ 1, +1,  0]
+      - [-1, +1,  0]
+      - [ 0, +1,  1]
+      - [ 0, +1, -1]
+      - [ 1, +1,  1]
+      - [ 1, +1, -1]
+      - [-1, +1,  1]
+      - [-1, +1, -1]
+    require_wall_sign: true # Leave true for wall-mounted TrainCarts signs; set to false if your stations use standing/post signs
+    max_candidates_per_station: 8
+    cache_ttl_ticks: 200
+    rebuild_per_tick: 8
     floor_allowlist: []
     floor_block_blacklist:
-      - CARPET
-      - TRAPDOOR
+      - tag:CARPETS
+      - tag:TRAPDOORS
+      - FENCE
+      - NETHER_BRICK_FENCE
+      - COBBLESTONE_WALL
+      - MOSSY_COBBLESTONE_WALL
+      - GLASS_PANE
+      - IRON_BARS
+      - WATER
+      - LAVA
+      # Use explicit variants if tags are unavailable in your loader
       - SCAFFOLDING
       - ICE
       - PACKED_ICE

@@ -10,6 +10,7 @@ import dev.citysim.integration.traincarts.TrainCartsReflectionBinder;
 import dev.citysim.integration.traincarts.TrainCartsStationService;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
+import dev.citysim.migration.StationPlatformResolver;
 import dev.citysim.papi.CitySimExpansion;
 import dev.citysim.selection.SelectionListener;
 import dev.citysim.visual.SelectionTracker;
@@ -22,6 +23,7 @@ import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.event.server.PluginEnableEvent;
@@ -41,6 +43,7 @@ public class CitySimPlugin extends JavaPlugin {
     private SelectionTracker selectionTracker;
     private LinkService linkService;
     private MigrationService migrationService;
+    private StationPlatformResolver stationPlatformResolver;
 
     @Override
     public void onEnable() {
@@ -59,6 +62,10 @@ public class CitySimPlugin extends JavaPlugin {
             getLogger().info("TrainCarts plugin not detected yet; station counts will remain manual unless another mode is selected.");
         }
 
+        this.stationPlatformResolver = new StationPlatformResolver(this);
+        getServer().getPluginManager().registerEvents(stationPlatformResolver, this);
+        stationPlatformResolver.setStationService(trainCartsStationService);
+
         this.statsService = new StatsService(this, cityManager, trainCartsStationService);
         getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
@@ -69,7 +76,7 @@ public class CitySimPlugin extends JavaPlugin {
         this.linkService = new LinkService(cityManager);
         this.linkService.reload(getConfig());
 
-        this.migrationService = new MigrationService(this, cityManager, linkService);
+        this.migrationService = new MigrationService(this, cityManager, linkService, stationPlatformResolver);
         this.migrationService.reload(getConfig());
         this.migrationService.start();
         getLogger().info("MigrationService started");
@@ -137,6 +144,9 @@ public class CitySimPlugin extends JavaPlugin {
         }
         if (migrationService != null) {
             migrationService.stop();
+        }
+        if (stationPlatformResolver != null) {
+            HandlerList.unregisterAll(stationPlatformResolver);
         }
         if (cityManager != null) {
             cityManager.save();
@@ -231,6 +241,9 @@ public class CitySimPlugin extends JavaPlugin {
                 return;
             }
             trainCartsStationService = service;
+            if (stationPlatformResolver != null) {
+                stationPlatformResolver.setStationService(service);
+            }
             if (statsService != null) {
                 statsService.setStationCounter(trainCartsStationService);
                 if (statsService.getStationCountingMode() == StationCountingMode.TRAIN_CARTS) {
@@ -246,11 +259,17 @@ public class CitySimPlugin extends JavaPlugin {
             }
             if (trainCartsStationService == null || statsService == null) {
                 trainCartsStationService = null;
+                if (stationPlatformResolver != null) {
+                    stationPlatformResolver.setStationService(null);
+                }
                 return;
             }
             StationCountingMode previousMode = statsService.getStationCountingMode();
             statsService.setStationCounter(null);
             trainCartsStationService = null;
+            if (stationPlatformResolver != null) {
+                stationPlatformResolver.setStationService(null);
+            }
             CitySimPlugin.this.getLogger().info("TrainCarts disabled: station counts will remain manual until it is re-enabled.");
             if (previousMode == StationCountingMode.TRAIN_CARTS) {
                 refreshStationsForAllCities("TrainCarts integration disabled");
@@ -258,4 +277,3 @@ public class CitySimPlugin extends JavaPlugin {
         }
     }
 }
-

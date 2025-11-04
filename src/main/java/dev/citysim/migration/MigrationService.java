@@ -36,8 +36,7 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-
-import java.util.UUID;
+import java.util.logging.Level;
 
 public class MigrationService implements Runnable {
 
@@ -45,11 +44,13 @@ public class MigrationService implements Runnable {
     private static final double FALLBACK_VERTICAL_RANGE = 6.0;
     private static final double FALLBACK_VERTICAL_RANGE_WIDE = 8.0;
     private static final double MAX_FALLBACK_RADIUS = 64.0;
+    private static final int FALLBACK_SIGN_RADIUS = 4;
 
     private final Plugin plugin;
     private final CityManager cityManager;
     private final LinkService linkService;
     private final NamespacedKey cooldownKey;
+    private final StationPlatformResolver platformResolver;
 
     private final Map<String, CityMigrationCounters> counters = new HashMap<>();
     private final Map<String, CityEma> cityEmas = new HashMap<>();
@@ -62,20 +63,27 @@ public class MigrationService implements Runnable {
     private final Map<String, Integer> pendingFromOrigin = new HashMap<>();
     private final PriorityQueue<DelayedMove> delayedQueue = new PriorityQueue<>(Comparator.comparingLong(DelayedMove::executeTick));
     private final TokenBucket globalBucket = new TokenBucket();
+    private final Map<String, Integer> platformIndices = new HashMap<>();
+    private final Map<String, Long> staleStatsLogTick = new HashMap<>();
+    private final Map<String, Long> platformHintsLogTick = new HashMap<>();
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
     private long logicalTick = 0L;
 
-    public MigrationService(Plugin plugin, CityManager cityManager, LinkService linkService) {
+    public MigrationService(Plugin plugin, CityManager cityManager, LinkService linkService, StationPlatformResolver platformResolver) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.linkService = linkService;
         this.cooldownKey = new NamespacedKey(plugin, "migrate_until");
+        this.platformResolver = platformResolver;
     }
 
     public void reload(FileConfiguration config) {
         this.settings = MigrationSettings.fromConfig(plugin, config);
+        if (platformResolver != null) {
+            platformResolver.updateTeleportSettings(settings.teleport);
+        }
         restart();
     }
 
@@ -109,6 +117,9 @@ public class MigrationService implements Runnable {
         originBuckets.clear();
         destinationBuckets.clear();
         linkBuckets.clear();
+        platformIndices.clear();
+        staleStatsLogTick.clear();
+        platformHintsLogTick.clear();
         globalBucket.configure(settings.rate.globalPerInterval);
         globalBucket.reset();
         logicalTick = 0L;
@@ -136,6 +147,8 @@ public class MigrationService implements Runnable {
         if (cities.isEmpty()) {
             return;
         }
+
+        prunePlatformRoundRobin(cities);
 
         for (City city : cities) {
             if (city == null || city.id == null) {
@@ -196,6 +209,24 @@ public class MigrationService implements Runnable {
             delayedQueue.poll();
             executeApprovedMove(move, nowMillis);
         }
+    }
+
+    private void prunePlatformRoundRobin(Collection<City> cities) {
+        if (platformIndices.isEmpty() || cities == null || cities.isEmpty()) {
+            return;
+        }
+        Set<String> activeIds = new HashSet<>();
+        for (City city : cities) {
+            if (city == null || city.id == null) {
+                continue;
+            }
+            activeIds.add(city.id);
+        }
+        if (activeIds.isEmpty()) {
+            platformIndices.clear();
+            return;
+        }
+        platformIndices.keySet().removeIf(id -> !activeIds.contains(id));
     }
 
     private void updateEma(City city) {
@@ -303,7 +334,7 @@ public class MigrationService implements Runnable {
 
         rawCandidates.sort(Comparator
                 .comparingDouble((DestinationCandidate c) -> c.score).reversed()
-                .thenComparingDouble(c -> c.link.distance()));
+                .thenComparingDouble(c -> horizDistance(origin, c.destination)));
 
         return rawCandidates;
     }
@@ -331,11 +362,6 @@ public class MigrationService implements Runnable {
             return false;
         }
 
-        Villager villager = selectVillager(origin, originAnchor, nowMillis);
-        if (villager == null) {
-            return false;
-        }
-
         Location destinationAnchor = stationAnchor(destination);
         if (destinationAnchor == null) {
             return false;
@@ -352,7 +378,7 @@ public class MigrationService implements Runnable {
 
         inflightToDest.merge(destination.id, 1, Integer::sum);
         pendingFromOrigin.merge(origin.id, 1, Integer::sum);
-        delayedQueue.add(new DelayedMove(executeTick, villager.getUniqueId(), origin.id, destination.id));
+        delayedQueue.add(new DelayedMove(executeTick, origin.id, destination.id));
         return true;
     }
 
@@ -442,24 +468,41 @@ public class MigrationService implements Runnable {
                 return;
             }
 
-            Entity entity = move.villagerId != null ? Bukkit.getEntity(move.villagerId) : null;
-            if (entity instanceof Villager v) {
-                villager = v;
-            }
-            if (villager == null || !villager.isValid() || villager.isDead()) {
+            Location originAnchor = stationAnchor(origin);
+            if (originAnchor == null) {
                 return;
             }
-            if (!isVillagerEligible(villager, origin, nowMillis)) {
+            villager = selectVillager(origin, originAnchor, nowMillis);
+            if (villager == null) {
                 return;
             }
 
             Location destinationAnchor = stationAnchor(destination);
-            if (destinationAnchor == null) {
-                return;
-            }
-            Location target = findDestinationSpot(destinationAnchor, settings.teleport);
-            if (target == null) {
-                return;
+            List<StationPlatformResolver.StationSpots> stationSpots = platformResolver != null
+                    ? platformResolver.resolveStations(destination)
+                    : List.of();
+            boolean hasPrevalidated = stationSpots.stream().anyMatch(spots -> spots != null && !spots.spots().isEmpty());
+
+            Location target;
+            if (hasPrevalidated) {
+                target = selectPlatformTarget(destination, stationSpots, settings.teleport);
+                if (target == null) {
+                    return;
+                }
+            } else {
+                if (platformResolver != null) {
+                    platformResolver.invalidateCity(destination);
+                }
+                Location fallbackAnchor = preferredFallbackAnchor(stationSpots, destinationAnchor);
+                if (fallbackAnchor == null) {
+                    return;
+                }
+                int clampY = fallbackAnchor.getBlockY() + 1;
+                int fallbackRadiusLimit = Math.max(FALLBACK_SIGN_RADIUS, Math.max(0, settings.teleport.radius));
+                target = findDestinationSpot(fallbackAnchor, settings.teleport, fallbackRadiusLimit, clampY);
+                if (target == null) {
+                    return;
+                }
             }
             if (!ensureChunkLoaded(target.getWorld(), target.getBlockX(), target.getBlockZ())) {
                 return;
@@ -530,23 +573,88 @@ public class MigrationService implements Runnable {
         if (settings.logic.freshnessMillis <= 0) {
             return true;
         }
-        long last = lastStatsTimestamp(city);
+        StatsTimestamps stats = lastStatsTimestamp(city);
+        long last = stats.maxTimestamp();
         if (last <= 0L) {
+            logStaleStatsSkip(city, nowMillis, stats);
             return false;
         }
-        return nowMillis - last <= settings.logic.freshnessMillis;
+        boolean fresh = nowMillis - last <= settings.logic.freshnessMillis;
+        if (!fresh) {
+            logStaleStatsSkip(city, nowMillis, stats);
+            return false;
+        }
+        if (city != null && city.id != null) {
+            staleStatsLogTick.remove(city.id);
+        }
+        return true;
     }
 
-    private long lastStatsTimestamp(City city) {
+    private StatsTimestamps lastStatsTimestamp(City city) {
+        Map<String, Long> sources = new LinkedHashMap<>();
+        long maxTimestamp = 0L;
         if (city == null) {
-            return 0L;
+            return new StatsTimestamps(0L, Map.of());
         }
-        long timestamp = 0L;
-        City.BlockScanCache cache = city.blockScanCache;
-        if (cache != null) {
-            timestamp = Math.max(timestamp, cache.timestamp);
+        long statsTimestamp = Math.max(0L, city.statsTimestamp);
+        sources.put("stats", statsTimestamp);
+        maxTimestamp = Math.max(maxTimestamp, statsTimestamp);
+
+        City.BlockScanCache blockCache = city.blockScanCache;
+        long blockTimestamp = blockCache != null ? Math.max(0L, blockCache.timestamp) : 0L;
+        sources.put("block_scan", blockTimestamp);
+        maxTimestamp = Math.max(maxTimestamp, blockTimestamp);
+
+        City.EntityScanCache entityCache = city.entityScanCache;
+        long entityTimestamp = entityCache != null ? Math.max(0L, entityCache.timestamp) : 0L;
+        sources.put("entity_scan", entityTimestamp);
+        maxTimestamp = Math.max(maxTimestamp, entityTimestamp);
+
+        return new StatsTimestamps(maxTimestamp, Collections.unmodifiableMap(sources));
+    }
+
+    private void logStaleStatsSkip(City city, long nowMillis, StatsTimestamps timestamps) {
+        if (city == null || city.id == null) {
+            return;
         }
-        return timestamp;
+        long lastTick = staleStatsLogTick.getOrDefault(city.id, Long.MIN_VALUE);
+        if (lastTick == logicalTick) {
+            return;
+        }
+        staleStatsLogTick.put(city.id, logicalTick);
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        long lastTimestamp = timestamps.maxTimestamp();
+        String baseMessage;
+        if (lastTimestamp > 0L) {
+            long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - lastTimestamp)));
+            long maxSeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(1L, settings.logic.freshnessMillis)));
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats " + ageSeconds + "s old (max " + maxSeconds + "s).";
+        } else {
+            baseMessage = "Skipping migration for city '" + cityLabel + "' (" + city.id + ") — stats have never completed.";
+        }
+        if (plugin.getLogger().isLoggable(Level.FINE)) {
+            plugin.getLogger().fine(baseMessage + " Sources=" + timestamps.describeSources(nowMillis) + ", max=" + lastTimestamp);
+        } else {
+            plugin.getLogger().fine(baseMessage);
+        }
+    }
+
+    private void logNoPlatformCandidates(City city, TeleportSettings teleportSettings, boolean sawNonWallSigns) {
+        if (city == null || city.id == null) {
+            return;
+        }
+        long lastTick = platformHintsLogTick.getOrDefault(city.id, Long.MIN_VALUE);
+        if (lastTick == logicalTick) {
+            return;
+        }
+        platformHintsLogTick.put(city.id, logicalTick);
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        boolean requireWallSign = teleportSettings != null && teleportSettings.requireWallSign;
+        if (requireWallSign && sawNonWallSigns) {
+            plugin.getLogger().info("No platform candidates were cached for '" + cityLabel + "' — stations in range use non-wall signs while migration.teleport.require_wall_sign=true.");
+            return;
+        }
+        plugin.getLogger().info("No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.");
     }
 
     private String linkKey(String originId, String destinationId) {
@@ -604,6 +712,72 @@ public class MigrationService implements Runnable {
         return results;
     }
 
+    private Location selectPlatformTarget(City city, List<StationPlatformResolver.StationSpots> stationSpots, TeleportSettings teleportSettings) {
+        if (city == null || city.id == null || stationSpots == null || stationSpots.isEmpty()) {
+            if (city != null && city.id != null) {
+                platformIndices.remove(city.id);
+            }
+            return null;
+        }
+        List<Location> candidates = new ArrayList<>();
+        for (StationPlatformResolver.StationSpots station : stationSpots) {
+            if (station == null) {
+                continue;
+            }
+            candidates.addAll(station.spots());
+        }
+        boolean sawNonWallSigns = platformResolver != null && platformResolver.hasOnlyNonWallSignStations(city.id);
+        if (candidates.isEmpty()) {
+            platformIndices.remove(city.id);
+            logNoPlatformCandidates(city, teleportSettings, sawNonWallSigns);
+            return null;
+        }
+        int startIndex = Math.max(0, platformIndices.getOrDefault(city.id, 0));
+        for (int i = 0; i < candidates.size(); i++) {
+            int idx = (startIndex + i) % candidates.size();
+            Location candidate = candidates.get(idx);
+            if (candidate == null) {
+                continue;
+            }
+            World world = candidate.getWorld();
+            if (world == null) {
+                continue;
+            }
+            int x = candidate.getBlockX();
+            int z = candidate.getBlockZ();
+            if (!ensureChunkLoaded(world, x, z)) {
+                continue;
+            }
+            int floorY = candidate.getBlockY();
+            if (!isCandidateValid(world, x, floorY, z, teleportSettings)) {
+                continue;
+            }
+            platformIndices.put(city.id, (idx + 1) % candidates.size());
+            return candidate.clone();
+        }
+        platformIndices.remove(city.id);
+        logNoPlatformCandidates(city, teleportSettings, sawNonWallSigns);
+        if (platformResolver != null) {
+            platformResolver.invalidateCity(city);
+        }
+        return null;
+    }
+
+    private Location preferredFallbackAnchor(List<StationPlatformResolver.StationSpots> stationSpots, Location defaultAnchor) {
+        if (stationSpots != null) {
+            for (StationPlatformResolver.StationSpots station : stationSpots) {
+                if (station == null) {
+                    continue;
+                }
+                Location sign = station.signLocation();
+                if (sign != null) {
+                    return sign.clone();
+                }
+            }
+        }
+        return defaultAnchor != null ? defaultAnchor.clone() : null;
+    }
+
     private boolean isVillagerEligible(Villager villager, City city, long now) {
         if (villager == null || !villager.isValid() || villager.isDead()) {
             return false;
@@ -627,6 +801,13 @@ public class MigrationService implements Runnable {
     }
 
     private Location findDestinationSpot(Location anchor, TeleportSettings teleportSettings) {
+        return findDestinationSpot(anchor, teleportSettings, teleportSettings.radius, Integer.MAX_VALUE);
+    }
+
+    private Location findDestinationSpot(Location anchor, TeleportSettings teleportSettings, int radiusLimit, int maxStartY) {
+        if (anchor == null || teleportSettings == null) {
+            return null;
+        }
         World world = anchor.getWorld();
         if (world == null) {
             return null;
@@ -640,7 +821,7 @@ public class MigrationService implements Runnable {
         }
 
         int railY = findLocalRailY(world, baseX, baseY, baseZ, teleportSettings);
-        int radius = Math.max(0, teleportSettings.radius);
+        int radius = Math.max(0, Math.min(teleportSettings.radius, Math.max(0, radiusLimit)));
         int maxSamples = Math.max(1, teleportSettings.maxSamples);
 
         Set<Long> visited = new HashSet<>();
@@ -678,7 +859,7 @@ public class MigrationService implements Runnable {
 
             int surfaceY = Math.max(world.getMinHeight(), world.getHighestBlockYAt(candidateX, candidateZ));
             int startY = teleportSettings.requireYAtLeastRail ? Math.max(surfaceY, railY) : surfaceY;
-            startY = Math.min(startY, world.getMaxHeight() - 1);
+            startY = Math.min(startY, Math.min(world.getMaxHeight() - 1, Math.max(world.getMinHeight(), maxStartY)));
 
             for (int down = 0; down <= 2; down++) {
                 int floorY = startY - down;
@@ -804,6 +985,10 @@ public class MigrationService implements Runnable {
         return centerY;
     }
 
+    /**
+     * Ensures the chunk containing the supplied block coordinates is loaded, synchronously loading if necessary.
+     * Migration approvals are rate-limited, so the occasional sync load stays within safe server budgets.
+     */
     private boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
         if (world == null) {
             return false;
@@ -838,7 +1023,7 @@ public class MigrationService implements Runnable {
         return new Location(world, x + 0.5, y, z + 0.5);
     }
 
-    private CityBounds computeBounds(City city) {
+    private static CityBounds computeBounds(City city) {
         if (city == null || city.cuboids == null || city.cuboids.isEmpty()) {
             return null;
         }
@@ -866,6 +1051,27 @@ public class MigrationService implements Runnable {
         int centerX = (int) Math.round((minX + maxX) / 2.0);
         int centerZ = (int) Math.round((minZ + maxZ) / 2.0);
         return new CityBounds(minX, maxX, minZ, maxZ, centerX, centerZ);
+    }
+
+    private static double[] centroidXZ(City city) {
+        CityBounds bounds = computeBounds(city);
+        if (bounds == null) {
+            return new double[]{0.0d, 0.0d};
+        }
+        double centerX = (bounds.minX + bounds.maxX) * 0.5d;
+        double centerZ = (bounds.minZ + bounds.maxZ) * 0.5d;
+        return new double[]{centerX, centerZ};
+    }
+
+    private static double horizDistance(City a, City b) {
+        if (a == null || b == null) {
+            return Double.MAX_VALUE;
+        }
+        double[] ca = centroidXZ(a);
+        double[] cb = centroidXZ(b);
+        double dx = ca[0] - cb[0];
+        double dz = ca[1] - cb[1];
+        return Math.sqrt(dx * dx + dz * dz);
     }
 
     private void recordDeparture(City origin, City destination) {
@@ -926,6 +1132,32 @@ public class MigrationService implements Runnable {
     private record CityBounds(int minX, int maxX, int minZ, int maxZ, int centerX, int centerZ) {
         double maxDimension() {
             return Math.max(maxX - minX, maxZ - minZ);
+        }
+    }
+
+    private record StatsTimestamps(long maxTimestamp, Map<String, Long> perSource) {
+        String describeSources(long nowMillis) {
+            if (perSource == null || perSource.isEmpty()) {
+                return "{}";
+            }
+            StringBuilder builder = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<String, Long> entry : perSource.entrySet()) {
+                if (!first) {
+                    builder.append(", ");
+                }
+                first = false;
+                long timestamp = entry.getValue() != null ? entry.getValue() : 0L;
+                builder.append(entry.getKey()).append('=');
+                if (timestamp <= 0L) {
+                    builder.append("never");
+                    continue;
+                }
+                long ageSeconds = Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, nowMillis - timestamp)));
+                builder.append(timestamp).append(" (age ").append(ageSeconds).append("s)");
+            }
+            builder.append('}');
+            return builder.toString();
         }
     }
 
@@ -1019,13 +1251,11 @@ public class MigrationService implements Runnable {
 
     private static class DelayedMove {
         final long executeTick;
-        final UUID villagerId;
         final String originId;
         final String destinationId;
 
-        DelayedMove(long executeTick, UUID villagerId, String originId, String destinationId) {
+        DelayedMove(long executeTick, String originId, String destinationId) {
             this.executeTick = executeTick;
-            this.villagerId = villagerId;
             this.originId = originId;
             this.destinationId = destinationId;
         }
@@ -1055,6 +1285,11 @@ public class MigrationService implements Runnable {
         }
     }
 
+    /**
+     * Token bucket with coarse refill windows. Buckets refill when {@code logicalTick - lastRefillTick}
+     * meets or exceeds {@code migration.rate.interval_ticks}. {@code logicalTick} advances by
+     * {@code migration.interval_ticks} every service run, so approvals are capped per configured window.
+     */
     private static class TokenBucket {
         private int capacity = 0;
         private int tokens = Integer.MAX_VALUE;
@@ -1244,70 +1479,4 @@ public class MigrationService implements Runnable {
         }
     }
 
-    private static class TeleportSettings {
-        final int radius;
-        final int maxSamples;
-        final boolean requireYAtLeastRail;
-        final boolean disallowOnRail;
-        final boolean disallowBelowRail;
-        final int railAvoidHorizRadius;
-        final int railAvoidVertAbove;
-        final Set<Material> floorAllowlist;
-        final Set<Material> floorBlacklist;
-        final Set<Material> railMaterials;
-
-        private TeleportSettings(int radius, int maxSamples, boolean requireYAtLeastRail, boolean disallowOnRail,
-                                 boolean disallowBelowRail, int railAvoidHorizRadius, int railAvoidVertAbove,
-                                 Set<Material> floorAllowlist, Set<Material> floorBlacklist, Set<Material> railMaterials) {
-            this.radius = radius;
-            this.maxSamples = maxSamples;
-            this.requireYAtLeastRail = requireYAtLeastRail;
-            this.disallowOnRail = disallowOnRail;
-            this.disallowBelowRail = disallowBelowRail;
-            this.railAvoidHorizRadius = railAvoidHorizRadius;
-            this.railAvoidVertAbove = railAvoidVertAbove;
-            this.floorAllowlist = floorAllowlist == null ? Set.of() : floorAllowlist;
-            this.floorBlacklist = floorBlacklist == null ? Set.of() : floorBlacklist;
-            this.railMaterials = railMaterials == null ? Set.of() : railMaterials;
-        }
-
-        static TeleportSettings defaults() {
-            return new TeleportSettings(0, 1, true, true, true, 1, 3, Set.of(), Set.of(), Set.of());
-        }
-
-        static TeleportSettings fromConfig(Plugin plugin, FileConfiguration config, String path) {
-            int radius = Math.max(0, config.getInt(path + ".radius", 8));
-            int maxSamples = Math.max(1, config.getInt(path + ".max_samples", 24));
-            boolean requireY = config.getBoolean(path + ".require_y_at_least_rail", true);
-            boolean disallowOnRail = config.getBoolean(path + ".disallow_on_rail", true);
-            boolean disallowBelowRail = config.getBoolean(path + ".disallow_below_rail", true);
-            int avoidHoriz = Math.max(0, config.getInt(path + ".rail_avoid_horiz_radius", 1));
-            int avoidVert = Math.max(0, config.getInt(path + ".rail_avoid_vert_above", 3));
-            Set<Material> allow = materialSet(plugin, config.getStringList(path + ".floor_allowlist"), path + ".floor_allowlist");
-            Set<Material> blacklist = materialSet(plugin, config.getStringList(path + ".floor_block_blacklist"), path + ".floor_block_blacklist");
-            Set<Material> rails = materialSet(plugin, config.getStringList(path + ".rail_materials"), path + ".rail_materials");
-            return new TeleportSettings(radius, maxSamples, requireY, disallowOnRail, disallowBelowRail, avoidHoriz, avoidVert,
-                    allow, blacklist, rails);
-        }
-
-        private static Set<Material> materialSet(Plugin plugin, List<String> entries, String path) {
-            if (entries == null || entries.isEmpty()) {
-                return Collections.emptySet();
-            }
-            EnumSet<Material> set = EnumSet.noneOf(Material.class);
-            for (String entry : entries) {
-                if (entry == null || entry.isEmpty()) {
-                    continue;
-                }
-                Material material = Material.matchMaterial(entry.toUpperCase(Locale.ROOT));
-                if (material != null) {
-                    set.add(material);
-                } else if (plugin != null) {
-                    plugin.getLogger().warning("Unknown material '" + entry + "' in " + path);
-                }
-            }
-            return Collections.unmodifiableSet(set);
-        }
-    }
 }
-
