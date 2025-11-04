@@ -16,6 +16,8 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -27,6 +29,7 @@ public class JobSiteTracker implements Listener {
     private final CityManager cityManager;
     private final StatsService statsService;
     private final Map<String, LinkedHashMap<ChunkCoordinate, ScanContext>> dirtyChunks = new LinkedHashMap<>();
+    private final Map<String, Map<ChunkCoordinate, EnumMap<Profession, Integer>>> cachedChunkJobSites = new LinkedHashMap<>();
 
     private volatile JobSiteAssignments assignments = JobSiteAssignments.empty();
 
@@ -69,6 +72,7 @@ public class JobSiteTracker implements Listener {
             }
         }
         assignments = JobSiteAssignments.of(mapping);
+        clearCachedCounts();
     }
 
     public void markChunkClean(City city, String world, int chunkX, int chunkZ) {
@@ -100,15 +104,15 @@ public class JobSiteTracker implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        handleBlockChange(event.getBlockPlaced().getType(), event.getBlockPlaced().getLocation());
+        handleBlockChange(event.getBlockPlaced().getType(), event.getBlockPlaced().getLocation(), 1);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        handleBlockChange(event.getBlock().getType(), event.getBlock().getLocation());
+        handleBlockChange(event.getBlock().getType(), event.getBlock().getLocation(), -1);
     }
 
-    private void handleBlockChange(Material material, Location location) {
+    private void handleBlockChange(Material material, Location location, int delta) {
         JobSiteAssignments current = assignments();
         if (current.isEmpty() || !current.isTracked(material) || location == null) {
             return;
@@ -126,6 +130,13 @@ public class JobSiteTracker implements Listener {
         ChunkCoordinate coord = new ChunkCoordinate(worldName, chunkX, chunkZ);
         ScanContext context = new ScanContext(worldName, location.getBlockX(), location.getBlockY(), location.getBlockZ());
 
+        if (delta != 0) {
+            Profession profession = current.professionFor(material);
+            if (profession != null) {
+                adjustCachedChunkCounts(city, coord, profession, delta);
+            }
+        }
+
         boolean added;
         synchronized (dirtyChunks) {
             LinkedHashMap<ChunkCoordinate, ScanContext> queue = dirtyChunks.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
@@ -134,6 +145,98 @@ public class JobSiteTracker implements Listener {
         }
         if (added) {
             statsService.requestCityUpdateWithContext(city, false, "job site block change", context);
+        }
+    }
+
+    public Map<Profession, Integer> cityJobSiteTotals(City city) {
+        if (city == null || city.id == null) {
+            return Map.of();
+        }
+        synchronized (cachedChunkJobSites) {
+            Map<ChunkCoordinate, EnumMap<Profession, Integer>> perCity = cachedChunkJobSites.get(city.id);
+            if (perCity == null || perCity.isEmpty()) {
+                return Map.of();
+            }
+            EnumMap<Profession, Integer> totals = new EnumMap<>(Profession.class);
+            for (EnumMap<Profession, Integer> chunkCounts : perCity.values()) {
+                if (chunkCounts == null || chunkCounts.isEmpty()) {
+                    continue;
+                }
+                for (Map.Entry<Profession, Integer> entry : chunkCounts.entrySet()) {
+                    Profession profession = entry.getKey();
+                    Integer value = entry.getValue();
+                    if (profession == null || value == null || value <= 0) {
+                        continue;
+                    }
+                    totals.merge(profession, value, Integer::sum);
+                }
+            }
+            if (totals.isEmpty()) {
+                return Map.of();
+            }
+            return Collections.unmodifiableMap(totals);
+        }
+    }
+
+    public void updateChunkTotals(City city, String world, int chunkX, int chunkZ, Map<Profession, Integer> counts) {
+        if (city == null || city.id == null || world == null) {
+            return;
+        }
+        ChunkCoordinate coord = new ChunkCoordinate(world, chunkX, chunkZ);
+        synchronized (cachedChunkJobSites) {
+            Map<ChunkCoordinate, EnumMap<Profession, Integer>> perCity = cachedChunkJobSites.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
+            if (counts == null || counts.isEmpty()) {
+                perCity.remove(coord);
+            } else {
+                EnumMap<Profession, Integer> snapshot = new EnumMap<>(Profession.class);
+                for (Map.Entry<Profession, Integer> entry : counts.entrySet()) {
+                    Profession profession = entry.getKey();
+                    if (profession == null) {
+                        continue;
+                    }
+                    int value = entry.getValue() == null ? 0 : entry.getValue();
+                    if (value > 0) {
+                        snapshot.put(profession, value);
+                    }
+                }
+                if (snapshot.isEmpty()) {
+                    perCity.remove(coord);
+                } else {
+                    perCity.put(coord, snapshot);
+                }
+            }
+            if (perCity.isEmpty()) {
+                cachedChunkJobSites.remove(city.id);
+            }
+        }
+    }
+
+    private void adjustCachedChunkCounts(City city, ChunkCoordinate coord, Profession profession, int delta) {
+        if (city == null || city.id == null || coord == null || profession == null || delta == 0) {
+            return;
+        }
+        synchronized (cachedChunkJobSites) {
+            Map<ChunkCoordinate, EnumMap<Profession, Integer>> perCity = cachedChunkJobSites.computeIfAbsent(city.id, id -> new LinkedHashMap<>());
+            EnumMap<Profession, Integer> counts = perCity.computeIfAbsent(coord, ignored -> new EnumMap<>(Profession.class));
+            int current = counts.getOrDefault(profession, 0);
+            int updated = Math.max(0, current + delta);
+            if (updated <= 0) {
+                counts.remove(profession);
+            } else {
+                counts.put(profession, updated);
+            }
+            if (counts.isEmpty()) {
+                perCity.remove(coord);
+            }
+            if (perCity.isEmpty()) {
+                cachedChunkJobSites.remove(city.id);
+            }
+        }
+    }
+
+    private void clearCachedCounts() {
+        synchronized (cachedChunkJobSites) {
+            cachedChunkJobSites.clear();
         }
     }
 

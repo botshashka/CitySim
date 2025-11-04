@@ -15,6 +15,7 @@ import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -292,6 +293,10 @@ public class CityScanJob {
             return;
         }
         if (activeJobSiteChunkTouched && jobSiteTracker != null) {
+            if (activeJobSiteChunkCounts != null) {
+                jobSiteTracker.updateChunkTotals(city, activeBedWorldName, activeBedChunkX, activeBedChunkZ,
+                        activeJobSiteChunkCounts.snapshot());
+            }
             jobSiteTracker.markChunkClean(city, activeBedWorldName, activeBedChunkX, activeBedChunkZ);
         }
         activeJobSiteChunkCounts = null;
@@ -360,12 +365,16 @@ public class CityScanJob {
             city.vacanciesTotal = 0;
             return;
         }
-        jobSiteTotals.clear();
-        for (ChunkJobSiteCounts counts : jobSiteChunkCounts.values()) {
-            counts.mergeInto(jobSiteTotals);
+        Map<Profession, Integer> totals = jobSiteTracker != null ? jobSiteTracker.cityJobSiteTotals(city) : Map.of();
+        if (totals == null || totals.isEmpty()) {
+            jobSiteTotals.clear();
+            for (ChunkJobSiteCounts counts : jobSiteChunkCounts.values()) {
+                counts.mergeInto(jobSiteTotals);
+            }
+            totals = jobSiteTotals;
         }
         int totalVacancies = 0;
-        for (Map.Entry<Profession, Integer> entry : jobSiteTotals.entrySet()) {
+        for (Map.Entry<Profession, Integer> entry : totals.entrySet()) {
             int jobSites = Math.max(0, entry.getValue());
             int employedCount = Math.max(0, professionHistogram.getOrDefault(entry.getKey(), 0));
             int vacancy = Math.max(0, jobSites - employedCount);
@@ -676,6 +685,10 @@ public class CityScanJob {
             for (Map.Entry<Profession, Integer> entry : counts.entrySet()) {
                 totals.merge(entry.getKey(), entry.getValue(), Integer::sum);
             }
+        }
+
+        EnumMap<Profession, Integer> snapshot() {
+            return counts.isEmpty() ? new EnumMap<>(Profession.class) : new EnumMap<>(counts);
         }
     }
 
