@@ -90,6 +90,7 @@ public class MigrationService implements Runnable {
         if (this.platformResolver != null) {
             this.platformResolver.setDebugSupplier(debugManager::isEnabled);
         }
+        syncZeroPopulationArrivalsFromCities();
     }
 
     public boolean toggleDebug(Player player) {
@@ -151,6 +152,7 @@ public class MigrationService implements Runnable {
         globalBucket.configure(settings.rate.globalPerInterval);
         globalBucket.reset();
         logicalTick = 0L;
+        syncZeroPopulationArrivalsFromCities();
     }
 
     @Override
@@ -414,6 +416,11 @@ public class MigrationService implements Runnable {
             boolean housingOk = destinationEmpty
                     ? destination.beds >= settings.logic.zeroPopulationMinBeds
                     : destEma.housing() >= settings.logic.destMinHousingRatio;
+            if (!destinationEmpty) {
+                if (zeroPopulationArrivals.remove(destination.id) != null) {
+                    destination.migrationZeroPopArrivals = 0;
+                }
+            }
             int arrivalGraceUsed = Math.max(destination.population, arrivalCount(destination.id));
             boolean employmentOk = destinationEmpty
                     ? arrivalGraceUsed < settings.logic.zeroPopulationEmploymentGrace
@@ -1532,9 +1539,33 @@ public class MigrationService implements Runnable {
             return;
         }
         if (destinationWasZeroPop) {
-            zeroPopulationArrivals.merge(cityId, 1, Integer::sum);
+            int updated = zeroPopulationArrivals.merge(cityId, 1, Integer::sum);
+            City city = cityManager != null ? cityManager.get(cityId) : null;
+            if (city != null) {
+                city.migrationZeroPopArrivals = updated;
+            }
         } else {
             zeroPopulationArrivals.remove(cityId);
+            City city = cityManager != null ? cityManager.get(cityId) : null;
+            if (city != null) {
+                city.migrationZeroPopArrivals = 0;
+            }
+        }
+    }
+
+    private void syncZeroPopulationArrivalsFromCities() {
+        zeroPopulationArrivals.clear();
+        if (cityManager == null) {
+            return;
+        }
+        for (City city : cityManager.all()) {
+            if (city == null || city.id == null) {
+                continue;
+            }
+            int stored = Math.max(0, city.migrationZeroPopArrivals);
+            if (stored > 0) {
+                zeroPopulationArrivals.put(city.id, stored);
+            }
         }
     }
     private boolean ensureChunkLoaded(World world, int blockX, int blockZ) {
