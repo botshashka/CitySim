@@ -27,7 +27,7 @@ visualization:
   debug: false
 
 stations:
-  counting_mode: manual # manual, traincarts, or disabled
+  counting_mode: traincarts # traincarts (default), manual, or disabled
 
 happiness_weights:
   nature_max_points: 10

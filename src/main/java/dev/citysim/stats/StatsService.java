@@ -309,15 +309,15 @@ public class StatsService {
         statsUpdateScheduler.updateConfig(config);
         blockScanService.updateConfig(config);
 
-        StationCountingMode configuredMode = StationCountingMode.MANUAL;
+        StationCountingMode configuredMode = StationCountingMode.TRAIN_CARTS;
         if (config != null) {
-            configuredMode = StationCountingMode.fromConfig(config.getString("stations.counting_mode", "manual"));
+            configuredMode = StationCountingMode.fromConfig(config.getString("stations.counting_mode", "traincarts"));
         }
         if (configuredMode == StationCountingMode.TRAIN_CARTS && stationCounter == null) {
-            if (stationCountingMode != StationCountingMode.MANUAL) {
-                plugin.getLogger().warning("TrainCarts station counting requested in configuration, but TrainCarts was not detected. Falling back to manual station counts.");
+            if (stationCountingMode != StationCountingMode.DISABLED) {
+                plugin.getLogger().warning("TrainCarts station counting requested in configuration, but TrainCarts was not detected. Disabling station counting.");
             }
-            stationCountingMode = StationCountingMode.MANUAL;
+            stationCountingMode = StationCountingMode.DISABLED;
         } else {
             stationCountingMode = configuredMode;
         }

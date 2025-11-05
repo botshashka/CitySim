@@ -6,6 +6,7 @@ import dev.citysim.city.Cuboid;
 import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
 import dev.citysim.stats.StatsService;
+import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService.FreshnessSnapshot;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -73,6 +74,7 @@ public class MigrationService implements Runnable {
     private final Map<String, Long> platformHintsLogTick = new HashMap<>();
     private final Map<String, Long> unemploymentGateLogTick = new HashMap<>();
     private final MigrationDebugManager debugManager = new MigrationDebugManager();
+    private boolean stationModeWarningLogged = false;
 
     private MigrationSettings settings = MigrationSettings.disabled();
     private BukkitTask task;
@@ -119,6 +121,16 @@ public class MigrationService implements Runnable {
         if (!settings.enabled || settings.intervalTicks <= 0) {
             return;
         }
+        StationCountingMode countingMode = statsService != null ? statsService.getStationCountingMode() : StationCountingMode.MANUAL;
+        if (countingMode != StationCountingMode.TRAIN_CARTS) {
+            if (!stationModeWarningLogged) {
+                String modeName = countingMode != null ? countingMode.name() : "UNKNOWN";
+                plugin.getLogger().info("Migration disabled: stations.counting_mode must be traincarts (current=" + modeName + ").");
+                stationModeWarningLogged = true;
+            }
+            return;
+        }
+        stationModeWarningLogged = false;
         task = Bukkit.getScheduler().runTaskTimer(plugin, this, settings.intervalTicks, settings.intervalTicks);
     }
 
