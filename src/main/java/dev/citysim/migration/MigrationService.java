@@ -85,6 +85,9 @@ public class MigrationService implements Runnable {
         this.linkService = linkService;
         this.cooldownKey = new NamespacedKey(plugin, "migrate_until");
         this.platformResolver = platformResolver;
+        if (this.platformResolver != null) {
+            this.platformResolver.setDebugSupplier(debugManager::isEnabled);
+        }
     }
 
     public boolean toggleDebug(Player player) {
@@ -739,7 +742,13 @@ public class MigrationService implements Runnable {
             List<StationPlatformResolver.StationSpots> stationSpots = platformResolver != null
                     ? platformResolver.resolveStations(destination)
                     : List.of();
-            boolean hasPrevalidated = stationSpots.stream().anyMatch(spots -> spots != null && !spots.spots().isEmpty());
+            int resolverSlotCount = stationSpots.stream()
+                    .filter(Objects::nonNull)
+                    .mapToInt(spots -> spots.spots() != null ? spots.spots().size() : 0)
+                    .sum();
+            String destinationLabel = destination.name != null && !destination.name.isBlank() ? destination.name : destination.id;
+            logDebugMessage("[Migration] resolver returned " + resolverSlotCount + " slot(s) for '" + destinationLabel + "'");
+            boolean hasPrevalidated = resolverSlotCount > 0;
 
             Location target;
             if (hasPrevalidated) {
@@ -975,6 +984,9 @@ public class MigrationService implements Runnable {
         if (city == null || city.id == null) {
             return;
         }
+        if (!debugManager.isEnabled()) {
+            return;
+        }
         long lastTick = platformHintsLogTick.getOrDefault(city.id, Long.MIN_VALUE);
         if (lastTick == logicalTick) {
             return;
@@ -984,17 +996,77 @@ public class MigrationService implements Runnable {
         boolean requireWallSign = teleportSettings != null && teleportSettings.requireWallSign;
         if (requireWallSign && sawNonWallSigns) {
             String message = "No platform candidates were cached for '" + cityLabel + "' - stations in range use non-wall signs while migration.teleport.require_wall_sign=true.";
-            plugin.getLogger().info(message);
-            if (debugManager.isEnabled()) {
-                debugWarning(message);
-            }
+            debugWarning(message);
             return;
         }
         String message = "No platform candidates resolved for '" + cityLabel + "'. Verify station builds or rerun a TrainCarts scan.";
-        plugin.getLogger().info(message);
-        if (debugManager.isEnabled()) {
-            debugWarning(message);
+        debugWarning(message);
+    }
+
+    private void logNoValidatedSlots(City city) {
+        if (city == null || city.id == null) {
+            return;
         }
+        if (!debugManager.isEnabled()) {
+            return;
+        }
+        long lastTick = platformHintsLogTick.getOrDefault(city.id, Long.MIN_VALUE);
+        if (lastTick == logicalTick) {
+            return;
+        }
+        platformHintsLogTick.put(city.id, logicalTick);
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        String message = "No validated platform slots for '" + cityLabel + "'. See LATE-REJECT logs above.";
+        debugWarning(message);
+    }
+
+    private void logLateReject(String reason, String context, World world, int floorX, int floorY, int floorZ, String detail) {
+        if (!debugManager.isEnabled()) {
+            return;
+        }
+        String worldName = world != null ? world.getName() : "unknown";
+        int feetY = floorY + 1;
+        String base = "[Migration] LATE-REJECT[" + reason + "]: context='" + (context != null ? context : "unknown")
+                + "' floor=" + floorX + "," + floorY + "," + floorZ
+                + " feet=" + floorX + "," + feetY + "," + floorZ
+                + " world=" + worldName;
+        if (detail != null && !detail.isBlank()) {
+            base += " detail=" + detail;
+        }
+        debugWarning(base);
+    }
+
+    private boolean railsNearFeet(Location feet, int radius, Set<Material> railTypes) {
+        if (radius <= 0 || feet == null) {
+            return false;
+        }
+        World world = feet.getWorld();
+        if (world == null || railTypes == null || railTypes.isEmpty()) {
+            return false;
+        }
+        int x = feet.getBlockX();
+        int z = feet.getBlockZ();
+        int floorY = feet.getBlockY() - 1;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                Material type = world.getBlockAt(x + dx, floorY, z + dz).getType();
+                if (railTypes.contains(type)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void logDebugMessage(String message) {
+        debugInfo(message);
+    }
+
+    private void logDebugWarning(String message) {
+        debugWarning(message);
     }
 
     private void debugInfo(String message) {
@@ -1122,7 +1194,7 @@ public class MigrationService implements Runnable {
     }
 
     private Location selectPlatformTarget(City city, List<StationPlatformResolver.StationSpots> stationSpots, TeleportSettings teleportSettings) {
-        if (city == null || city.id == null || stationSpots == null || stationSpots.isEmpty()) {
+        if (city == null || city.id == null || teleportSettings == null || stationSpots == null || stationSpots.isEmpty()) {
             if (city != null && city.id != null) {
                 platformIndices.remove(city.id);
             }
@@ -1130,46 +1202,80 @@ public class MigrationService implements Runnable {
         }
         List<Location> candidates = new ArrayList<>();
         for (StationPlatformResolver.StationSpots station : stationSpots) {
-            if (station == null) {
+            if (station == null || station.spots() == null) {
                 continue;
             }
             candidates.addAll(station.spots());
         }
         boolean sawNonWallSigns = platformResolver != null && platformResolver.hasOnlyNonWallSignStations(city.id);
-        if (candidates.isEmpty()) {
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
+        int totalCandidates = candidates.size();
+        logDebugMessage("[Migration] evaluating " + totalCandidates + " candidate slot(s) for '" + cityLabel + "'");
+        if (totalCandidates == 0) {
             platformIndices.remove(city.id);
             logNoPlatformCandidates(city, teleportSettings, sawNonWallSigns);
             return null;
         }
+
         int startIndex = Math.max(0, platformIndices.getOrDefault(city.id, 0));
-        for (int i = 0; i < candidates.size(); i++) {
-            int idx = (startIndex + i) % candidates.size();
+        int validatedCount = 0;
+        int selectedIndex = -1;
+        Location selected = null;
+
+        for (int i = 0; i < totalCandidates; i++) {
+            int idx = (startIndex + i) % totalCandidates;
             Location candidate = candidates.get(idx);
             if (candidate == null) {
+                logDebugWarning("[Migration] LATE-REJECT[null-slot]: city='" + cityLabel + "' index=" + idx);
                 continue;
             }
             World world = candidate.getWorld();
             if (world == null) {
+                logDebugWarning("[Migration] LATE-REJECT[null-world]: city='" + cityLabel + "' candidate="
+                        + candidate.getBlockX() + "," + candidate.getBlockY() + "," + candidate.getBlockZ());
                 continue;
             }
             int x = candidate.getBlockX();
             int z = candidate.getBlockZ();
             if (!ensureChunkLoaded(world, x, z)) {
+                logDebugWarning("[Migration] LATE-REJECT[chunk-unloaded]: city='" + cityLabel + "' candidate="
+                        + x + "," + candidate.getBlockY() + "," + z);
                 continue;
             }
-            int floorY = candidate.getBlockY();
-            if (!isCandidateValid(world, x, floorY, z, teleportSettings)) {
+            int feetY = candidate.getBlockY();
+            int floorY = Math.max(world.getMinHeight(), feetY - 1);
+            if (!isCandidateValid(world, x, floorY, z, teleportSettings, cityLabel)) {
                 continue;
             }
-            platformIndices.put(city.id, (idx + 1) % candidates.size());
-            return candidate.clone();
+            int horizRadius = teleportSettings.railAvoidHorizRadius;
+            if (railsNearFeet(candidate, horizRadius, teleportSettings.railMaterials)) {
+                logDebugWarning("[Migration] LATE-REJECT[rail-near-feet]: city='" + cityLabel + "' feet="
+                        + candidate.getBlockX() + "," + candidate.getBlockY() + "," + candidate.getBlockZ()
+                        + " radius=" + horizRadius);
+                continue;
+            }
+            validatedCount++;
+            if (selected == null) {
+                selectedIndex = idx;
+                selected = candidate.clone();
+            }
         }
-        platformIndices.remove(city.id);
-        logNoPlatformCandidates(city, teleportSettings, sawNonWallSigns);
-        if (platformResolver != null) {
-            platformResolver.invalidateCity(city);
+
+        logDebugMessage("[Migration] validated slots=" + validatedCount + " for '" + cityLabel + "'");
+
+        if (validatedCount == 0 || selected == null) {
+            platformIndices.remove(city.id);
+            logNoValidatedSlots(city);
+            if (platformResolver != null) {
+                platformResolver.invalidateCity(city);
+            }
+            return null;
         }
-        return null;
+
+        if (selectedIndex >= 0) {
+            platformIndices.put(city.id, (selectedIndex + 1) % totalCandidates);
+        }
+        return selected;
     }
 
     private Location preferredFallbackAnchor(List<StationPlatformResolver.StationSpots> stationSpots, Location defaultAnchor) {
@@ -1263,6 +1369,8 @@ public class MigrationService implements Runnable {
             }
 
             if (!ensureChunkLoaded(world, candidateX, candidateZ)) {
+                logDebugWarning("[Migration] LATE-REJECT[chunk-unloaded]: context='fallback' candidate="
+                        + candidateX + ",?," + candidateZ);
                 continue;
             }
 
@@ -1275,53 +1383,67 @@ public class MigrationService implements Runnable {
                 if (floorY < world.getMinHeight()) {
                     break;
                 }
-                if (!isCandidateValid(world, candidateX, floorY, candidateZ, teleportSettings)) {
+                if (!isCandidateValid(world, candidateX, floorY, candidateZ, teleportSettings, "fallback")) {
                     continue;
                 }
-                return new Location(world, candidateX + 0.5, floorY + 1.01, candidateZ + 0.5);
+                Location location = new Location(world, candidateX + 0.5, floorY + 1.01, candidateZ + 0.5);
+                int horizRadius = teleportSettings.railAvoidHorizRadius;
+                if (railsNearFeet(location, horizRadius, teleportSettings.railMaterials)) {
+                    logDebugWarning("[Migration] LATE-REJECT[rail-near-feet]: context='fallback' feet="
+                            + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ()
+                            + " radius=" + horizRadius);
+                    continue;
+                }
+                return location;
             }
         }
         return null;
     }
 
-    private boolean isCandidateValid(World world, int x, int floorY, int z, TeleportSettings teleportSettings) {
+    private boolean isCandidateValid(World world, int x, int floorY, int z, TeleportSettings teleportSettings, String context) {
+        if (world == null || teleportSettings == null) {
+            logLateReject("invalid-context", context, world, x, floorY, z, null);
+            return false;
+        }
         Block floor = world.getBlockAt(x, floorY, z);
-        if (!isStandableFloor(floor, teleportSettings)) {
+        Material type = floor.getType();
+        if (type.isAir()) {
+            logLateReject("floor-air", context, world, x, floorY, z, "type=" + type);
+            return false;
+        }
+        if (!type.isSolid() || !type.isOccluding()) {
+            logLateReject("floor-non-occluding", context, world, x, floorY, z, "type=" + type);
+            return false;
+        }
+        if (teleportSettings.floorAllowlist != null && !teleportSettings.floorAllowlist.isEmpty()
+                && !teleportSettings.floorAllowlist.contains(type)) {
+            logLateReject("floor-not-allowlist", context, world, x, floorY, z, "type=" + type);
+            return false;
+        }
+        if (teleportSettings.floorBlacklist.contains(type)) {
+            logLateReject("floor-blacklisted", context, world, x, floorY, z, "type=" + type);
             return false;
         }
         if (!hasHeadroom(world, floorY, x, z)) {
+            logLateReject("no-headroom", context, world, x, floorY, z, null);
             return false;
         }
         if (teleportSettings.disallowOnRail) {
-            if (teleportSettings.railMaterials.contains(floor.getType())) {
+            if (teleportSettings.railMaterials.contains(type)) {
+                logLateReject("floor-is-rail", context, world, x, floorY, z, "type=" + type);
                 return false;
             }
             Material feet = world.getBlockAt(x, floorY + 1, z).getType();
             if (teleportSettings.railMaterials.contains(feet)) {
+                logLateReject("feet-is-rail", context, world, x, floorY, z, "type=" + feet);
                 return false;
             }
         }
         if (teleportSettings.disallowBelowRail && isBelowAnyRail(world, teleportSettings, x, floorY, z)) {
-            return false;
-        }
-        if (teleportSettings.railAvoidHorizRadius > 0 && railsNearSameY(world, teleportSettings, x, floorY, z)) {
+            logLateReject("below-rail", context, world, x, floorY, z, null);
             return false;
         }
         return true;
-    }
-
-    private boolean isStandableFloor(Block block, TeleportSettings teleportSettings) {
-        Material type = block.getType();
-        if (type.isAir()) {
-            return false;
-        }
-        if (teleportSettings.floorAllowlist != null && !teleportSettings.floorAllowlist.isEmpty() && !teleportSettings.floorAllowlist.contains(type)) {
-            return false;
-        }
-        if (teleportSettings.floorBlacklist.contains(type)) {
-            return false;
-        }
-        return type.isSolid() && type.isOccluding();
     }
 
     private boolean hasHeadroom(World world, int floorY, int x, int z) {
@@ -1343,27 +1465,6 @@ public class MigrationService implements Runnable {
             Material type = world.getBlockAt(x, y, z).getType();
             if (teleportSettings.railMaterials.contains(type)) {
                 return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean railsNearSameY(World world, TeleportSettings teleportSettings, int x, int floorY, int z) {
-        int radius = teleportSettings.railAvoidHorizRadius;
-        if (radius <= 0) {
-            return false;
-        }
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                if (dx == 0 && dz == 0) {
-                    continue;
-                }
-                int checkX = x + dx;
-                int checkZ = z + dz;
-                Material type = world.getBlockAt(checkX, floorY + 1, checkZ).getType();
-                if (teleportSettings.railMaterials.contains(type)) {
-                    return true;
-                }
             }
         }
         return false;
