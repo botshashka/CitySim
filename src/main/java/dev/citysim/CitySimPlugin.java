@@ -250,6 +250,9 @@ public class CitySimPlugin extends JavaPlugin {
                     refreshStationsForAllCities("TrainCarts integration initialized");
                 }
             }
+            if (migrationService != null) {
+                migrationService.start();
+            }
         }
 
         @EventHandler
@@ -273,6 +276,9 @@ public class CitySimPlugin extends JavaPlugin {
             CitySimPlugin.this.getLogger().info("TrainCarts disabled: station counts will remain manual until it is re-enabled.");
             if (previousMode == StationCountingMode.TRAIN_CARTS) {
                 refreshStationsForAllCities("TrainCarts integration disabled");
+            }
+            if (migrationService != null) {
+                migrationService.start();
             }
         }
     }

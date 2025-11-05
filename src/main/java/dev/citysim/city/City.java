@@ -46,6 +46,8 @@ public class City {
     public double transitPressure = 0.0;
     public double landValue = 0.0;
 
+    public int migrationZeroPopArrivals = 0;
+
     public transient HappinessBreakdown happinessBreakdown = null;
     public transient EconomyBreakdown economyBreakdown = null;
 

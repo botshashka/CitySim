@@ -32,7 +32,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 
 public class StationPlatformResolver implements Listener {
 
@@ -48,12 +50,14 @@ public class StationPlatformResolver implements Listener {
     private final Map<String, Set<StationKey>> cityIndex = new HashMap<>();
     private final Map<ChunkKey, Set<StationKey>> chunkIndex = new HashMap<>();
     private final Set<String> wallSignWarnings = ConcurrentHashMap.newKeySet();
+    private BooleanSupplier debugSupplier = () -> false;
 
     private long lastRebuildTick = Long.MIN_VALUE;
     private int rebuildsThisTick = 0;
 
     public StationPlatformResolver(Plugin plugin) {
         this.plugin = plugin;
+        debugSettings(this.teleportSettings);
     }
 
     public void setStationService(TrainCartsStationService service) {
@@ -61,9 +65,22 @@ public class StationPlatformResolver implements Listener {
         clearAll();
     }
 
+    public void setDebugSupplier(BooleanSupplier debugSupplier) {
+        this.debugSupplier = debugSupplier != null ? debugSupplier : () -> false;
+    }
+
+    private boolean isDebugEnabled() {
+        try {
+            return debugSupplier != null && debugSupplier.getAsBoolean();
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
     public void updateTeleportSettings(TeleportSettings teleportSettings) {
         this.teleportSettings = teleportSettings != null ? teleportSettings : TeleportSettings.defaults();
         clearAll();
+        debugSettings(this.teleportSettings);
     }
 
     public void invalidateCity(City city) {
@@ -105,6 +122,8 @@ public class StationPlatformResolver implements Listener {
         }
 
         List<StationSpots> spots = new ArrayList<>(blocks.size());
+        int totalSlots = 0;
+        String cityLabel = city.name != null && !city.name.isBlank() ? city.name : city.id;
         Set<StationKey> currentKeys = new HashSet<>();
         boolean hadStationBlocks = false;
         boolean sawWallSignStation = false;
@@ -133,12 +152,17 @@ public class StationPlatformResolver implements Listener {
             currentKeys.add(key);
             registerStation(city.id, block, key);
             List<Location> cached = resolveCachedSpots(key, block);
+            int count = cached != null ? cached.size() : 0;
+            totalSlots += count;
+            logInfo("[StationPlatformResolver] resolved " + count + " slot(s) for sign=" + describeBlock(block)
+                    + " city='" + cityLabel + "'");
             Location signLocation = block.getLocation().toCenterLocation();
             spots.add(new StationSpots(signLocation, cached));
         }
 
         reconcileCityKeys(city.id, currentKeys);
         handleWallSignWarnings(city, hadStationBlocks, sawWallSignStation);
+        logInfo("[StationPlatformResolver] returning total slots=" + totalSlots + " for city='" + cityLabel + "'");
         return spots;
     }
 
@@ -178,6 +202,24 @@ public class StationPlatformResolver implements Listener {
         cityIndex.clear();
         chunkIndex.clear();
         wallSignWarnings.clear();
+    }
+
+    private void debugSettings(TeleportSettings settings) {
+        if (settings == null || plugin == null) {
+            return;
+        }
+        String offsets = settings.platformOffsets.stream()
+                .map(offset -> "[" + offset.dx() + "," + offset.dy() + "," + offset.dz() + "]")
+                .collect(Collectors.joining(", "));
+        String offsetDisplay = "[" + offsets + "]";
+        if (offsets.isEmpty()) {
+            offsetDisplay = "[]";
+        }
+        logInfo("[StationPlatformResolver] settings: vertical_search=" + settings.platformVerticalSearch
+                + " horiz_offset=" + settings.platformHorizontalOffset
+                + " rail_avoid_horiz=" + settings.railAvoidHorizRadius
+                + " below_rail=" + settings.disallowBelowRail
+                + " offsets=" + offsetDisplay);
     }
 
     private List<Location> resolveCachedSpots(StationKey key, Block signBlock) {
@@ -224,6 +266,8 @@ public class StationPlatformResolver implements Listener {
             if (base == null || base.getWorld() == null) {
                 continue;
             }
+            logInfo(String.format("[StationPlatformResolver] offset dx=%d dy=%d dz=%d -> start=(%d,%d,%d)",
+                    offset.dx(), offset.dy(), offset.dz(), base.getX(), base.getY(), base.getZ()));
             if (!ensureChunkLoaded(base.getWorld(), base.getX(), base.getZ())) {
                 continue;
             }
@@ -233,11 +277,19 @@ public class StationPlatformResolver implements Listener {
             }
             Location location = new Location(floor.getWorld(), floor.getX() + 0.5, floor.getY() + 1.01, floor.getZ() + 0.5);
             applyPlatformBackoff(signBlock, location);
+            if (!isFeetLocationSafe(location)) {
+            logInfo("[StationPlatformResolver] LATE-REJECT[unsafe-feet]: floor=" + floor.getX() + "," + floor.getY() + "," + floor.getZ()
+                    + " feet=" + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ()
+                    + " sign=" + describeBlock(signBlock));
+                continue;
+            }
+            logFeet(signBlock, floor, location, "primary");
             spots.add(location);
         }
         if (spots.isEmpty()) {
             collectFallbackSpots(signBlock, spots, max);
         }
+        logInfo("[StationPlatformResolver] final slot count=" + spots.size() + " for sign=" + describeBlock(signBlock));
         return spots;
     }
 
@@ -275,6 +327,13 @@ public class StationPlatformResolver implements Listener {
                     }
                     Location location = new Location(floor.getWorld(), floor.getX() + 0.5, floor.getY() + 1.01, floor.getZ() + 0.5);
                     applyPlatformBackoff(signBlock, location);
+                    if (!isFeetLocationSafe(location)) {
+                        logInfo("[StationPlatformResolver] LATE-REJECT[unsafe-feet]: floor=" + floor.getX() + "," + floor.getY() + "," + floor.getZ()
+                                + " feet=" + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ()
+                                + " sign=" + describeBlock(signBlock));
+                        continue;
+                    }
+                    logFeet(signBlock, floor, location, "fallback");
                     spots.add(location);
                     break;
                 }
@@ -282,13 +341,47 @@ public class StationPlatformResolver implements Listener {
         }
     }
 
-    private void logPlatformDebug(Block signBlock, Block candidate, String reason) {
-        if (plugin == null) {
+    private void logInfo(String message) {
+        if (plugin == null || message == null || !isDebugEnabled()) {
+            return;
+        }
+        plugin.getLogger().info(message);
+    }
+
+    private void logFeet(Block signBlock, Block floor, Location feet, String source) {
+        if (signBlock == null || floor == null || feet == null) {
+            return;
+        }
+        String floorCoords = floor.getX() + "," + floor.getY() + "," + floor.getZ();
+        String feetCoords = feet.getBlockX() + "," + feet.getBlockY() + "," + feet.getBlockZ();
+        logInfo("[StationPlatformResolver] ADD slot: source=" + source
+                + " floor=" + floorCoords + " feet=" + feetCoords
+                + " sign=" + describeBlock(signBlock));
+    }
+
+    private boolean isFeetLocationSafe(Location feet) {
+        if (feet == null) {
+            return false;
+        }
+        World world = feet.getWorld();
+        if (world == null) {
+            return false;
+        }
+        Block feetBlock = world.getBlockAt(feet.getBlockX(), feet.getBlockY(), feet.getBlockZ());
+        if (!feetBlock.isPassable()) {
+            return false;
+        }
+        Block headBlock = feetBlock.getRelative(BlockFace.UP);
+        return headBlock.isPassable();
+    }
+
+    private void logPlatformDebug(Block signBlock, Block candidate, String tag, String detail) {
+        if (!isDebugEnabled() || plugin == null) {
             return;
         }
         String signDesc = describeBlock(signBlock);
         String candidateDesc = describeBlock(candidate);
-        plugin.getLogger().info("[StationPlatformResolver] " + reason + " (sign=" + signDesc + ", candidate=" + candidateDesc + ")");
+        plugin.getLogger().info("[StationPlatformResolver] rejected[" + tag + "]: " + detail + " (sign=" + signDesc + ", candidate=" + candidateDesc + ")");
     }
 
     private String describeBlock(Block block) {
@@ -326,37 +419,51 @@ public class StationPlatformResolver implements Listener {
     }
 
     private Block findPlatformFloor(Block signBlock, Block start) {
-        if (start == null || signBlock == null) {
+        if (signBlock == null || start == null) {
             return null;
         }
         World world = start.getWorld();
         if (world == null) {
             return null;
         }
-        int x = start.getX();
-        int z = start.getZ();
-        int startY = start.getY();
-        int signY = signBlock.getY();
-        if (startY - 1 >= signY) {
-            int downY = startY - 1;
-            if (!ensureChunkLoaded(world, x, z)) {
-                return null;
-            }
-            Block below = world.getBlockAt(x, downY, z);
-            if (isValidPlatform(signBlock, below)) {
-                return below;
+        final int x = start.getX();
+        final int z = start.getZ();
+        final int signY = signBlock.getY();
+        final int startY = start.getY();
+        final int worldMax = world.getMaxHeight();
+        final int maxY = Math.min(worldMax, Math.max(startY, signY + teleportSettings.platformVerticalSearch));
+        logInfo(String.format("[StationPlatformResolver] probe-start: signY=%d startY=%d maxY=%d at (%d,%d,%d)",
+                signY, startY, maxY, x, startY, z));
+        if (!ensureChunkLoaded(world, x, z)) {
+            return null;
+        }
+        final int minWorldY = world.getMinHeight();
+
+        int downY = startY - 1;
+        if (downY >= signY && downY >= minWorldY) {
+            Block down = world.getBlockAt(x, downY, z);
+            logInfo("[StationPlatformResolver] try y=" + downY + " type=" + down.getType());
+            if (isValidPlatform(signBlock, down)) {
+                logInfo("[StationPlatformResolver] ACCEPT floor at y=" + downY + " type=" + down.getType()
+                        + " floor=" + down.getX() + "," + down.getY() + "," + down.getZ());
+                return down;
             }
         }
-        int maxY = Math.max(startY, signY + teleportSettings.platformVerticalSearch);
-        for (int y = startY; y <= maxY; y++) {
-            if (!ensureChunkLoaded(world, x, z)) {
-                return null;
-            }
+
+        int loopStart = Math.max(Math.max(startY, signY), minWorldY);
+        // Upward scan that actually iterates Y to discover platforms above the sign.
+        for (int y = loopStart; y <= maxY; y++) {
             Block candidate = world.getBlockAt(x, y, z);
+            logInfo("[StationPlatformResolver] try y=" + y + " type=" + candidate.getType());
             if (isValidPlatform(signBlock, candidate)) {
+                logInfo("[StationPlatformResolver] ACCEPT floor at y=" + y + " type=" + candidate.getType()
+                + " floor=" + candidate.getX() + "," + candidate.getY() + "," + candidate.getZ());
                 return candidate;
             }
         }
+
+        Block summary = world.getBlockAt(x, Math.max(Math.min(startY, worldMax), minWorldY), z);
+        logPlatformDebug(signBlock, summary, "no-platform", "scan failed (startY=" + startY + ", maxY=" + maxY + ", search=" + teleportSettings.platformVerticalSearch + ")");
         return null;
     }
 
@@ -396,47 +503,39 @@ public class StationPlatformResolver implements Listener {
     private boolean isValidPlatform(Block signBlock, Block floor) {
         World world = floor.getWorld();
         if (world == null) {
-            logPlatformDebug(signBlock, floor, "rejected: world missing");
-            return false;
-        }
-        if (floor.getY() < signBlock.getY()) {
-            logPlatformDebug(signBlock, floor, "rejected: below sign Y");
+            logPlatformDebug(signBlock, floor, "world", "world missing");
             return false;
         }
         Material type = floor.getType();
         if (!type.isSolid() || !type.isOccluding()) {
-            logPlatformDebug(signBlock, floor, "rejected: non-solid/occluding floor (" + type + ")");
+            logPlatformDebug(signBlock, floor, "non-occluding", "floor not solid/occluding (" + type + ")");
             return false;
         }
         if (!teleportSettings.floorAllowlist.isEmpty() && !teleportSettings.floorAllowlist.contains(type)) {
-            logPlatformDebug(signBlock, floor, "rejected: not in floor allowlist");
+            logPlatformDebug(signBlock, floor, "not-in-allowlist", "floor not in allowlist (" + type + ")");
             return false;
         }
         if (teleportSettings.floorBlacklist.contains(type)) {
-            logPlatformDebug(signBlock, floor, "rejected: in floor blacklist");
+            logPlatformDebug(signBlock, floor, "blacklisted", "floor material blacklisted (" + type + ")");
             return false;
         }
         if (teleportSettings.disallowOnRail) {
             if (teleportSettings.railMaterials.contains(type)) {
-                logPlatformDebug(signBlock, floor, "rejected: floor is rail block");
+                logPlatformDebug(signBlock, floor, "floor-is-rail", "floor is rail block (" + type + ")");
                 return false;
             }
             Material feetType = world.getBlockAt(floor.getX(), floor.getY() + 1, floor.getZ()).getType();
             if (teleportSettings.railMaterials.contains(feetType)) {
-                logPlatformDebug(signBlock, floor, "rejected: landing space is rail");
+                logPlatformDebug(signBlock, floor, "feet-is-rail", "landing space is rail (" + feetType + ")");
                 return false;
             }
         }
         if (!hasHeadroom(world, floor.getY(), floor.getX(), floor.getZ())) {
-            logPlatformDebug(signBlock, floor, "rejected: insufficient headroom");
+            logPlatformDebug(signBlock, floor, "no headroom", "insufficient headroom");
             return false;
         }
         if (teleportSettings.disallowBelowRail && isBelowAnyRail(world, floor.getX(), floor.getY(), floor.getZ())) {
-            logPlatformDebug(signBlock, floor, "rejected: rail above within disallowBelowRail");
-            return false;
-        }
-        if (teleportSettings.railAvoidHorizRadius > 0 && railsNearSameY(world, floor.getX(), floor.getY(), floor.getZ())) {
-            logPlatformDebug(signBlock, floor, "rejected: rail nearby on same Y");
+            logPlatformDebug(signBlock, floor, "below-rail", "rail detected within disallowBelowRail");
             return false;
         }
         return true;
@@ -465,26 +564,6 @@ public class StationPlatformResolver implements Listener {
         }
         return false;
     }
-
-    private boolean railsNearSameY(World world, int x, int floorY, int z) {
-        int radius = teleportSettings.railAvoidHorizRadius;
-        if (radius <= 0) {
-            return false;
-        }
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                if (dx == 0 && dz == 0) {
-                    continue;
-                }
-                Material type = world.getBlockAt(x + dx, floorY, z + dz).getType();
-                if (teleportSettings.railMaterials.contains(type)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     private void registerStation(String cityId, Block block, StationKey key) {
         StationMetadata meta = metadata.get(key);
         ChunkKey chunkKey = ChunkKey.from(block);

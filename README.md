@@ -129,8 +129,8 @@ for tweaking:
   particles per tick. Typical selections such as a 32×32×32 span resolve to ~250 particles, while a 512×512 full-height region automatically
   thins to ~780 points so it stays inside the budget. Cached outlines are stored per player/city pair as compact coordinate arrays (roughly
   120 bytes per 100 particles), keeping even a city with a dozen cuboids under 100 KiB of visualization cache.
-- **`stations.counting_mode`** – Default is `manual`. Change to `traincarts` for automatic station syncing or `disabled` to
-  ignore station scoring entirely.
+- **`stations.counting_mode`** – Default is `traincarts`. Switch to `manual` for hand-maintained counts or `disabled` to
+  ignore station scoring entirely. If TrainCarts isn’t available when this is set to `traincarts`, the plugin automatically disables station counting (and migration stays inactive) until the integration is restored.
 - **`migration`** – Governs the automated villager migration system, including teleport safety rules.
   - `teleport.require_wall_sign` – Defaults to `true`. When enabled, migration only considers TrainCarts stations that use wall-mounted signs for teleport anchors. Set this to `false` if your network relies on standing/post signs so they are eligible; the plugin logs a warning when no wall-sign stations are found and the restriction blocks every candidate.
 
@@ -138,6 +138,8 @@ for tweaking:
 - Migration freshness now adapts to your scan backlog: `migration.logic.freshness_base_secs` sets the floor, `freshness_queue_slack_secs` adds safety margin, and `freshness_backlog_weight` controls how strongly pending jobs extend the window. The migration debug feed includes the dynamic limit so you can tune it when needed.
 - If your TrainCarts stations rely on standing or frame signs, set `migration.teleport.require_wall_sign: false`. When the flag stays true and only non-wall signs exist, the resolver emits an INFO hint explaining that platform caching is blocked by the requirement.
 - When no prevalidated platforms are in cache (for example after a station rebuild), the fallback sampler automatically widens to the configured `migration.teleport.radius` so villagers can still land on a safe, non-rail floor that honors every existing safety rule.
+- Migration relies on TrainCarts station data; set `stations.counting_mode: traincarts` or the migration service stays inactive.
+- `migration.teleport.rail_avoid_horiz_radius` keeps villagers from spawning next to rails: a radius of *N* blocks checks the floor layer around their feet for rail blocks and vetoes any slot within that distance. Set it to `0` if you want tiles directly adjacent to rails to remain eligible. The separate `disallow_on_rail` and `disallow_below_rail` safeguards stay active regardless of the radius.
 - Tune `migration.teleport.platform_vertical_search` if some stations have platforms more than one block above their wall signs; increasing the scan lets the resolver snap villagers on top of the right floor instead of underneath.
 - Want to keep starter towns offline? Set `migration.logic.allow_zero_population_destinations: false` to prevent moves into empty cities; by default they remain eligible so fresh settlements can start growing. Pair it with `migration.logic.zero_population_prosperity_boost` (prosperity floor) — empty destinations also bypass housing/employment gates when the toggle stays on, so their first migrants aren't blocked by missing stats.
 - Need real-time visibility into what the migration service is doing? Run `/city debug migration` (admin only) to toggle a live chat feed that covers origin/destination gating, rate limits, approvals, teleport targets, and any failures across the full migration pipeline. Run the command again to stop receiving updates.
