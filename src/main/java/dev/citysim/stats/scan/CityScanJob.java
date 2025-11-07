@@ -711,17 +711,25 @@ public class CityScanJob {
                 completedBedWorkUnits++;
                 continue;
             }
-            if (!synchronous && !forceRefresh && snapshot != null && snapshot.dirty && expiredChunksScheduled >= MAX_EXPIRED_CHUNKS_PER_JOB) {
-                deferredDirtyChunks++;
-                continue;
+            if (!synchronous && !forceRefresh && snapshot != null && snapshot.dirty) {
+                if (expiredChunksScheduled >= MAX_EXPIRED_CHUNKS_PER_JOB) {
+                    deferredDirtyChunks++;
+                    cachedChunks.add(chunkPos);
+                    bedHalfCount += snapshot.bedHalves;
+                    if (snapshot.bedHalves > 0) {
+                        residentialBedChunks.add(chunkPos);
+                    }
+                    cachedBedChunks++;
+                    totalBedWorkUnits++;
+                    completedBedWorkUnits++;
+                    continue;
+                }
+                expiredChunksScheduled++;
+                city.bedSnapshotMap().remove(chunkPos);
             }
             List<BedChunkSegment> segments = entry.getValue();
             ChunkTracker tracker = new ChunkTracker(segments.size());
             chunkTrackers.put(chunkPos, tracker);
-            if (snapshot != null && snapshot.dirty) {
-                expiredChunksScheduled++;
-                city.bedSnapshotMap().remove(chunkPos);
-            }
             for (BedChunkSegment segment : segments) {
                 int slabMinY = segment.minY();
                 while (slabMinY <= segment.maxY()) {
