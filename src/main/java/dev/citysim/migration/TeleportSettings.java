@@ -180,7 +180,9 @@ final class TeleportSettings {
             Material material = Material.matchMaterial(entry.toUpperCase(Locale.ROOT));
             if (material != null) {
                 set.add(material);
-            } else if (plugin != null) {
+                continue;
+            }
+            if (plugin != null) {
                 plugin.getLogger().warning("Unknown material '" + entry + "' in " + path);
             }
         }
@@ -203,6 +205,9 @@ final class TeleportSettings {
         return switch (tagName) {
             case "CARPETS" -> Tag.CARPETS;
             case "TRAPDOORS" -> Tag.TRAPDOORS;
+            case "FENCES" -> Tag.FENCES;
+            case "WOODEN_FENCES" -> Tag.WOODEN_FENCES;
+            case "FENCE_GATES" -> Tag.FENCE_GATES;
             default -> null;
         };
     }

@@ -186,7 +186,7 @@ migration:
     floor_block_blacklist:
       - tag:CARPETS
       - tag:TRAPDOORS
-      - FENCE
+      - tag:FENCES
       - NETHER_BRICK_FENCE
       - COBBLESTONE_WALL
       - MOSSY_COBBLESTONE_WALL

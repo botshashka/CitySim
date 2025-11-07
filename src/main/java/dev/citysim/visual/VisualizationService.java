@@ -105,6 +105,19 @@ public final class VisualizationService {
         }
     }
 
+    public void disableCityView(String cityId) {
+        if (cityId == null) {
+            return;
+        }
+        Collection<Player> viewers = getCityViewers(cityId);
+        if (viewers.isEmpty()) {
+            return;
+        }
+        for (Player viewer : viewers) {
+            disableCityView(viewer, cityId);
+        }
+    }
+
     public void disableAllCityViews(Player player) {
         PlayerSession session = sessions.get(player.getUniqueId());
         if (session == null) {
