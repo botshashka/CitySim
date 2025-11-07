@@ -19,6 +19,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -45,8 +46,16 @@ public class StatsCommand implements CitySubcommand {
     }
 
     @Override
+    public Collection<String> aliases() {
+        return List.of("info");
+    }
+
+    @Override
     public List<Component> help() {
-        return List.of(CommandMessages.help("/city stats [cityId]"));
+        return List.of(
+                CommandMessages.help("/city stats [cityId]"),
+                CommandMessages.help("/city info [cityId]")
+        );
     }
 
     @Override
@@ -65,10 +74,7 @@ public class StatsCommand implements CitySubcommand {
             return true;
         }
 
-        var hb = statsService.updateCity(city, true);
-        if (hb == null) {
-            hb = new HappinessBreakdown();
-        }
+        HappinessBreakdown hb = statsService.computeHappinessBreakdown(city);
         hb.setGhostTown(hb.isGhostTown() || city.isGhostTown() || city.population <= 0);
 
         boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;

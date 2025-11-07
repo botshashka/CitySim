@@ -81,7 +81,8 @@ java -version  # should report a Java 21 runtime
 /city edit <cityId> highrise <true|false>        # relax or tighten crowding limits for tall builds (admin only)
 /city edit <cityId> station <add|remove|set|clear> [amount]  # adjust how many transit stations the city counts (admin only; available when `stations.counting_mode` is `manual` in config.yml)
 /city wand ymode <full|span>                     # choose whether selections cover the full world height or just the Y range you click
-/city stats [cityId]                             # see population, jobs, beds, stations, and the full happiness breakdown
+/city stats [cityId]                             # see population, jobs, beds, stations, and the full happiness breakdown (alias: /city info)
+/city scan [cityId]                              # run an immediate stats scan without printing the breakdown
 /city display titles on|off                      # show or hide the entry banner for your HUD
 /city display bossbar on|off                     # toggle the boss bar HUD element
 /city display scoreboard <off|compact|full>      # pick the scoreboard style or turn it off entirely

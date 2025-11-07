@@ -4,6 +4,7 @@ import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
+import dev.citysim.visual.VisualizationService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
@@ -15,9 +16,11 @@ import java.util.stream.Collectors;
 public class RemoveCityCommand implements CitySubcommand {
 
     private final CityManager cityManager;
+    private final VisualizationService visualizationService;
 
-    public RemoveCityCommand(CityManager cityManager) {
+    public RemoveCityCommand(CityManager cityManager, VisualizationService visualizationService) {
         this.cityManager = cityManager;
+        this.visualizationService = visualizationService;
     }
 
     @Override
@@ -71,6 +74,9 @@ public class RemoveCityCommand implements CitySubcommand {
             return true;
         }
 
+        if (visualizationService != null) {
+            visualizationService.disableCityView(removed.id);
+        }
         cityManager.save();
         sender.sendMessage(Component.text()
                 .append(Component.text("City '", NamedTextColor.GREEN))
