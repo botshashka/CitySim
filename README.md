@@ -136,7 +136,7 @@ for tweaking:
   - `teleport.require_wall_sign` – Defaults to `true`. When enabled, migration only considers TrainCarts stations that use wall-mounted signs for teleport anchors. Set this to `false` if your network relies on standing/post signs so they are eligible; the plugin logs a warning when no wall-sign stations are found and the restriction blocks every candidate.
 
 ### Troubleshooting migration targets
-- Migration freshness now adapts to your scan backlog: `migration.logic.freshness_base_secs` sets the floor, `freshness_queue_slack_secs` adds safety margin, and `freshness_backlog_weight` controls how strongly pending jobs extend the window. The migration debug feed includes the dynamic limit so you can tune it when needed.
+- Migration freshness adapts to your scan backlog: `migration.logic.freshness_base_secs` sets the floor, `freshness_queue_slack_secs` adds safety margin, and `freshness_backlog_weight` controls how strongly pending jobs extend the window. The migration debug feed includes the dynamic limit so you can tune it when needed.
 - If your TrainCarts stations rely on standing or frame signs, set `migration.teleport.require_wall_sign: false`. When the flag stays true and only non-wall signs exist, the resolver emits an INFO hint explaining that platform caching is blocked by the requirement.
 - When no prevalidated platforms are in cache (for example after a station rebuild), the fallback sampler automatically widens to the configured `migration.teleport.radius` so villagers can still land on a safe, non-rail floor that honors every existing safety rule.
 - Migration relies on TrainCarts station data; set `stations.counting_mode: traincarts` or the migration service stays inactive.
