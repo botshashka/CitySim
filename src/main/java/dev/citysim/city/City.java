@@ -54,6 +54,7 @@ public class City {
     public transient BlockScanCache blockScanCache = null;
     public transient EntityScanCache entityScanCache = null;
     private transient Set<ChunkPosition> residentialChunks = new LinkedHashSet<>();
+    private transient java.util.Map<ChunkPosition, BedSnapshot> bedSnapshots = new java.util.HashMap<>();
 
     public boolean highrise = false;
 
@@ -84,6 +85,7 @@ public class City {
         happinessBreakdown = null;
         economyBreakdown = null;
         residentialChunks.clear();
+        invalidateBedSnapshots();
     }
 
     public void setResidentialChunks(Collection<ChunkPosition> chunkPositions) {
@@ -96,6 +98,37 @@ public class City {
 
     public Set<ChunkPosition> getResidentialChunks() {
         return Collections.unmodifiableSet(residentialChunks);
+    }
+
+    public java.util.Map<ChunkPosition, BedSnapshot> bedSnapshotMap() {
+        if (bedSnapshots == null) {
+            bedSnapshots = new java.util.HashMap<>();
+        }
+        return bedSnapshots;
+    }
+
+    public BedSnapshot getBedSnapshot(ChunkPosition chunk) {
+        if (chunk == null) {
+            return null;
+        }
+        return bedSnapshotMap().get(chunk);
+    }
+
+    public void putBedSnapshot(ChunkPosition chunk, int bedHalves, long timestamp) {
+        if (chunk == null) {
+            return;
+        }
+        BedSnapshot snapshot = new BedSnapshot();
+        snapshot.bedHalves = Math.max(0, bedHalves);
+        snapshot.timestamp = timestamp;
+        snapshot.dirty = false;
+        bedSnapshotMap().put(chunk, snapshot);
+    }
+
+    public void invalidateBedSnapshots() {
+        if (bedSnapshots != null) {
+            bedSnapshots.clear();
+        }
     }
 
     public static class BlockScanCache {
@@ -113,6 +146,12 @@ public class City {
     }
 
     public record ChunkPosition(String world, int x, int z) {
+    }
+
+    public static class BedSnapshot {
+        public int bedHalves;
+        public long timestamp;
+        public boolean dirty;
     }
 
     public boolean isGhostTown() {
