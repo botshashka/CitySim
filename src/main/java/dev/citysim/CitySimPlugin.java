@@ -19,6 +19,7 @@ import dev.citysim.visual.VisualizationSettings;
 import dev.citysim.stats.BossBarService;
 import dev.citysim.stats.StatsService;
 import dev.citysim.stats.StationCountingMode;
+import dev.citysim.stats.scan.BedEventListener;
 import dev.citysim.ui.DisplayPreferencesStore;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
@@ -70,6 +71,10 @@ public class CitySimPlugin extends JavaPlugin {
         getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
         getLogger().info("StatsService started");
+
+        getServer().getPluginManager().registerEvents(new BedEventListener(cityManager), this);
+        getLogger().info("BedEventListener registered");
+
 
         getServer().getPluginManager().registerEvents(new DependencyListener(), this);
 

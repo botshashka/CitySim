@@ -2,6 +2,7 @@ package dev.citysim.stats.scan;
 
 import dev.citysim.city.City;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -41,6 +42,25 @@ public class ScanDebugManager {
                 .append(Component.text("[" + timestamp() + "] ", NamedTextColor.DARK_GRAY))
                 .append(Component.text(completeMessage(job), NamedTextColor.GRAY))
                 .build());
+    }
+
+    public void logTickSummary(int processedJobs, int completedJobs, java.util.List<JobDebugSummary> jobs) {
+        if (watchers.isEmpty()) {
+            return;
+        }
+        TextComponent.Builder builder = Component.text()
+                .append(Component.text("[" + timestamp() + "] ", NamedTextColor.DARK_GRAY))
+                .append(Component.text(
+                        String.format("Scan tick: processed=%d, completed=%d, active=%d",
+                                processedJobs,
+                                completedJobs,
+                                jobs.size()),
+                        NamedTextColor.GOLD));
+        for (JobDebugSummary job : jobs) {
+            builder.append(Component.newline())
+                    .append(Component.text(jobSummary(job), NamedTextColor.YELLOW));
+        }
+        broadcast(builder.build());
     }
 
     private String timestamp() {
@@ -138,5 +158,38 @@ public class ScanDebugManager {
             return city.world;
         }
         return "unknown";
+    }
+
+    private String jobSummary(JobDebugSummary summary) {
+        City city = summary.city();
+        CityScanJob.ScanProgress progress = summary.progress();
+        long totalBed = Math.max(0L, summary.totalBedUnits());
+        long completedBed = Math.max(0L, summary.completedBedUnits());
+        long remainingBed = Math.max(0L, totalBed - completedBed);
+        long remainingBedBlocks = progress != null ? Math.max(0L, progress.remainingBedBlocks()) : 0L;
+        int remainingEntityChunks = progress != null ? Math.max(0, progress.remainingEntityChunks()) : 0;
+        StringBuilder builder = new StringBuilder(" - ")
+                .append(describeCity(city))
+                .append(": bedSlabs=")
+                .append(completedBed)
+                .append("/")
+                .append(totalBed)
+                .append(", remainingBedBlocks=")
+                .append(remainingBedBlocks)
+                .append(", remainingEntityChunks=")
+                .append(remainingEntityChunks);
+        if (summary.cachedChunks() > 0L) {
+            builder.append(", cachedChunks=").append(summary.cachedChunks());
+        }
+        if (remainingBed > 0L) {
+            builder.append(", bedSlabsRemaining=").append(remainingBed);
+        }
+        if (summary.deferredChunks() > 0) {
+            builder.append(", deferredChunks=").append(summary.deferredChunks());
+        }
+        return builder.toString();
+    }
+
+    public record JobDebugSummary(City city, CityScanJob.ScanProgress progress, long totalBedUnits, long completedBedUnits, long cachedChunks, int deferredChunks) {
     }
 }

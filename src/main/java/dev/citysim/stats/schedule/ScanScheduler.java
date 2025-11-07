@@ -209,7 +209,9 @@ public class ScanScheduler {
         if (stats == null || stats.lastCompletionMillis <= 0L) {
             return nowMillis;
         }
-        return Math.max(stats.lastCompletionMillis + base, nowMillis);
+        long cooldown = stats.targetCooldownMillis(base, maxEntityChunksPerTick, maxBedBlocksPerTick);
+        long eligibleAt = safeAdd(stats.lastCompletionMillis, cooldown);
+        return Math.max(eligibleAt, nowMillis);
     }
 
     private void ensureSweepEntries() {
@@ -255,20 +257,103 @@ public class ScanScheduler {
     private static final class CityScanStats {
         private long lastCompletionMillis;
         private long totalDurationMillis;
+        private long totalEntityChunks;
+        private long totalBedBlocks;
         private int scans;
         private long lastDurationMillis;
+        private long lastEntityChunks;
+        private long lastBedBlocks;
 
         void recordCompletion(ScanWorkload workload, long completedAtMillis) {
-            long duration = workload != null ? Math.max(1L, workload.durationMillis()) : 1L;
+            long duration = 1L;
+            long entityChunks = 0L;
+            long bedBlocks = 0L;
+            if (workload != null) {
+                duration = Math.max(1L, workload.durationMillis());
+                entityChunks = Math.max(0L, workload.entityChunks());
+                bedBlocks = Math.max(0L, workload.bedBlockChecks());
+            }
             lastCompletionMillis = completedAtMillis;
             lastDurationMillis = duration;
-            totalDurationMillis += duration;
+            totalDurationMillis = safeAdd(totalDurationMillis, duration);
+            totalEntityChunks = safeAdd(totalEntityChunks, entityChunks);
+            totalBedBlocks = safeAdd(totalBedBlocks, bedBlocks);
+            lastEntityChunks = entityChunks;
+            lastBedBlocks = bedBlocks;
             scans++;
         }
 
         long averageDurationMillis() {
             return scans == 0 ? 0L : totalDurationMillis / scans;
         }
+
+        long averageEntityChunks() {
+            return scans == 0 ? 0L : totalEntityChunks / scans;
+        }
+
+        long averageBedBlocks() {
+            return scans == 0 ? 0L : totalBedBlocks / scans;
+        }
+
+        long targetCooldownMillis(long baseIntervalMillis, int chunkBudget, int bedBudget) {
+            long durationSample = Math.max(averageDurationMillis(), lastDurationMillis);
+            long workloadMillis = estimatedWorkMillis(chunkBudget, bedBudget);
+            long reference = Math.max(durationSample, workloadMillis);
+            if (reference <= 0L) {
+                reference = baseIntervalMillis;
+            }
+            long cooldown = Math.max(baseIntervalMillis, reference);
+            return cooldown;
+        }
+
+        private long estimatedWorkMillis(int chunkBudget, int bedBudget) {
+            long chunkSample = Math.max(averageEntityChunks(), lastEntityChunks);
+            long bedSample = Math.max(averageBedBlocks(), lastBedBlocks);
+            long ticks = 0L;
+            if (chunkBudget > 0 && chunkSample > 0L) {
+                ticks = safeAdd(ticks, ceilDiv(chunkSample, chunkBudget));
+            }
+            if (bedBudget > 0 && bedSample > 0L) {
+                ticks = safeAdd(ticks, ceilDiv(bedSample, bedBudget));
+            }
+            if (ticks <= 0L) {
+                return 0L;
+            }
+            return safeMultiply(ticks, 50L);
+        }
+    }
+
+    private static long safeAdd(long a, long b) {
+        long result = a + b;
+        if (((a ^ result) & (b ^ result)) < 0) {
+            return Long.MAX_VALUE;
+        }
+        return result;
+    }
+
+    private static long safeMultiply(long a, long b) {
+        if (a <= 0L || b <= 0L) {
+            return 0L;
+        }
+        if (a > Long.MAX_VALUE / b) {
+            return Long.MAX_VALUE;
+        }
+        return a * b;
+    }
+
+    private static long ceilDiv(long value, long divisor) {
+        if (value <= 0L || divisor <= 0L) {
+            return 0L;
+        }
+        long quotient = value / divisor;
+        long remainder = value % divisor;
+        if (remainder == 0L) {
+            return quotient;
+        }
+        if (quotient >= Long.MAX_VALUE) {
+            return Long.MAX_VALUE;
+        }
+        return quotient + 1L;
     }
 
     private static final class ScheduledCity {
