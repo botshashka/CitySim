@@ -2,7 +2,7 @@ package dev.citysim.stats.scan;
 
 import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
-import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.ProsperityBreakdown;
 import dev.citysim.stats.StationCountResult;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
@@ -58,7 +58,7 @@ public class CityScanJob {
 
     private Stage stage = Stage.ENTITY_SCAN;
     private boolean cancelled = false;
-    private HappinessBreakdown result = null;
+    private ProsperityBreakdown result = null;
 
     private boolean rerunRequested = false;
     private boolean rerunForceRefresh = false;
@@ -327,9 +327,9 @@ public class CityScanJob {
         trainCartsStationCount = callbacks.refreshStationCount(city);
 
         City.BlockScanCache metrics = callbacks.ensureBlockScanCache(city, forceRefresh);
-        result = callbacks.calculateHappinessBreakdown(city, metrics);
-        city.happinessBreakdown = result;
-        city.happiness = result.total;
+        result = callbacks.calculateProsperityBreakdown(city, metrics);
+        city.prosperityBreakdown = result;
+        city.prosperity = result.total;
     }
 
     private void markEntityScanComplete() {
@@ -399,7 +399,7 @@ public class CityScanJob {
         }
     }
 
-    public HappinessBreakdown getResult() {
+    public ProsperityBreakdown getResult() {
         return result;
     }
 
@@ -752,8 +752,8 @@ public class CityScanJob {
         return tasks;
     }
 
-    public int resultingHappiness() {
-        return result != null ? result.total : city.happiness;
+    public int resultingProsperity() {
+        return result != null ? result.total : city.prosperity;
     }
 
     public RerunRequest pendingRerunRequest() {

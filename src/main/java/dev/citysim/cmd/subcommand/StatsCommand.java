@@ -5,9 +5,9 @@ import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.stats.EconomyBreakdown;
 import dev.citysim.stats.EconomyBreakdownFormatter;
-import dev.citysim.stats.HappinessBreakdown;
-import dev.citysim.stats.HappinessBreakdownFormatter;
-import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
+import dev.citysim.stats.ProsperityBreakdown;
+import dev.citysim.stats.ProsperityBreakdownFormatter;
+import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLists;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 import dev.citysim.util.AdventureMessages;
@@ -74,7 +74,7 @@ public class StatsCommand implements CitySubcommand {
             return true;
         }
 
-        HappinessBreakdown hb = statsService.computeHappinessBreakdown(city);
+        ProsperityBreakdown hb = statsService.computeProsperityBreakdown(city);
         hb.setGhostTown(hb.isGhostTown() || city.isGhostTown() || city.population <= 0);
 
         boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
@@ -102,10 +102,10 @@ public class StatsCommand implements CitySubcommand {
             return true;
         }
 
-        ContributionLists contributionLists = StatsFormatting.filterTransitIfHidden(statsService, HappinessBreakdownFormatter.buildContributionLists(hb));
+        ContributionLists contributionLists = StatsFormatting.filterTransitIfHidden(statsService, ProsperityBreakdownFormatter.buildContributionLists(hb));
 
-        String breakdownLines = StatsFormatting.joinHappinessContributionLines(contributionLists.positives(), StatsFormatting::miniMessageLabelForHappiness);
-        String negativeLines = StatsFormatting.joinHappinessContributionLines(contributionLists.negatives(), StatsFormatting::miniMessageLabelForHappiness);
+        String breakdownLines = StatsFormatting.joinProsperityContributionLines(contributionLists.positives(), StatsFormatting::miniMessageLabelForProsperity);
+        String negativeLines = StatsFormatting.joinProsperityContributionLines(contributionLists.negatives(), StatsFormatting::miniMessageLabelForProsperity);
         if (!negativeLines.isEmpty()) {
             if (!breakdownLines.isEmpty()) {
                 breakdownLines += "\n";

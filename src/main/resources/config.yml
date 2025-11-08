@@ -1,5 +1,5 @@
 # CitySim plugin configuration
-# You can tweak update intervals and happiness weights later.
+# You can tweak update intervals and prosperity weights later.
 updates:
   stats_interval_ticks: 100     # ~5 seconds between stat updates (min 20, max 12000)
   stats_initial_delay_ticks: 40 # Delay before the first stat update (0 - 6000)
@@ -8,7 +8,7 @@ updates:
   max_entity_chunks_per_tick: 2 # Loaded chunks checked per active city scan each tick
   max_bed_blocks_per_tick: 2048 # Block lookups for bed counting per tick
   # Lighting samples for non-high-rise cities focus on parcels with beds; high-rises
-  # continue to scan their full claimed volume because interior light drives happiness.
+  # continue to scan their full claimed volume because interior light drives prosperity.
 
 visualization:
   enabled: true
@@ -29,10 +29,10 @@ visualization:
 stations:
   counting_mode: traincarts # traincarts (default), manual, or disabled
 
-happiness:
+prosperity:
   nature_block_allowlist: []
 
-happiness_weights:
+prosperity_weights:
   base_score: 50
   light_neutral_level: 2.0
   nature_max_points: 10

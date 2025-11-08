@@ -2,7 +2,7 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
-import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.ProsperityBreakdown;
 import dev.citysim.stats.StatsService;
 import dev.citysim.util.AdventureMessages;
 import net.kyori.adventure.text.Component;
@@ -113,7 +113,7 @@ public class TitleService implements Listener {
             }
             lastShownTick.put(player.getUniqueId(), serverTick);
 
-            HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(current);
+            ProsperityBreakdown breakdown = statsService.computeProsperityBreakdown(current);
             String key = breakdown.isGhostTown() ? "ghost_town" : breakdown.pickWeightedMessageKey();
 
             Component title = Component.text(current.name)
@@ -159,7 +159,7 @@ public class TitleService implements Listener {
         if (configured != null && !configured.isBlank()) {
             return configured;
         }
-        return HappinessBreakdown.defaultMessageFor(key);
+        return ProsperityBreakdown.defaultMessageFor(key);
     }
 }
 

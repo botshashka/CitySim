@@ -4,7 +4,7 @@ import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
-import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.ProsperityBreakdown;
 import dev.citysim.stats.StatsService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -54,7 +54,7 @@ public class ScanCityCommand implements CitySubcommand {
             return true;
         }
 
-        HappinessBreakdown result = statsService.updateCity(city, true);
+        ProsperityBreakdown result = statsService.updateCity(city, true);
         if (result == null) {
             player.sendMessage(Component.text("Failed to scan city '" + city.name + "'. Check logs for details.", NamedTextColor.RED));
             return true;

@@ -15,18 +15,18 @@ import java.util.EnumSet;
 import java.util.List;
 
 /**
- * Provides reusable logic for sampling block-level metrics that feed into the happiness calculation.
+ * Provides reusable logic for sampling block-level metrics that feed into the prosperity calculation.
  */
 public class BlockScanService {
     private static final int HIGHRISE_VERTICAL_STEP = 4;
     private static final long DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS = 60000L;
 
-    private final HappinessCalculator happinessCalculator;
+    private final ProsperityCalculator prosperityCalculator;
     private long blockScanRefreshIntervalMillis = DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS;
     private Set<Material> extraNatureBlocks = EnumSet.noneOf(Material.class);
 
-    public BlockScanService(HappinessCalculator happinessCalculator) {
-        this.happinessCalculator = happinessCalculator;
+    public BlockScanService(ProsperityCalculator prosperityCalculator) {
+        this.prosperityCalculator = prosperityCalculator;
     }
 
     public void updateConfig(FileConfiguration configuration) {
@@ -34,11 +34,11 @@ public class BlockScanService {
             return;
         }
         long configured = Math.max(0L,
-                configuration.getLong("happiness.block_scan_refresh_interval_millis",
+                configuration.getLong("prosperity.block_scan_refresh_interval_millis",
                         DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS));
         setBlockScanRefreshIntervalMillis(configured);
 
-        List<String> configuredNature = configuration.getStringList("happiness.nature_block_allowlist");
+        List<String> configuredNature = configuration.getStringList("prosperity.nature_block_allowlist");
         if (configuredNature != null) {
             Set<Material> parsed = EnumSet.noneOf(Material.class);
             for (String entry : configuredNature) {
@@ -91,7 +91,7 @@ public class BlockScanService {
         cache.pollution = pollutionStats.ratio();
         cache.pollutingBlocks = pollutionStats.blockCount();
         cache.pollutionSamples = pollutionStats.samples();
-        cache.overcrowdingPenalty = happinessCalculator.computeOvercrowdingPenalty(city);
+        cache.overcrowdingPenalty = prosperityCalculator.computeOvercrowdingPenalty(city);
         cache.timestamp = now;
         city.blockScanCache = cache;
         return cache;
@@ -150,7 +150,7 @@ public class BlockScanService {
         int samples = 0;
         int lightSum = 0;
         if (city.cuboids == null) {
-            return happinessCalculator.getLightNeutral();
+            return prosperityCalculator.getLightNeutral();
         }
         for (Cuboid c : city.cuboids) {
             if (c == null || c.world == null) {
@@ -180,7 +180,7 @@ public class BlockScanService {
                 }
             }
         }
-        return samples == 0 ? happinessCalculator.getLightNeutral() : (double) lightSum / samples;
+        return samples == 0 ? prosperityCalculator.getLightNeutral() : (double) lightSum / samples;
     }
 
     private SampledRatio natureRatio(City city) {

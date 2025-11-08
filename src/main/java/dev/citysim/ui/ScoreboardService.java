@@ -3,11 +3,11 @@ package dev.citysim.ui;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.links.LinkService;
-import dev.citysim.stats.HappinessBreakdown;
-import dev.citysim.stats.HappinessBreakdownFormatter;
-import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLine;
-import dev.citysim.stats.HappinessBreakdownFormatter.ContributionLists;
-import dev.citysim.stats.HappinessBreakdownFormatter.ContributionType;
+import dev.citysim.stats.ProsperityBreakdown;
+import dev.citysim.stats.ProsperityBreakdownFormatter;
+import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLine;
+import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLists;
+import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionType;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 import org.bukkit.Bukkit;
@@ -128,7 +128,7 @@ public class ScoreboardService {
             }
 
             statsService.requestCityUpdate(city, false);
-            HappinessBreakdown breakdown = statsService.computeHappinessBreakdown(city);
+            ProsperityBreakdown breakdown = statsService.computeProsperityBreakdown(city);
 
             Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());
             Objective objective = board.getObjective("citysim");
@@ -218,14 +218,14 @@ public class ScoreboardService {
         return candidate;
     }
 
-    private List<String> buildLines(City city, HappinessBreakdown breakdown, Mode mode) {
+    private List<String> buildLines(City city, ProsperityBreakdown breakdown, Mode mode) {
         StationCountingMode stationMode = statsService.getStationCountingMode();
         boolean showStations = stationMode != StationCountingMode.DISABLED;
         boolean ghostTown = breakdown != null && breakdown.isGhostTown();
 
         List<String> raw = new ArrayList<>();
         raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-        String prosperityValue = ghostTown ? "N/A" : city.happiness + "%";
+        String prosperityValue = ghostTown ? "N/A" : city.prosperity + "%";
         raw.add(ChatColor.GOLD + "Prosperity: " + ChatColor.WHITE + prosperityValue);
         raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
         raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
@@ -239,7 +239,7 @@ public class ScoreboardService {
 
         if (mode == Mode.FULL && !ghostTown) {
             raw.add(ChatColor.DARK_GRAY + " ");
-            ContributionLists contributionLists = filterTransitIfHidden(HappinessBreakdownFormatter.buildContributionLists(breakdown));
+            ContributionLists contributionLists = filterTransitIfHidden(ProsperityBreakdownFormatter.buildContributionLists(breakdown));
 
             for (ContributionLine line : contributionLists.positives()) {
                 raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));

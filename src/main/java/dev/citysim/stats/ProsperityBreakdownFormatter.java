@@ -4,12 +4,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-public final class HappinessBreakdownFormatter {
+public final class ProsperityBreakdownFormatter {
 
-    private HappinessBreakdownFormatter() {
+    private ProsperityBreakdownFormatter() {
     }
 
-    public static ContributionLists buildContributionLists(HappinessBreakdown breakdown) {
+    public static ContributionLists buildContributionLists(ProsperityBreakdown breakdown) {
         if (breakdown == null) {
             return new ContributionLists(List.of(), List.of(), false);
         }

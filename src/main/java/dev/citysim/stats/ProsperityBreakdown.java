@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 import org.bukkit.configuration.Configuration;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class HappinessBreakdown {
+public class ProsperityBreakdown {
 
     public int base = 50;
 
@@ -33,7 +33,7 @@ public class HappinessBreakdown {
         this.ghostTown = ghostTown;
     }
 
-    public HappinessBreakdown asGhostTown() {
+    public ProsperityBreakdown asGhostTown() {
         setGhostTown(true);
         return this;
     }
@@ -151,7 +151,7 @@ public class HappinessBreakdown {
 
     public static String defaultMessageFor(String key) {
         String path = "titles.messages." + key;
-        JavaPlugin plugin = JavaPlugin.getProvidingPlugin(HappinessBreakdown.class);
+        JavaPlugin plugin = JavaPlugin.getProvidingPlugin(ProsperityBreakdown.class);
         Configuration defaults = plugin.getConfig().getDefaults();
         if (defaults != null) {
             List<String> defaultsList = defaults.getStringList(path);

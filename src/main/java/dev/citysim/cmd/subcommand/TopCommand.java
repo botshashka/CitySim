@@ -51,7 +51,7 @@ public class TopCommand implements CitySubcommand {
         } else {
             comparator = Comparator
                     .comparing(City::isGhostTown)
-                    .thenComparing(Comparator.comparingInt((City c) -> c.happiness).reversed())
+                    .thenComparing(Comparator.comparingInt((City c) -> c.prosperity).reversed())
                     .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
         }
         list.sort(comparator);
@@ -65,7 +65,7 @@ public class TopCommand implements CitySubcommand {
             if (city.isGhostTown()) {
                 details = "pop %d".formatted(city.population);
             } else {
-                String prosperityDisplay = city.happiness + "%";
+                String prosperityDisplay = city.prosperity + "%";
                 details = "pop %d, prosperity %s".formatted(city.population, prosperityDisplay);
             }
             sb.append(String.format("%2d. %s  —  %s\n", i + 1, city.name, details));
@@ -80,7 +80,7 @@ public class TopCommand implements CitySubcommand {
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
-            return List.of("prosperity", "happy", "pop");
+            return List.of("prosperity", "pop");
         }
         return List.of();
     }

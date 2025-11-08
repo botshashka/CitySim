@@ -6,11 +6,11 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class HappinessCalculatorTest {
+class ProsperityCalculatorTest {
 
     @Test
     void calculatesWeightedBreakdownWithConfiguredInputs() {
-        HappinessCalculator calculator = new HappinessCalculator();
+        ProsperityCalculator calculator = new ProsperityCalculator();
         calculator.setLightNeutral(2.0);
         calculator.setLightMaxPts(10.0);
         calculator.setEmploymentMaxPts(10.0);
@@ -46,7 +46,7 @@ class HappinessCalculatorTest {
         cache.pollutingBlocks = 10;
         cache.overcrowdingPenalty = calculator.computeOvercrowdingPenalty(city);
 
-        HappinessBreakdown breakdown = calculator.calculate(city, cache);
+        ProsperityBreakdown breakdown = calculator.calculate(city, cache);
 
         assertEquals(10.0, breakdown.lightPoints, 0.001);
         assertEquals(2.0, breakdown.employmentPoints, 0.001);
@@ -60,7 +60,7 @@ class HappinessCalculatorTest {
 
     @Test
     void rewardsHousingSurplusMoreGenerously() {
-        HappinessCalculator calculator = new HappinessCalculator();
+        ProsperityCalculator calculator = new ProsperityCalculator();
 
         City city = new City();
         city.id = "surplus-city";
@@ -70,7 +70,7 @@ class HappinessCalculatorTest {
         City.BlockScanCache cache = new City.BlockScanCache();
         cache.light = calculator.getLightNeutral();
 
-        HappinessBreakdown breakdown = calculator.calculate(city, cache);
+        ProsperityBreakdown breakdown = calculator.calculate(city, cache);
 
         assertEquals(10.0, breakdown.housingPoints, 0.01);
     }

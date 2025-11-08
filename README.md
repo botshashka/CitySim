@@ -8,7 +8,7 @@ shares these numbers in easy-to-read displays so players can instantly tell whet
 
 ### Key features
 - Define cities as one or more cuboids and save them for future server restarts.
-- Automatic scans that roll villager activity and city blocks into a simple happiness score with a clear breakdown.
+- Automatic scans that roll villager activity and city blocks into a simple prosperity score with a clear breakdown.
 - `/city stats` chat report that explains where points are gained or lost for the city you are in (or another by ID).
 - Boss bar, scoreboard (compact or full), and entry title overlays that players can toggle whenever they like.
 - PlaceholderAPI expansion (`%citysim_*%`) for plugging stats into other plugins or custom scoreboards.
@@ -26,14 +26,14 @@ shares these numbers in easy-to-read displays so players can instantly tell whet
 4. **Tune city settings** – `/city edit <cityId> name <new name>` renames the city. `/city edit <cityId> highrise <true|false>`
    flips the highrise switch (loosens crowding limits for tall builds). `/city edit <cityId> station <add|remove|set|clear>
    <amount>` changes how many transit stations the score counts.
-5. **Keep an eye on things** – `/city stats [cityId]` shows the latest population, jobs, beds, station count, overall happiness,
-   and every boost or penalty. `/city top [happy|pop]` ranks the most cheerful or most crowded cities.
+5. **Keep an eye on things** – `/city stats [cityId]` shows the latest population, jobs, beds, station count, overall prosperity,
+   and every boost or penalty. `/city top [prosperity|pop]` ranks the most cheerful or most crowded cities.
 
 ## Player HUD controls
 Players can opt in or out of the different overlays at any time:
 - `/city display bossbar on|off` – toggle the progress-style bar across the top of the screen.
 - `/city display titles on|off` – show or hide the welcome banner that appears when entering a city.
-- `/city display scoreboard <off|compact|full>` – switch off the sidebar, show just the core stats, or expand to the full happiness breakdown.
+- `/city display scoreboard <off|compact|full>` – switch off the sidebar, show just the core stats, or expand to the full prosperity breakdown.
 
 Preferences persist automatically so players keep their chosen HUD on reconnect.
 
@@ -81,12 +81,12 @@ java -version  # should report a Java 21 runtime
 /city edit <cityId> highrise <true|false>        # relax or tighten crowding limits for tall builds (admin only)
 /city edit <cityId> station <add|remove|set|clear> [amount]  # adjust how many transit stations the city counts (admin only; available when `stations.counting_mode` is `manual` in config.yml)
 /city wand ymode <full|span>                     # choose whether selections cover the full world height or just the Y range you click
-/city stats [cityId]                             # see population, jobs, beds, stations, and the full happiness breakdown (alias: /city info)
+/city stats [cityId]                             # see population, jobs, beds, stations, and the full prosperity breakdown (alias: /city info)
 /city scan [cityId]                              # refresh a city's stats immediately (admin only)
 /city display titles on|off                      # show or hide the entry banner for your HUD
 /city display bossbar on|off                     # toggle the boss bar HUD element
 /city display scoreboard <off|compact|full>      # pick the scoreboard style or turn it off entirely
-/city top [happy|pop]                            # rank cities by happiness or population
+/city top [prosperity|pop]                       # rank cities by prosperity or population
 /city reload                                     # reload the plugin configuration (admin only)
 /city debug scans                                # print scan timing details to chat for troubleshooting (admin only)
 /city debug migration                            # stream live migration approvals, skips, and errors to chat (admin only)
@@ -144,9 +144,9 @@ for tweaking:
 - Tune `migration.teleport.platform_vertical_search` if some stations have platforms more than one block above their wall signs; increasing the scan lets the resolver snap villagers on top of the right floor instead of underneath.
 - Want to keep starter towns offline? Set `migration.logic.allow_zero_population_destinations: false` to prevent moves into empty cities; by default they remain eligible so fresh settlements can start growing. Pair it with `migration.logic.zero_population_prosperity_boost` (prosperity floor) — empty destinations also bypass housing/employment gates when the toggle stays on, so their first migrants aren't blocked by missing stats.
 - Need real-time visibility into what the migration service is doing? Run `/city debug migration` (admin only) to toggle a live chat feed that covers origin/destination gating, rate limits, approvals, teleport targets, and any failures across the full migration pipeline. Run the command again to stop receiving updates.
-- **`happiness`** – Misc scoring toggles.
+- **`prosperity`** – Misc scoring toggles.
   - `nature_block_allowlist` – Optional list of additional block IDs that should count toward the nature ratio (custom trees, modded plants, etc.).
-- **`happiness_weights`** – Sets both neutral targets and the maximum points (or penalties) each stat contributes to the prosperity score.
+- **`prosperity_weights`** – Sets both neutral targets and the maximum points (or penalties) each stat contributes to the prosperity score.
   - `base_score` – Starting prosperity before any modifiers (defaults to 50).
   - `light_neutral_level`, `employment_neutral`, `nature_target_ratio`, `pollution_target_ratio` – Tunable “healthy city” baselines each factor eases toward.
   - `*_max_points`/`*_max_penalty` – Cap per-factor swings; reducing these softens that factor’s influence, increasing them makes the factor dominate.
