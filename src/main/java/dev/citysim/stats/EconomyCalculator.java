@@ -5,7 +5,6 @@ import dev.citysim.city.City;
 public class EconomyCalculator {
 
     private static final double EMPLOYMENT_NEUTRAL = 0.75;
-    private static final double POLLUTION_TARGET = 0.02;
     private static final double BASE_PRODUCTIVITY = 20.0;
     private static final double MULTIPLIER_BASE = 0.5;
     private static final double MULTIPLIER_SPAN = 1.0;
@@ -58,7 +57,7 @@ public class EconomyCalculator {
         double naturePoints = happiness != null ? happiness.naturePoints : computeNaturePoints(metrics);
         breakdown.nature = naturePoints;
 
-        double pollutionPenalty = happiness != null ? happiness.pollutionPenalty : computePollutionPenalty(metrics);
+        double pollutionPenalty = happiness != null ? happiness.pollutionPenalty : happinessCalculator.computePollutionPenalty(metrics);
         breakdown.pollutionPenalty = pollutionPenalty;
 
         double overcrowdingPenalty = happiness != null ? happiness.overcrowdingPenalty : happinessCalculator.computeOvercrowdingPenalty(city);
@@ -152,18 +151,6 @@ public class EconomyCalculator {
         double target = happinessCalculator.getNatureTargetRatio();
         double score = (adjustedNature - target) / target;
         return clamp(score * natureMaxPts, -natureMaxPts, natureMaxPts);
-    }
-
-    private double computePollutionPenalty(City.BlockScanCache metrics) {
-        if (metrics == null) {
-            return 0.0;
-        }
-        if (metrics.pollutingBlocks < 4) {
-            return 0.0;
-        }
-        double pollutionSeverity = Math.max(0.0, (metrics.pollution - POLLUTION_TARGET) / POLLUTION_TARGET);
-        double maxPenalty = happinessCalculator.getPollutionMaxPenalty();
-        return clamp(pollutionSeverity * maxPenalty, 0.0, maxPenalty);
     }
 
     private double computeAreaDrag(City city) {

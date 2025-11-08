@@ -144,6 +144,11 @@ for tweaking:
 - Tune `migration.teleport.platform_vertical_search` if some stations have platforms more than one block above their wall signs; increasing the scan lets the resolver snap villagers on top of the right floor instead of underneath.
 - Want to keep starter towns offline? Set `migration.logic.allow_zero_population_destinations: false` to prevent moves into empty cities; by default they remain eligible so fresh settlements can start growing. Pair it with `migration.logic.zero_population_prosperity_boost` (prosperity floor) — empty destinations also bypass housing/employment gates when the toggle stays on, so their first migrants aren't blocked by missing stats.
 - Need real-time visibility into what the migration service is doing? Run `/city debug migration` (admin only) to toggle a live chat feed that covers origin/destination gating, rate limits, approvals, teleport targets, and any failures across the full migration pipeline. Run the command again to stop receiving updates.
-- **`happiness_weights`** – Sets the maximum points (or penalties) each stat contributes to the happiness score.
+- **`happiness`** – Misc scoring toggles.
+  - `nature_block_allowlist` – Optional list of additional block IDs that should count toward the nature ratio (custom trees, modded plants, etc.).
+- **`happiness_weights`** – Sets both neutral targets and the maximum points (or penalties) each stat contributes to the prosperity score.
+  - `base_score` – Starting prosperity before any modifiers (defaults to 50).
+  - `light_neutral_level`, `employment_neutral`, `nature_target_ratio`, `pollution_target_ratio` – Tunable “healthy city” baselines each factor eases toward.
+  - `*_max_points`/`*_max_penalty` – Cap per-factor swings; reducing these softens that factor’s influence, increasing them makes the factor dominate.
 - **`titles`** – Enables or disables entry titles, sets the cooldown, and defines the MiniMessage text players see in different
   situations (keep `{city}` as the placeholder for the city name).

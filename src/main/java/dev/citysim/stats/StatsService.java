@@ -328,12 +328,16 @@ public class StatsService {
         int maxCitiesPerTick = 1;
         int maxEntityChunksPerTick = 2;
         int maxBedBlocksPerTick = 2048;
+        double baseScore = 50.0;
         double lightNeutral = 2.0;
         double lightMaxPts = 10.0;
         double employmentMaxPts = 15.0;
+        double employmentNeutral = 0.75;
         double overcrowdingMaxPenalty = 10.0;
         double natureMaxPts = 10.0;
+        double natureTargetRatio = 0.10;
         double pollutionMaxPenalty = 15.0;
+        double pollutionTargetRatio = 0.02;
         double housingMaxPts = 10.0;
         double transitMaxPts = 5.0;
 
@@ -342,12 +346,16 @@ public class StatsService {
             maxEntityChunksPerTick = Math.max(1, config.getInt("updates.max_entity_chunks_per_tick", maxEntityChunksPerTick));
             maxBedBlocksPerTick = Math.max(1, config.getInt("updates.max_bed_blocks_per_tick", maxBedBlocksPerTick));
 
+            baseScore = config.getDouble("happiness_weights.base_score", baseScore);
             lightNeutral = config.getDouble("happiness_weights.light_neutral_level", lightNeutral);
             lightMaxPts = config.getDouble("happiness_weights.light_max_points", lightMaxPts);
             employmentMaxPts = config.getDouble("happiness_weights.employment_max_points", employmentMaxPts);
+            employmentNeutral = config.getDouble("happiness_weights.employment_neutral", employmentNeutral);
             overcrowdingMaxPenalty = config.getDouble("happiness_weights.overcrowding_max_penalty", overcrowdingMaxPenalty);
             natureMaxPts = config.getDouble("happiness_weights.nature_max_points", natureMaxPts);
+            natureTargetRatio = config.getDouble("happiness_weights.nature_target_ratio", natureTargetRatio);
             pollutionMaxPenalty = config.getDouble("happiness_weights.pollution_max_penalty", pollutionMaxPenalty);
+            pollutionTargetRatio = config.getDouble("happiness_weights.pollution_target_ratio", pollutionTargetRatio);
             housingMaxPts = config.getDouble("happiness_weights.housing_max_points", housingMaxPts);
             transitMaxPts = config.getDouble("happiness_weights.transit_max_points", transitMaxPts);
         }
@@ -359,12 +367,16 @@ public class StatsService {
         configuredMaxEntityChunksPerTick = maxEntityChunksPerTick;
         configuredMaxBedBlocksPerTick = maxBedBlocksPerTick;
 
+        happinessCalculator.setBaseScore(baseScore);
         happinessCalculator.setLightNeutral(lightNeutral);
         happinessCalculator.setLightMaxPts(lightMaxPts);
         happinessCalculator.setEmploymentMaxPts(employmentMaxPts);
+        happinessCalculator.setEmploymentNeutral(employmentNeutral);
         happinessCalculator.setOvercrowdMaxPenalty(overcrowdingMaxPenalty);
         happinessCalculator.setNatureMaxPts(natureMaxPts);
+        happinessCalculator.setNatureTargetRatio(natureTargetRatio);
         happinessCalculator.setPollutionMaxPenalty(pollutionMaxPenalty);
+        happinessCalculator.setPollutionTargetRatio(pollutionTargetRatio);
         happinessCalculator.setHousingMaxPts(housingMaxPts);
         happinessCalculator.setTransitMaxPts(transitMaxPts);
         happinessCalculator.setStationCountingMode(stationCountingMode);

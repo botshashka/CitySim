@@ -137,6 +137,7 @@ public class City {
         public int natureSamples;
         public double pollution;
         public int pollutingBlocks;
+        public int pollutionSamples;
         public double overcrowdingPenalty;
         public long timestamp;
     }

@@ -3,14 +3,16 @@ package dev.citysim.stats;
 import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
 
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
+import java.util.EnumSet;
+import java.util.List;
 
 /**
  * Provides reusable logic for sampling block-level metrics that feed into the happiness calculation.
@@ -21,6 +23,7 @@ public class BlockScanService {
 
     private final HappinessCalculator happinessCalculator;
     private long blockScanRefreshIntervalMillis = DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS;
+    private Set<Material> extraNatureBlocks = EnumSet.noneOf(Material.class);
 
     public BlockScanService(HappinessCalculator happinessCalculator) {
         this.happinessCalculator = happinessCalculator;
@@ -34,6 +37,23 @@ public class BlockScanService {
                 configuration.getLong("happiness.block_scan_refresh_interval_millis",
                         DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS));
         setBlockScanRefreshIntervalMillis(configured);
+
+        List<String> configuredNature = configuration.getStringList("happiness.nature_block_allowlist");
+        if (configuredNature != null) {
+            Set<Material> parsed = EnumSet.noneOf(Material.class);
+            for (String entry : configuredNature) {
+                if (entry == null || entry.isBlank()) {
+                    continue;
+                }
+                Material material = Material.matchMaterial(entry.trim());
+                if (material != null) {
+                    parsed.add(material);
+                }
+            }
+            extraNatureBlocks = parsed;
+        } else {
+            extraNatureBlocks = EnumSet.noneOf(Material.class);
+        }
     }
 
     public void setBlockScanRefreshIntervalMillis(long intervalMillis) {
@@ -70,6 +90,7 @@ public class BlockScanService {
         PollutionStats pollutionStats = pollutionStats(city);
         cache.pollution = pollutionStats.ratio();
         cache.pollutingBlocks = pollutionStats.blockCount();
+        cache.pollutionSamples = pollutionStats.samples();
         cache.overcrowdingPenalty = happinessCalculator.computeOvercrowdingPenalty(city);
         cache.timestamp = now;
         city.blockScanCache = cache;
@@ -163,24 +184,7 @@ public class BlockScanService {
     }
 
     private SampledRatio natureRatio(City city) {
-        BlockTest natureTest = b -> {
-            org.bukkit.Material type = b.getType();
-            if (org.bukkit.Tag.LOGS.isTagged(type) || org.bukkit.Tag.LEAVES.isTagged(type)) {
-                return true;
-            }
-            return switch (type) {
-                case GRASS_BLOCK, SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN,
-                     VINE, LILY_PAD,
-                     DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP,
-                     OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
-                default -> false;
-            };
-        };
-
-        if (city.highrise) {
-            return ratioHighriseColumns(city, 6, natureTest);
-        }
-
+        BlockTest natureTest = b -> matchesNatureBlock(b.getType());
         return ratioSurface(city, 6, natureTest);
     }
 
@@ -189,69 +193,12 @@ public class BlockScanService {
             case FURNACE, BLAST_FURNACE, SMOKER, CAMPFIRE, SOUL_CAMPFIRE, LAVA, LAVA_CAULDRON -> true;
             default -> false;
         });
-        return new PollutionStats(result.ratio(), result.found);
+        return new PollutionStats(result.ratio(), result.found, result.probes);
     }
 
     private SampledRatio ratioSurface(City city, int step, BlockTest test) {
         SurfaceSampleResult result = sampleSurface(city, step, test);
         return new SampledRatio(result.ratio(), result.probes);
-    }
-
-    private SampledRatio ratioHighriseColumns(City city, int step, BlockTest test) {
-        Map<String, Map<Long, ColumnSample>> columns = new HashMap<>();
-        if (city.cuboids == null) {
-            return new SampledRatio(0.0, 0);
-        }
-        for (Cuboid c : city.cuboids) {
-            if (c == null || c.world == null) {
-                continue;
-            }
-            World w = Bukkit.getWorld(c.world);
-            if (w == null) continue;
-            for (int x = c.minX; x <= c.maxX; x += step) {
-                for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    Map<Long, ColumnSample> worldColumns = columns.computeIfAbsent(c.world, k -> new HashMap<>());
-                    long columnKey = (((long) x) << 32) ^ (z & 0xffffffffL);
-                    ColumnSample column = worldColumns.computeIfAbsent(columnKey, k -> new ColumnSample());
-                    if (column.matched) {
-                        column.sampled = true;
-                        continue;
-                    }
-                    boolean sampled = false;
-                    for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
-                        Block block = w.getBlockAt(x, y, z);
-                        sampled = true;
-                        if (test.test(block)) {
-                            column.matched = true;
-                            break;
-                        }
-                    }
-                    if (!column.matched && (c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
-                        Block block = w.getBlockAt(x, c.maxY, z);
-                        sampled = true;
-                        if (test.test(block)) {
-                            column.matched = true;
-                        }
-                    }
-                    if (sampled) {
-                        column.sampled = true;
-                    }
-                }
-            }
-        }
-        int totalColumns = 0;
-        int columnsWithMatch = 0;
-        for (Map<Long, ColumnSample> worldColumns : columns.values()) {
-            for (ColumnSample column : worldColumns.values()) {
-                if (!column.sampled) continue;
-                totalColumns++;
-                if (column.matched) {
-                    columnsWithMatch++;
-                }
-            }
-        }
-        double ratio = totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
-        return new SampledRatio(ratio, totalColumns);
     }
 
     private SurfaceSampleResult sampleSurface(City city, int step, BlockTest test) {
@@ -281,6 +228,9 @@ public class BlockScanService {
                     } else {
                         int y = w.getHighestBlockYAt(x, z);
                         Block block = w.getBlockAt(x, y, z);
+                        if (block.isLiquid()) {
+                            continue;
+                        }
                         if (test.test(block)) found++;
                         probes++;
                     }
@@ -327,6 +277,29 @@ public class BlockScanService {
         return (int) sampleBlock.getLightFromBlocks();
     }
 
+    private boolean matchesNatureBlock(Material type) {
+        if (type == null) {
+            return false;
+        }
+        if (Tag.LOGS.isTagged(type)
+                || Tag.LEAVES.isTagged(type)
+                || Tag.FLOWERS.isTagged(type)
+                || Tag.SAPLINGS.isTagged(type)
+                || Tag.CROPS.isTagged(type)) {
+            return true;
+        }
+        if (extraNatureBlocks.contains(type)) {
+            return true;
+        }
+        return switch (type) {
+            case GRASS_BLOCK, SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN,
+                    VINE, LILY_PAD,
+                    DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP,
+                    OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
+            default -> false;
+        };
+    }
+
     private interface BlockTest {
         boolean test(Block block);
     }
@@ -345,14 +318,9 @@ public class BlockScanService {
         }
     }
 
-    private static class ColumnSample {
-        boolean sampled;
-        boolean matched;
-    }
-
     private record SampledRatio(double ratio, int samples) {
     }
 
-    private record PollutionStats(double ratio, int blockCount) {
+    private record PollutionStats(double ratio, int blockCount, int samples) {
     }
 }
