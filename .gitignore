@@ -3,6 +3,7 @@
 .gradle-home/
 build/
 out/
+bin/
 
 # IntelliJ IDEA / VSCode
 .idea/

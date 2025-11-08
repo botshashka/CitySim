@@ -113,7 +113,7 @@ public class ScanDebugManager {
                 job.populationCount(),
                 job.employedCount(),
                 job.bedCount(),
-                job.resultingHappiness()
+                job.resultingProsperity()
         ));
         if (job.trainCartsStationCount() != null) {
             message.append(String.format(

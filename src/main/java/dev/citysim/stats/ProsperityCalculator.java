@@ -3,7 +3,7 @@ package dev.citysim.stats;
 import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
 
-public class HappinessCalculator {
+public class ProsperityCalculator {
     private static final double OVERCROWDING_BASELINE = 3.0;
     private static final double TRANSIT_IDEAL_SPACING_BLOCKS = 75.0;
     private static final double TRANSIT_EASING_EXPONENT = 0.5;
@@ -28,8 +28,8 @@ public class HappinessCalculator {
     private double transitMaxPts = 5;
     private StationCountingMode stationCountingMode = StationCountingMode.MANUAL;
 
-    public HappinessBreakdown calculate(City city, City.BlockScanCache metrics) {
-        HappinessBreakdown hb = new HappinessBreakdown();
+    public ProsperityBreakdown calculate(City city, City.BlockScanCache metrics) {
+        ProsperityBreakdown hb = new ProsperityBreakdown();
         int pop = city.population;
         int employed = city.employed;
         boolean ghostByPopulation = pop <= 0;

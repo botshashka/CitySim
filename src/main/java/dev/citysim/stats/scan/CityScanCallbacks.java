@@ -1,7 +1,7 @@
 package dev.citysim.stats.scan;
 
 import dev.citysim.city.City;
-import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.ProsperityBreakdown;
 import dev.citysim.stats.StationCountResult;
 
 public interface CityScanCallbacks {
@@ -9,5 +9,5 @@ public interface CityScanCallbacks {
 
     City.BlockScanCache ensureBlockScanCache(City city, boolean forceRefresh);
 
-    HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache cache);
+    ProsperityBreakdown calculateProsperityBreakdown(City city, City.BlockScanCache cache);
 }

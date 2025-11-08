@@ -1,7 +1,7 @@
 package dev.citysim.cmd.subcommand;
 
 import dev.citysim.stats.EconomyBreakdownFormatter;
-import dev.citysim.stats.HappinessBreakdownFormatter;
+import dev.citysim.stats.ProsperityBreakdownFormatter;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 
@@ -15,47 +15,47 @@ final class StatsFormatting {
     private StatsFormatting() {
     }
 
-    static HappinessBreakdownFormatter.ContributionLists filterTransitIfHidden(StatsService statsService,
-                                                                              HappinessBreakdownFormatter.ContributionLists lists) {
+    static ProsperityBreakdownFormatter.ContributionLists filterTransitIfHidden(StatsService statsService,
+                                                                              ProsperityBreakdownFormatter.ContributionLists lists) {
         if (lists.ghostTown()) {
             return lists;
         }
         if (statsService.getStationCountingMode() != StationCountingMode.DISABLED) {
             return lists;
         }
-        List<HappinessBreakdownFormatter.ContributionLine> positives = new ArrayList<>();
-        for (HappinessBreakdownFormatter.ContributionLine line : lists.positives()) {
-            if (line.type() != HappinessBreakdownFormatter.ContributionType.TRANSIT) {
+        List<ProsperityBreakdownFormatter.ContributionLine> positives = new ArrayList<>();
+        for (ProsperityBreakdownFormatter.ContributionLine line : lists.positives()) {
+            if (line.type() != ProsperityBreakdownFormatter.ContributionType.TRANSIT) {
                 positives.add(line);
             }
         }
-        List<HappinessBreakdownFormatter.ContributionLine> negatives = new ArrayList<>();
-        for (HappinessBreakdownFormatter.ContributionLine line : lists.negatives()) {
-            if (line.type() != HappinessBreakdownFormatter.ContributionType.TRANSIT) {
+        List<ProsperityBreakdownFormatter.ContributionLine> negatives = new ArrayList<>();
+        for (ProsperityBreakdownFormatter.ContributionLine line : lists.negatives()) {
+            if (line.type() != ProsperityBreakdownFormatter.ContributionType.TRANSIT) {
                 negatives.add(line);
             }
         }
-        return new HappinessBreakdownFormatter.ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
+        return new ProsperityBreakdownFormatter.ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
     }
 
-    static String joinHappinessContributionLines(List<HappinessBreakdownFormatter.ContributionLine> lines,
-                                                 Function<HappinessBreakdownFormatter.ContributionType, String> labelProvider) {
+    static String joinProsperityContributionLines(List<ProsperityBreakdownFormatter.ContributionLine> lines,
+                                                 Function<ProsperityBreakdownFormatter.ContributionType, String> labelProvider) {
         if (lines.isEmpty()) {
             return "";
         }
         List<String> parts = new ArrayList<>(lines.size());
-        for (HappinessBreakdownFormatter.ContributionLine line : lines) {
+        for (ProsperityBreakdownFormatter.ContributionLine line : lines) {
             parts.add(formatContributionLine(line, labelProvider.apply(line.type())));
         }
         return String.join("  ", parts);
     }
 
-    private static String formatContributionLine(HappinessBreakdownFormatter.ContributionLine line, String label) {
+    private static String formatContributionLine(ProsperityBreakdownFormatter.ContributionLine line, String label) {
         String pattern = line.alwaysShowSign() ? "%+.1f" : "%.1f";
         return "%s %s".formatted(label, String.format(Locale.US, pattern, line.value()));
     }
 
-    static String miniMessageLabelForHappiness(HappinessBreakdownFormatter.ContributionType type) {
+    static String miniMessageLabelForProsperity(ProsperityBreakdownFormatter.ContributionType type) {
         return switch (type) {
             case LIGHT -> "<yellow>Light:</yellow>";
             case EMPLOYMENT -> "<aqua>Employment:</aqua>";

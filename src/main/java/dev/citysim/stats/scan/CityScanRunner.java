@@ -1,7 +1,7 @@
 package dev.citysim.stats.scan;
 
 import dev.citysim.city.City;
-import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.ProsperityBreakdown;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -195,13 +195,13 @@ public class CityScanRunner {
         return (int) Math.max(1L, result);
     }
 
-    public HappinessBreakdown runSynchronously(City city, ScanRequest request) {
+    public ProsperityBreakdown runSynchronously(City city, ScanRequest request) {
         CityScanJob job = new CityScanJob(city, request, callbacks, debugManager, true);
         while (!job.process(Integer.MAX_VALUE, Integer.MAX_VALUE)) {
             // Keep processing until the scan completes synchronously
         }
-        HappinessBreakdown result = job.getResult();
-        return result != null ? result : city.happinessBreakdown;
+        ProsperityBreakdown result = job.getResult();
+        return result != null ? result : city.prosperityBreakdown;
     }
 
     public Map<String, CityScanJob> activeJobsView() {

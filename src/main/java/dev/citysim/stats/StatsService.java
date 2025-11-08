@@ -24,7 +24,7 @@ public class StatsService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
-    private final HappinessCalculator happinessCalculator;
+    private final ProsperityCalculator prosperityCalculator;
     private final EconomyCalculator economyCalculator;
     private final BlockScanService blockScanService;
     private final ScanDebugManager scanDebugManager;
@@ -45,15 +45,15 @@ public class StatsService {
     }
 
     StatsService(Plugin plugin, CityManager cityManager, StationCounter stationCounter,
-                 HappinessCalculator happinessCalculator,
+                 ProsperityCalculator prosperityCalculator,
                  BlockScanService blockScanService,
                  StatsUpdateScheduler statsUpdateScheduler) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.stationCounter = stationCounter;
-        this.happinessCalculator = happinessCalculator != null ? happinessCalculator : new HappinessCalculator();
-        this.economyCalculator = new EconomyCalculator(this.happinessCalculator);
-        this.blockScanService = blockScanService != null ? blockScanService : new BlockScanService(this.happinessCalculator);
+        this.prosperityCalculator = prosperityCalculator != null ? prosperityCalculator : new ProsperityCalculator();
+        this.economyCalculator = new EconomyCalculator(this.prosperityCalculator);
+        this.blockScanService = blockScanService != null ? blockScanService : new BlockScanService(this.prosperityCalculator);
         this.scanDebugManager = new ScanDebugManager();
         this.scanCallbacks = new StatsScanCallbacks();
         this.scanRunner = new CityScanRunner(scanCallbacks, scanDebugManager);
@@ -175,34 +175,34 @@ public class StatsService {
             if (city == null || city.id == null || city.id.isEmpty()) {
                 continue;
             }
-            HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(true, true, "initial startup", null));
+            ProsperityBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(true, true, "initial startup", null));
             long completedAt = System.currentTimeMillis();
             if (result != null) {
                 applyScanCompletion(city, result, completedAt, true);
             } else {
-                HappinessBreakdown fallback = new HappinessBreakdown();
+                ProsperityBreakdown fallback = new ProsperityBreakdown();
                 fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
                 applyScanCompletion(city, fallback, completedAt, false);
             }
         }
     }
 
-    public HappinessBreakdown updateCity(City city) {
+    public ProsperityBreakdown updateCity(City city) {
         return updateCity(city, false);
     }
 
-    public HappinessBreakdown updateCity(City city, boolean forceRefresh) {
+    public ProsperityBreakdown updateCity(City city, boolean forceRefresh) {
         if (city == null) {
-            return new HappinessBreakdown();
+            return new ProsperityBreakdown();
         }
         cancelActiveJob(city);
-        HappinessBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
+        ProsperityBreakdown result = scanRunner.runSynchronously(city, new ScanRequest(forceRefresh, true, "synchronous update", null));
         long completedAt = System.currentTimeMillis();
         if (result != null) {
             applyScanCompletion(city, result, completedAt, true);
             return result;
         }
-        HappinessBreakdown fallback = new HappinessBreakdown();
+        ProsperityBreakdown fallback = new ProsperityBreakdown();
         fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
         applyScanCompletion(city, fallback, completedAt, false);
         return fallback;
@@ -215,27 +215,27 @@ public class StatsService {
         scanScheduler.cancel(city.id);
     }
 
-    public HappinessBreakdown computeHappinessBreakdown(City city) {
+    public ProsperityBreakdown computeProsperityBreakdown(City city) {
         if (city == null) {
-            return new HappinessBreakdown();
+            return new ProsperityBreakdown();
         }
-        if (city.happinessBreakdown != null && city.blockScanCache != null) {
-            city.happinessBreakdown.setGhostTown(city.isGhostTown() || city.population <= 0);
-            return city.happinessBreakdown;
+        if (city.prosperityBreakdown != null && city.blockScanCache != null) {
+            city.prosperityBreakdown.setGhostTown(city.isGhostTown() || city.population <= 0);
+            return city.prosperityBreakdown;
         }
         City.BlockScanCache metrics = city.blockScanCache;
         if (metrics != null) {
-            HappinessBreakdown hb = calculateHappinessBreakdown(city, metrics);
-            city.happinessBreakdown = hb;
-            city.happiness = hb.total;
+            ProsperityBreakdown hb = calculateProsperityBreakdown(city, metrics);
+            city.prosperityBreakdown = hb;
+            city.prosperity = hb.total;
             return hb;
         }
-        requestCityUpdate(city, true, "compute happiness breakdown");
-        if (city.happinessBreakdown != null) {
-            city.happinessBreakdown.setGhostTown(city.isGhostTown() || city.population <= 0);
-            return city.happinessBreakdown;
+        requestCityUpdate(city, true, "compute prosperity breakdown");
+        if (city.prosperityBreakdown != null) {
+            city.prosperityBreakdown.setGhostTown(city.isGhostTown() || city.population <= 0);
+            return city.prosperityBreakdown;
         }
-        HappinessBreakdown fallback = new HappinessBreakdown();
+        ProsperityBreakdown fallback = new ProsperityBreakdown();
         fallback.setGhostTown(city.isGhostTown() || city.population <= 0);
         return fallback;
     }
@@ -284,8 +284,8 @@ public class StatsService {
         return null;
     }
 
-    private HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache metrics) {
-        HappinessBreakdown breakdown = happinessCalculator.calculate(city, metrics);
+    private ProsperityBreakdown calculateProsperityBreakdown(City city, City.BlockScanCache metrics) {
+        ProsperityBreakdown breakdown = prosperityCalculator.calculate(city, metrics);
         updateDerivedMetrics(city);
         return breakdown;
     }
@@ -346,18 +346,18 @@ public class StatsService {
             maxEntityChunksPerTick = Math.max(1, config.getInt("updates.max_entity_chunks_per_tick", maxEntityChunksPerTick));
             maxBedBlocksPerTick = Math.max(1, config.getInt("updates.max_bed_blocks_per_tick", maxBedBlocksPerTick));
 
-            baseScore = config.getDouble("happiness_weights.base_score", baseScore);
-            lightNeutral = config.getDouble("happiness_weights.light_neutral_level", lightNeutral);
-            lightMaxPts = config.getDouble("happiness_weights.light_max_points", lightMaxPts);
-            employmentMaxPts = config.getDouble("happiness_weights.employment_max_points", employmentMaxPts);
-            employmentNeutral = config.getDouble("happiness_weights.employment_neutral", employmentNeutral);
-            overcrowdingMaxPenalty = config.getDouble("happiness_weights.overcrowding_max_penalty", overcrowdingMaxPenalty);
-            natureMaxPts = config.getDouble("happiness_weights.nature_max_points", natureMaxPts);
-            natureTargetRatio = config.getDouble("happiness_weights.nature_target_ratio", natureTargetRatio);
-            pollutionMaxPenalty = config.getDouble("happiness_weights.pollution_max_penalty", pollutionMaxPenalty);
-            pollutionTargetRatio = config.getDouble("happiness_weights.pollution_target_ratio", pollutionTargetRatio);
-            housingMaxPts = config.getDouble("happiness_weights.housing_max_points", housingMaxPts);
-            transitMaxPts = config.getDouble("happiness_weights.transit_max_points", transitMaxPts);
+            baseScore = config.getDouble("prosperity_weights.base_score", baseScore);
+            lightNeutral = config.getDouble("prosperity_weights.light_neutral_level", lightNeutral);
+            lightMaxPts = config.getDouble("prosperity_weights.light_max_points", lightMaxPts);
+            employmentMaxPts = config.getDouble("prosperity_weights.employment_max_points", employmentMaxPts);
+            employmentNeutral = config.getDouble("prosperity_weights.employment_neutral", employmentNeutral);
+            overcrowdingMaxPenalty = config.getDouble("prosperity_weights.overcrowding_max_penalty", overcrowdingMaxPenalty);
+            natureMaxPts = config.getDouble("prosperity_weights.nature_max_points", natureMaxPts);
+            natureTargetRatio = config.getDouble("prosperity_weights.nature_target_ratio", natureTargetRatio);
+            pollutionMaxPenalty = config.getDouble("prosperity_weights.pollution_max_penalty", pollutionMaxPenalty);
+            pollutionTargetRatio = config.getDouble("prosperity_weights.pollution_target_ratio", pollutionTargetRatio);
+            housingMaxPts = config.getDouble("prosperity_weights.housing_max_points", housingMaxPts);
+            transitMaxPts = config.getDouble("prosperity_weights.transit_max_points", transitMaxPts);
         }
 
         scanScheduler.setLimits(maxCitiesPerTick, maxEntityChunksPerTick, maxBedBlocksPerTick);
@@ -367,19 +367,19 @@ public class StatsService {
         configuredMaxEntityChunksPerTick = maxEntityChunksPerTick;
         configuredMaxBedBlocksPerTick = maxBedBlocksPerTick;
 
-        happinessCalculator.setBaseScore(baseScore);
-        happinessCalculator.setLightNeutral(lightNeutral);
-        happinessCalculator.setLightMaxPts(lightMaxPts);
-        happinessCalculator.setEmploymentMaxPts(employmentMaxPts);
-        happinessCalculator.setEmploymentNeutral(employmentNeutral);
-        happinessCalculator.setOvercrowdMaxPenalty(overcrowdingMaxPenalty);
-        happinessCalculator.setNatureMaxPts(natureMaxPts);
-        happinessCalculator.setNatureTargetRatio(natureTargetRatio);
-        happinessCalculator.setPollutionMaxPenalty(pollutionMaxPenalty);
-        happinessCalculator.setPollutionTargetRatio(pollutionTargetRatio);
-        happinessCalculator.setHousingMaxPts(housingMaxPts);
-        happinessCalculator.setTransitMaxPts(transitMaxPts);
-        happinessCalculator.setStationCountingMode(stationCountingMode);
+        prosperityCalculator.setBaseScore(baseScore);
+        prosperityCalculator.setLightNeutral(lightNeutral);
+        prosperityCalculator.setLightMaxPts(lightMaxPts);
+        prosperityCalculator.setEmploymentMaxPts(employmentMaxPts);
+        prosperityCalculator.setEmploymentNeutral(employmentNeutral);
+        prosperityCalculator.setOvercrowdMaxPenalty(overcrowdingMaxPenalty);
+        prosperityCalculator.setNatureMaxPts(natureMaxPts);
+        prosperityCalculator.setNatureTargetRatio(natureTargetRatio);
+        prosperityCalculator.setPollutionMaxPenalty(pollutionMaxPenalty);
+        prosperityCalculator.setPollutionTargetRatio(pollutionTargetRatio);
+        prosperityCalculator.setHousingMaxPts(housingMaxPts);
+        prosperityCalculator.setTransitMaxPts(transitMaxPts);
+        prosperityCalculator.setStationCountingMode(stationCountingMode);
     }
 
     private class StatsScanCallbacks implements CityScanCallbacks {
@@ -394,8 +394,8 @@ public class StatsService {
         }
 
         @Override
-        public HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache cache) {
-            return StatsService.this.calculateHappinessBreakdown(city, cache);
+        public ProsperityBreakdown calculateProsperityBreakdown(City city, City.BlockScanCache cache) {
+            return StatsService.this.calculateProsperityBreakdown(city, cache);
         }
 
     }
@@ -417,13 +417,13 @@ public class StatsService {
             city.housingRatio = (double) beds / (double) population;
         }
 
-        double coverage = happinessCalculator.computeTransitCoverage(city);
+        double coverage = prosperityCalculator.computeTransitCoverage(city);
         if (Double.isNaN(coverage) || Double.isInfinite(coverage)) {
             coverage = 0.0;
         }
         city.transitCoverage = clamp(coverage, 0.0, 1.0);
 
-        EconomyCalculator.EconomyComputation economy = economyCalculator.compute(city, city.happinessBreakdown, city.blockScanCache);
+        EconomyCalculator.EconomyComputation economy = economyCalculator.compute(city, city.prosperityBreakdown, city.blockScanCache);
         if (economy != null) {
             city.economyBreakdown = economy.breakdown();
             city.gdp = economy.gdp();
@@ -436,7 +436,7 @@ public class StatsService {
             city.transitPressure = economy.transitPressure();
             city.landValue = economy.landValue();
             if (city.economyBreakdown != null) {
-                city.happiness = city.economyBreakdown.total;
+                city.prosperity = city.economyBreakdown.total;
             }
         }
     }
@@ -451,19 +451,19 @@ public class StatsService {
         return value;
     }
 
-    private void applyScanCompletion(City city, HappinessBreakdown breakdown, long completedAtMillis, boolean metricsComputed) {
+    private void applyScanCompletion(City city, ProsperityBreakdown breakdown, long completedAtMillis, boolean metricsComputed) {
         if (city == null) {
             return;
         }
-        HappinessBreakdown effective = breakdown;
+        ProsperityBreakdown effective = breakdown;
         if (effective == null) {
-            effective = city.happinessBreakdown;
+            effective = city.prosperityBreakdown;
         }
         if (effective != null) {
             boolean ghostTown = city.isGhostTown() || city.population <= 0;
             effective.setGhostTown(ghostTown || effective.isGhostTown());
-            city.happinessBreakdown = effective;
-            city.happiness = effective.total;
+            city.prosperityBreakdown = effective;
+            city.prosperity = effective.total;
         }
         if (!metricsComputed) {
             updateDerivedMetrics(city);
@@ -531,7 +531,7 @@ public class StatsService {
                 if (city == null) {
                     continue;
                 }
-                HappinessBreakdown result = job.getResult();
+                ProsperityBreakdown result = job.getResult();
                 boolean metricsComputed = result != null;
                 applyScanCompletion(city, result, completedAt, metricsComputed);
             }

@@ -22,8 +22,8 @@ public class CitySimExpansion extends PlaceholderExpansion {
     public String onRequest(OfflinePlayer player, @NotNull String params) {
         // Supported:
         // %citysim_city% (current city name)
-        // %citysim_pop% / employed / unemployed / happiness (current city)
-        // %citysim_pop_<cityId>% (by id); same for employed/unemployed/happiness/cityname_
+        // %citysim_pop% / employed / unemployed / prosperity (current city)
+        // %citysim_pop_<cityId>% (by id); same for employed/unemployed/prosperity/cityname_
         String[] parts = params.split("_", 2);
         String key = parts[0].toLowerCase();
 
@@ -47,7 +47,7 @@ public class CitySimExpansion extends PlaceholderExpansion {
             case "pop": case "population": return String.valueOf(city.population);
             case "employed": return String.valueOf(city.employed);
             case "unemployed": return String.valueOf(city.unemployed);
-            case "happy": case "happiness": return ghostTown ? "" : String.valueOf(city.happiness);
+            case "prosperity": return ghostTown ? "" : String.valueOf(city.prosperity);
             case "cityname": return city.name;
         }
         return null;

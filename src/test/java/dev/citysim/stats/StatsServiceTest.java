@@ -64,7 +64,7 @@ class StatsServiceTest {
     void refreshBlockScanCacheDelegatesToBlockScanService() {
         ConfigurableDummyPlugin plugin = new ConfigurableDummyPlugin();
         CityManager cityManager = new CityManager(plugin);
-        HappinessCalculator calculator = new HappinessCalculator();
+        ProsperityCalculator calculator = new ProsperityCalculator();
         StubBlockScanService blockScanService = new StubBlockScanService(calculator);
         StubStatsUpdateScheduler scheduler = new StubStatsUpdateScheduler(plugin);
 
@@ -86,7 +86,7 @@ class StatsServiceTest {
     void updateConfigDelegatesToHelpers() {
         ConfigurableDummyPlugin plugin = new ConfigurableDummyPlugin();
         CityManager cityManager = new CityManager(plugin);
-        HappinessCalculator calculator = new HappinessCalculator();
+        ProsperityCalculator calculator = new ProsperityCalculator();
         StubBlockScanService blockScanService = new StubBlockScanService(calculator);
         StubStatsUpdateScheduler scheduler = new StubStatsUpdateScheduler(plugin);
 
@@ -104,7 +104,7 @@ class StatsServiceTest {
     void stopDelegatesToScheduler() {
         ConfigurableDummyPlugin plugin = new ConfigurableDummyPlugin();
         CityManager cityManager = new CityManager(plugin);
-        HappinessCalculator calculator = new HappinessCalculator();
+        ProsperityCalculator calculator = new ProsperityCalculator();
         StubBlockScanService blockScanService = new StubBlockScanService(calculator);
         StubStatsUpdateScheduler scheduler = new StubStatsUpdateScheduler(plugin);
 
@@ -273,7 +273,7 @@ class StatsServiceTest {
         int updateCalls;
         City.BlockScanCache valueToReturn = new City.BlockScanCache();
 
-        StubBlockScanService(HappinessCalculator calculator) {
+        StubBlockScanService(ProsperityCalculator calculator) {
             super(calculator);
         }
 

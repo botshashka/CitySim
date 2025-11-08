@@ -1,7 +1,7 @@
 package dev.citysim.city;
 
 import dev.citysim.stats.EconomyBreakdown;
-import dev.citysim.stats.HappinessBreakdown;
+import dev.citysim.stats.ProsperityBreakdown;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -24,7 +24,7 @@ public class City {
     public int adultNone = 0;
     public int adultNitwit = 0;
     public int beds = 0;
-    public int happiness = 50;
+    public int prosperity = 50;
     public int stations = 0;
 
     public int level = 0;
@@ -48,7 +48,7 @@ public class City {
 
     public int migrationZeroPopArrivals = 0;
 
-    public transient HappinessBreakdown happinessBreakdown = null;
+    public transient ProsperityBreakdown prosperityBreakdown = null;
     public transient EconomyBreakdown economyBreakdown = null;
 
     public transient BlockScanCache blockScanCache = null;
@@ -82,7 +82,7 @@ public class City {
 
     public void invalidateBlockScanCache() {
         blockScanCache = null;
-        happinessBreakdown = null;
+        prosperityBreakdown = null;
         economyBreakdown = null;
         residentialChunks.clear();
         invalidateBedSnapshots();

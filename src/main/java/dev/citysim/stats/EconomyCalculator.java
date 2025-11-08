@@ -15,52 +15,52 @@ public class EconomyCalculator {
     private static final double TRANSIT_DRAG_MAX = 3.0;
     private static final double TRANSIT_NEUTRAL_NORMALIZED = 0.5;
 
-    private final HappinessCalculator happinessCalculator;
+    private final ProsperityCalculator prosperityCalculator;
 
-    public EconomyCalculator(HappinessCalculator happinessCalculator) {
-        this.happinessCalculator = happinessCalculator;
+    public EconomyCalculator(ProsperityCalculator prosperityCalculator) {
+        this.prosperityCalculator = prosperityCalculator;
     }
 
-    public EconomyComputation compute(City city, HappinessBreakdown happiness, City.BlockScanCache metrics) {
+    public EconomyComputation compute(City city, ProsperityBreakdown prosperity, City.BlockScanCache metrics) {
         if (city == null) {
             return null;
         }
 
         EconomyBreakdown breakdown = new EconomyBreakdown();
         boolean ghostTown = city.isGhostTown() || city.population <= 0;
-        if (happiness != null && happiness.isGhostTown()) {
+        if (prosperity != null && prosperity.isGhostTown()) {
             ghostTown = true;
         }
         breakdown.setGhostTown(ghostTown);
 
         if (ghostTown) {
-            breakdown.base = happiness != null ? happiness.base : 0;
+            breakdown.base = prosperity != null ? prosperity.base : 0;
             breakdown.total = 0;
             return new EconomyComputation(breakdown, 0.0, 0.0, city.sectorAgri, city.sectorInd, city.sectorServ,
                     0.0, 0.0, 0.0, 0.0);
         }
 
-        breakdown.base = happiness != null ? happiness.base : breakdown.base;
+        breakdown.base = prosperity != null ? prosperity.base : breakdown.base;
 
-        double employmentPoints = happiness != null ? happiness.employmentPoints : computeEmploymentPoints(city.employmentRate);
+        double employmentPoints = prosperity != null ? prosperity.employmentPoints : computeEmploymentPoints(city.employmentRate);
         breakdown.employmentUtilization = employmentPoints;
 
-        double housingPoints = happiness != null ? happiness.housingPoints : computeHousingPoints(city);
+        double housingPoints = prosperity != null ? prosperity.housingPoints : computeHousingPoints(city);
         breakdown.housingBalance = housingPoints;
 
-        double transitPoints = happiness != null ? happiness.transitPoints : happinessCalculator.computeTransitPoints(city);
+        double transitPoints = prosperity != null ? prosperity.transitPoints : prosperityCalculator.computeTransitPoints(city);
         breakdown.transitCoverage = transitPoints;
 
-        double lightingPoints = happiness != null ? happiness.lightPoints : computeLightingPoints(metrics);
+        double lightingPoints = prosperity != null ? prosperity.lightPoints : computeLightingPoints(metrics);
         breakdown.lighting = lightingPoints;
 
-        double naturePoints = happiness != null ? happiness.naturePoints : computeNaturePoints(metrics);
+        double naturePoints = prosperity != null ? prosperity.naturePoints : computeNaturePoints(metrics);
         breakdown.nature = naturePoints;
 
-        double pollutionPenalty = happiness != null ? happiness.pollutionPenalty : happinessCalculator.computePollutionPenalty(metrics);
+        double pollutionPenalty = prosperity != null ? prosperity.pollutionPenalty : prosperityCalculator.computePollutionPenalty(metrics);
         breakdown.pollutionPenalty = pollutionPenalty;
 
-        double overcrowdingPenalty = happiness != null ? happiness.overcrowdingPenalty : happinessCalculator.computeOvercrowdingPenalty(city);
+        double overcrowdingPenalty = prosperity != null ? prosperity.overcrowdingPenalty : prosperityCalculator.computeOvercrowdingPenalty(city);
         breakdown.overcrowdingPenalty = overcrowdingPenalty;
 
         double areaDrag = computeAreaDrag(city);
@@ -91,9 +91,9 @@ public class EconomyCalculator {
 
         double jobsPressure = city.employmentRate - EMPLOYMENT_NEUTRAL;
         double housingPressure = city.housingRatio - 1.0;
-        double normalizedTransitCoverage = happinessCalculator.normalizeTransitCoverage(city.transitCoverage);
+        double normalizedTransitCoverage = prosperityCalculator.normalizeTransitCoverage(city.transitCoverage);
         // Pressures are stored as signed deltas so that surpluses (+) and deficits (-) are visible to the UI.
-        // Transit uses the same easing normalization as happiness scoring, with 0.5 treated as the neutral baseline.
+        // Transit uses the same easing normalization as prosperity scoring, with 0.5 treated as the neutral baseline.
         double transitPressure = normalizedTransitCoverage - TRANSIT_NEUTRAL_NORMALIZED;
 
         double landValue = computeLandValue(city, metrics);
@@ -103,7 +103,7 @@ public class EconomyCalculator {
     }
 
     private double computeEmploymentPoints(double employmentRate) {
-        double employmentMaxPts = happinessCalculator.getEmploymentMaxPts();
+        double employmentMaxPts = prosperityCalculator.getEmploymentMaxPts();
         if (employmentRate >= EMPLOYMENT_NEUTRAL) {
             double surplus = employmentRate - EMPLOYMENT_NEUTRAL;
             double normalized = (1.0 - EMPLOYMENT_NEUTRAL) <= 0.0 ? 0.0 : surplus / (1.0 - EMPLOYMENT_NEUTRAL);
@@ -116,9 +116,9 @@ public class EconomyCalculator {
 
     private double computeHousingPoints(City city) {
         double housingRatio = city.housingRatio;
-        double housingMaxPts = happinessCalculator.getHousingMaxPts();
-        double surplusCap = happinessCalculator.getHousingSurplusCap();
-        double shortageFloor = happinessCalculator.getHousingShortageFloor();
+        double housingMaxPts = prosperityCalculator.getHousingMaxPts();
+        double surplusCap = prosperityCalculator.getHousingSurplusCap();
+        double shortageFloor = prosperityCalculator.getHousingShortageFloor();
         double score;
         if (housingRatio >= 1.0) {
             double surplus = housingRatio - 1.0;
@@ -136,8 +136,8 @@ public class EconomyCalculator {
         if (metrics == null) {
             return 0.0;
         }
-        double lightNeutral = happinessCalculator.getLightNeutral();
-        double lightMaxPts = happinessCalculator.getLightMaxPts();
+        double lightNeutral = prosperityCalculator.getLightNeutral();
+        double lightMaxPts = prosperityCalculator.getLightMaxPts();
         double normalized = (metrics.light - lightNeutral) / lightNeutral;
         return clamp(normalized * lightMaxPts, -lightMaxPts, lightMaxPts);
     }
@@ -146,15 +146,15 @@ public class EconomyCalculator {
         if (metrics == null) {
             return 0.0;
         }
-        double adjustedNature = happinessCalculator.adjustNatureRatio(metrics.nature, metrics.natureSamples);
-        double natureMaxPts = happinessCalculator.getNatureMaxPts();
-        double target = happinessCalculator.getNatureTargetRatio();
+        double adjustedNature = prosperityCalculator.adjustNatureRatio(metrics.nature, metrics.natureSamples);
+        double natureMaxPts = prosperityCalculator.getNatureMaxPts();
+        double target = prosperityCalculator.getNatureTargetRatio();
         double score = (adjustedNature - target) / target;
         return clamp(score * natureMaxPts, -natureMaxPts, natureMaxPts);
     }
 
     private double computeAreaDrag(City city) {
-        double area = happinessCalculator.estimateFootprintArea(city);
+        double area = prosperityCalculator.estimateFootprintArea(city);
         if (area <= 0.0) {
             return 0.0;
         }
@@ -166,7 +166,7 @@ public class EconomyCalculator {
         if (metrics == null) {
             return 0.0;
         }
-        double lightNeutral = happinessCalculator.getLightNeutral();
+        double lightNeutral = prosperityCalculator.getLightNeutral();
         double excess = Math.max(0.0, metrics.light - lightNeutral);
         double normalized = lightNeutral <= 0.0 ? 0.0 : excess / (lightNeutral * 2.0);
         return clamp(normalized * LIGHTING_DRAG_MAX, 0.0, LIGHTING_DRAG_MAX);
@@ -179,7 +179,7 @@ public class EconomyCalculator {
     }
 
     private double computeLandValue(City city, City.BlockScanCache metrics) {
-        double lightNeutral = happinessCalculator.getLightNeutral();
+        double lightNeutral = prosperityCalculator.getLightNeutral();
         double lightFactor = metrics == null ? 0.5 : clamp(metrics.light / (lightNeutral * 2.0), 0.0, 1.0);
         double natureFactor = metrics == null ? 0.0 : clamp(metrics.nature, 0.0, 1.0);
         double transitFactor = clamp(city.transitCoverage, 0.0, 1.0);

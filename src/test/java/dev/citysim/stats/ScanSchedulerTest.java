@@ -48,8 +48,8 @@ class ScanSchedulerTest {
         for (int i = 0; i < 5; i++) {
             scheduler.tick();
         }
-        assertEquals(42, alpha.happiness);
-        assertEquals(42, beta.happiness);
+        assertEquals(42, alpha.prosperity);
+        assertEquals(42, beta.prosperity);
     }
 
     private static final class StubCallbacks implements CityScanCallbacks {
@@ -69,8 +69,8 @@ class ScanSchedulerTest {
         }
 
         @Override
-        public HappinessBreakdown calculateHappinessBreakdown(City city, City.BlockScanCache cache) {
-            HappinessBreakdown breakdown = new HappinessBreakdown();
+        public ProsperityBreakdown calculateProsperityBreakdown(City city, City.BlockScanCache cache) {
+            ProsperityBreakdown breakdown = new ProsperityBreakdown();
             breakdown.total = 42;
             return breakdown;
         }

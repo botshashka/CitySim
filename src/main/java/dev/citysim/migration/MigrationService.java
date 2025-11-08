@@ -326,7 +326,7 @@ public class MigrationService implements Runnable {
 
     private void updateEma(City city) {
         CityEma ema = cityEmas.computeIfAbsent(city.id, id -> new CityEma());
-        ema.update(city.employmentRate, city.housingRatio, city.happiness);
+        ema.update(city.employmentRate, city.housingRatio, city.prosperity);
     }
 
     private boolean isOriginEligible(City city, long nowMillis) {
