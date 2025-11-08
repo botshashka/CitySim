@@ -1,8 +1,12 @@
 package dev.citysim.integration.traincarts;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
+import org.bukkit.block.sign.Side;
+import org.bukkit.block.sign.SignSide;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.AccessibleObject;
@@ -33,6 +37,8 @@ import java.util.logging.Logger;
  * across the range of supported plugin versions.
  */
 public class TrainCartsReflectionBinder {
+
+    private static final LegacyComponentSerializer SIGN_TEXT_SERIALIZER = LegacyComponentSerializer.legacySection();
 
     public interface TrainCartsBinding {
         Object getSignController() throws ReflectiveOperationException;
@@ -1018,7 +1024,12 @@ public class TrainCartsReflectionBinder {
 
         private String safeGetLine(Sign sign, int index) {
             try {
-                return sign.getLine(index);
+                SignSide front = sign.getSide(Side.FRONT);
+                Component line = front.line(index);
+                if (line == null) {
+                    return null;
+                }
+                return SIGN_TEXT_SERIALIZER.serialize(line);
             } catch (Throwable ignored) {
                 return null;
             }

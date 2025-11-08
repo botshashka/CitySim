@@ -5,10 +5,15 @@ import dev.citysim.city.CityManager;
 import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
@@ -25,6 +30,10 @@ public class ScoreboardService {
             new char[]{'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','k','l','m','n','o','r'};
     private static final int OBJECTIVE_TITLE_LIMIT = 32;
     private static final String ELLIPSIS = "…";
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final char LEGACY_COLOR_CHAR = LegacyComponentSerializer.SECTION_CHAR;
+    private static final Component DEFAULT_OBJECTIVE_NAME = Component.text("CitySim", NamedTextColor.GOLD);
+    private static final TextColor VALUE_COLOR = NamedTextColor.WHITE;
 
     public enum Mode { COMPACT, FULL }
 
@@ -125,11 +134,13 @@ public class ScoreboardService {
             Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());
             Objective objective = board.getObjective("citysim");
             if (objective == null) {
-                objective = board.registerNewObjective("citysim", "dummy", ChatColor.GOLD + "CitySim");
+                objective = board.registerNewObjective("citysim", Criteria.DUMMY, DEFAULT_OBJECTIVE_NAME);
                 objective.setDisplaySlot(DisplaySlot.SIDEBAR);
             }
-            String title = ChatColor.YELLOW + "" + ChatColor.BOLD + city.name;
-            String safeTitle = trimObjectiveTitle(title);
+            Component titleComponent = Component.text(city.name, NamedTextColor.YELLOW).decorate(TextDecoration.BOLD);
+            String legacyTitle = LEGACY.serialize(titleComponent);
+            String safeTitle = trimObjectiveTitle(legacyTitle);
+            Component safeTitleComponent = LEGACY.deserialize(safeTitle);
             List<String> lines = buildLines(city, displayPreferencesStore.getScoreboardMode(player.getUniqueId()));
 
             UUID uuid = player.getUniqueId();
@@ -140,7 +151,7 @@ public class ScoreboardService {
             boolean linesChanged = cachedLines == null || !lines.equals(cachedLines);
 
             if (titleChanged || linesChanged) {
-                objective.setDisplayName(safeTitle);
+                objective.displayName(safeTitleComponent);
                 clearBoardEntries(board);
                 applyLines(objective, board, lines);
                 lastTitles.put(uuid, safeTitle);
@@ -174,7 +185,7 @@ public class ScoreboardService {
 
         int index = 0;
         StringBuilder prefix = new StringBuilder();
-        while (index + 1 < formattedTitle.length() && formattedTitle.charAt(index) == ChatColor.COLOR_CHAR) {
+        while (index + 1 < formattedTitle.length() && formattedTitle.charAt(index) == LEGACY_COLOR_CHAR) {
             prefix.append(formattedTitle, index, index + 2);
             index += 2;
         }
@@ -193,7 +204,7 @@ public class ScoreboardService {
         int ellipsisLength = ELLIPSIS.length();
         if (ellipsisLength >= available) {
             String truncated = formattedTitle.substring(0, OBJECTIVE_TITLE_LIMIT);
-            if (!truncated.isEmpty() && truncated.charAt(truncated.length() - 1) == ChatColor.COLOR_CHAR) {
+            if (!truncated.isEmpty() && truncated.charAt(truncated.length() - 1) == LEGACY_COLOR_CHAR) {
                 truncated = truncated.substring(0, truncated.length() - 1);
             }
             return truncated;
@@ -204,7 +215,7 @@ public class ScoreboardService {
             textLength = baseName.length();
         }
         String candidate = prefix + baseName.substring(0, textLength) + ELLIPSIS;
-        if (!candidate.isEmpty() && candidate.charAt(candidate.length() - 1) == ChatColor.COLOR_CHAR) {
+        if (!candidate.isEmpty() && candidate.charAt(candidate.length() - 1) == LEGACY_COLOR_CHAR) {
             candidate = candidate.substring(0, candidate.length() - 1);
         }
         return candidate;
@@ -242,39 +253,39 @@ public class ScoreboardService {
 
     private String formatProsperityLine(City city) {
         int prosperity = city != null ? clampToInt(city.prosperity, 0, 100) : 0;
-        return formatLine(ChatColor.GOLD, "Prosperity: ", String.valueOf(prosperity));
+        return formatLine(NamedTextColor.GOLD, "Prosperity: ", String.valueOf(prosperity));
     }
 
     private String formatGdpLine(City city) {
         double gdp = city != null ? city.gdp : 0.0d;
-        return formatLine(ChatColor.AQUA, "GDP: ", formatShortNumber(gdp));
+        return formatLine(NamedTextColor.AQUA, "GDP: ", formatShortNumber(gdp));
     }
 
     private String formatGdpPerCapitaLine(City city) {
         double gdpPerCapita = city != null ? city.gdpPerCapita : 0.0d;
-        return formatLine(ChatColor.AQUA, "GDP/cap: ", formatShortNumber(gdpPerCapita));
+        return formatLine(NamedTextColor.AQUA, "GDP/cap: ", formatShortNumber(gdpPerCapita));
     }
 
     private String formatSectorLine(City city, boolean detailedLabel) {
         SectorLeader leader = resolveSectorLeader(city);
         String value = leader == null ? "—" : leader.name() + " " + formatPercent(leader.share());
         String label = detailedLabel ? "Sector leader: " : "Sector: ";
-        return formatLine(ChatColor.GREEN, label, value);
+        return formatLine(NamedTextColor.GREEN, label, value);
     }
 
     private String formatJobsPressureLine(City city) {
         double delta = city != null ? city.jobsPressure : Double.NaN;
-        return formatLine(ChatColor.RED, "Jobs pressure: ", formatSignedPercent(delta));
+        return formatLine(NamedTextColor.RED, "Jobs pressure: ", formatSignedPercent(delta));
     }
 
     private String formatHousingPressureLine(City city) {
         double delta = city != null ? city.housingPressure : Double.NaN;
-        return formatLine(ChatColor.BLUE, "Housing pressure: ", formatSignedPercent(delta));
+        return formatLine(NamedTextColor.BLUE, "Housing pressure: ", formatSignedPercent(delta));
     }
 
     private String formatTransitPressureLine(City city) {
         double delta = city != null ? city.transitPressure : Double.NaN;
-        return formatLine(ChatColor.LIGHT_PURPLE, "Transit pressure: ", formatSignedPercent(delta));
+        return formatLine(NamedTextColor.LIGHT_PURPLE, "Transit pressure: ", formatSignedPercent(delta));
     }
 
     private String formatLandValueLine(City city) {
@@ -282,7 +293,7 @@ public class ScoreboardService {
         String value = Double.isFinite(landValue)
                 ? String.format(Locale.US, "%.0f", clamp(landValue, 0.0d, 100.0d))
                 : "—";
-        return formatLine(ChatColor.YELLOW, "Land value: ", value);
+        return formatLine(NamedTextColor.YELLOW, "Land value: ", value);
     }
 
     private String formatLinksLine(City city) {
@@ -290,7 +301,7 @@ public class ScoreboardService {
         if (linkService != null && linkService.isEnabled() && city != null) {
             value = String.valueOf(Math.max(0, linkService.linkCount(city)));
         }
-        return formatLine(ChatColor.DARK_AQUA, "Links: ", value);
+        return formatLine(NamedTextColor.DARK_AQUA, "Links: ", value);
     }
 
     private String formatTopLinkLine(City city) {
@@ -306,7 +317,7 @@ public class ScoreboardService {
                 value = neighbor + " S=" + strength;
             }
         }
-        return formatLine(ChatColor.DARK_AQUA, "Top link: ", value);
+        return formatLine(NamedTextColor.DARK_AQUA, "Top link: ", value);
     }
 
     private String formatMigrationLine(City city) {
@@ -324,7 +335,7 @@ public class ScoreboardService {
                 }
             }
         }
-        return formatLine(ChatColor.GRAY, "Migration net: ", value);
+        return formatLine(NamedTextColor.GRAY, "Migration net: ", value);
     }
 
     private String formatMayorsLine(City city) {
@@ -338,12 +349,14 @@ public class ScoreboardService {
             }
             value = String.valueOf(count);
         }
-        return formatLine(ChatColor.GRAY, "Mayors: ", value);
+        return formatLine(NamedTextColor.GRAY, "Mayors: ", value);
     }
 
-    private String formatLine(ChatColor labelColor, String label, String value) {
+    private String formatLine(TextColor labelColor, String label, String value) {
         String safeValue = (value == null || value.isBlank()) ? "—" : value;
-        return labelColor + label + ChatColor.WHITE + safeValue;
+        Component component = Component.text(label, labelColor)
+                .append(Component.text(safeValue, VALUE_COLOR));
+        return LEGACY.serialize(component);
     }
 
     private String formatShortNumber(double raw) {
@@ -443,7 +456,7 @@ public class ScoreboardService {
         List<String> decorated = new ArrayList<>(raw.size());
         for (int i = 0; i < raw.size(); i++) {
             char code = UNIQUE_SUFFIX_CODES[i % UNIQUE_SUFFIX_CODES.length];
-            decorated.add(raw.get(i) + ChatColor.COLOR_CHAR + code);
+            decorated.add(raw.get(i) + LEGACY_COLOR_CHAR + code);
         }
         return decorated;
     }

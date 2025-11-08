@@ -203,7 +203,7 @@ final class TeleportSettings {
         }
         String tagName = value.substring(4).trim().toUpperCase(Locale.ROOT);
         return switch (tagName) {
-            case "CARPETS" -> Tag.CARPETS;
+            case "CARPETS", "WOOL_CARPETS" -> Tag.WOOL_CARPETS;
             case "TRAPDOORS" -> Tag.TRAPDOORS;
             case "FENCES" -> Tag.FENCES;
             case "WOODEN_FENCES" -> Tag.WOODEN_FENCES;

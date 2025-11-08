@@ -123,7 +123,7 @@ public class TitleService implements Listener {
             Component subtitle = miniMessage.deserialize(resolveMessage(key)
                     .replace("{city}", safeCityName));
 
-            Title.Times times = Title.Times.of(
+            Title.Times times = Title.Times.times(
                     Duration.ofMillis(500),
                     Duration.ofMillis(2500),
                     Duration.ofMillis(500)
@@ -162,4 +162,3 @@ public class TitleService implements Listener {
         return ProsperityBreakdown.defaultMessageFor(key);
     }
 }
-
