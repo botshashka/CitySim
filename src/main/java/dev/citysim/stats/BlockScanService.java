@@ -9,9 +9,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
 
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.EnumSet;
 import java.util.List;
@@ -187,11 +185,6 @@ public class BlockScanService {
 
     private SampledRatio natureRatio(City city) {
         BlockTest natureTest = b -> matchesNatureBlock(b.getType());
-
-        if (city.highrise) {
-            return ratioHighriseColumns(city, 6, natureTest);
-        }
-
         return ratioSurface(city, 6, natureTest);
     }
 
@@ -206,63 +199,6 @@ public class BlockScanService {
     private SampledRatio ratioSurface(City city, int step, BlockTest test) {
         SurfaceSampleResult result = sampleSurface(city, step, test);
         return new SampledRatio(result.ratio(), result.probes);
-    }
-
-    private SampledRatio ratioHighriseColumns(City city, int step, BlockTest test) {
-        Map<String, Map<Long, ColumnSample>> columns = new HashMap<>();
-        if (city.cuboids == null) {
-            return new SampledRatio(0.0, 0);
-        }
-        for (Cuboid c : city.cuboids) {
-            if (c == null || c.world == null) {
-                continue;
-            }
-            World w = Bukkit.getWorld(c.world);
-            if (w == null) continue;
-            for (int x = c.minX; x <= c.maxX; x += step) {
-                for (int z = c.minZ; z <= c.maxZ; z += step) {
-                    Map<Long, ColumnSample> worldColumns = columns.computeIfAbsent(c.world, k -> new HashMap<>());
-                    long columnKey = (((long) x) << 32) ^ (z & 0xffffffffL);
-                    ColumnSample column = worldColumns.computeIfAbsent(columnKey, k -> new ColumnSample());
-                    if (column.matched) {
-                        column.sampled = true;
-                        continue;
-                    }
-                    boolean sampled = false;
-                    for (int y = c.minY; y <= c.maxY; y += HIGHRISE_VERTICAL_STEP) {
-                        Block block = w.getBlockAt(x, y, z);
-                        sampled = true;
-                        if (test.test(block)) {
-                            column.matched = true;
-                            break;
-                        }
-                    }
-                    if (!column.matched && (c.maxY - c.minY) % HIGHRISE_VERTICAL_STEP != 0) {
-                        Block block = w.getBlockAt(x, c.maxY, z);
-                        sampled = true;
-                        if (test.test(block)) {
-                            column.matched = true;
-                        }
-                    }
-                    if (sampled) {
-                        column.sampled = true;
-                    }
-                }
-            }
-        }
-        int totalColumns = 0;
-        int columnsWithMatch = 0;
-        for (Map<Long, ColumnSample> worldColumns : columns.values()) {
-            for (ColumnSample column : worldColumns.values()) {
-                if (!column.sampled) continue;
-                totalColumns++;
-                if (column.matched) {
-                    columnsWithMatch++;
-                }
-            }
-        }
-        double ratio = totalColumns == 0 ? 0.0 : (double) columnsWithMatch / totalColumns;
-        return new SampledRatio(ratio, totalColumns);
     }
 
     private SurfaceSampleResult sampleSurface(City city, int step, BlockTest test) {
@@ -292,6 +228,9 @@ public class BlockScanService {
                     } else {
                         int y = w.getHighestBlockYAt(x, z);
                         Block block = w.getBlockAt(x, y, z);
+                        if (block.isLiquid()) {
+                            continue;
+                        }
                         if (test.test(block)) found++;
                         probes++;
                     }
@@ -377,11 +316,6 @@ public class BlockScanService {
         double ratio() {
             return probes == 0 ? 0.0 : (double) found / (double) probes;
         }
-    }
-
-    private static class ColumnSample {
-        boolean sampled;
-        boolean matched;
     }
 
     private record SampledRatio(double ratio, int samples) {
