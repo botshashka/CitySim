@@ -2,9 +2,14 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
-import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
+import dev.citysim.stats.EconomyBreakdown;
+import dev.citysim.stats.EconomyBreakdownFormatter;
+import dev.citysim.stats.ProsperityBreakdown;
+import dev.citysim.stats.ProsperityBreakdownFormatter;
+import dev.citysim.util.TrendUtil;
+import dev.citysim.util.TrendUtil.TrendDirection;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
@@ -41,6 +46,7 @@ public class ScoreboardService {
     private final CityManager cityManager;
     private final LinkService linkService;
     private final MigrationService migrationService;
+    private final TrendUtil trendUtil = new TrendUtil();
     private int taskId = -1;
 
     private final Map<UUID, Scoreboard> boards = new HashMap<>();
@@ -226,130 +232,193 @@ public class ScoreboardService {
         return decorateLines(raw);
     }
 
-    private List<String> buildCompactLines(City city) {
-        List<String> lines = new ArrayList<>(3);
-        lines.add(formatProsperityLine(city));
-        lines.add(formatGdpLine(city));
-        lines.add(formatSectorLine(city, false));
+    private List<String> buildFullLines(City city) {
+        List<String> lines = new ArrayList<>(14);
+        addIfPresent(lines, formatCityLine(city));
+        addIfPresent(lines, formatProsperityLine(city));
+        addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatGdpLine(city));
+        addIfPresent(lines, formatGdpPerCapitaLine(city));
+        addIfPresent(lines, formatLandLine(city));
+        formatTopContributionLines(city).forEach(line -> addIfPresent(lines, line));
+        addIfPresent(lines, formatJobsDeltaLine(city));
+        addIfPresent(lines, formatHousingDeltaLine(city));
+        addIfPresent(lines, formatSectorLine(city));
+        List<String> connectivityLines = formatConnectivityLines(city);
+        connectivityLines.forEach(line -> addIfPresent(lines, line));
         return lines;
     }
 
-    private List<String> buildFullLines(City city) {
-        List<String> lines = new ArrayList<>(12);
-        lines.add(formatProsperityLine(city));
-        lines.add(formatGdpLine(city));
-        lines.add(formatGdpPerCapitaLine(city));
-        lines.add(formatSectorLine(city, true));
-        lines.add(formatJobsPressureLine(city));
-        lines.add(formatHousingPressureLine(city));
-        lines.add(formatTransitPressureLine(city));
-        lines.add(formatLandValueLine(city));
-        lines.add(formatLinksLine(city));
-        lines.add(formatTopLinkLine(city));
-        lines.add(formatMigrationLine(city));
-        lines.add(formatMayorsLine(city));
+    private List<String> buildCompactLines(City city) {
+        List<String> lines = new ArrayList<>(5);
+        addIfPresent(lines, formatCityLine(city));
+        addIfPresent(lines, formatProsperityLine(city));
+        addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatGdpPerCapitaLine(city));
+        addIfPresent(lines, formatSectorLine(city));
         return lines;
+    }
+
+    private String formatCityLine(City city) {
+        if (city == null || city.name == null || city.name.isBlank()) {
+            return null;
+        }
+        return formatLine(NamedTextColor.YELLOW, "City: ", city.name);
     }
 
     private String formatProsperityLine(City city) {
-        int prosperity = city != null ? clampToInt(city.prosperity, 0, 100) : 0;
-        return formatLine(NamedTextColor.GOLD, "Prosperity: ", String.valueOf(prosperity));
+        if (city == null) {
+            return null;
+        }
+        double prosperity = clampToInt(city.prosperity, 0, 100);
+        TrendDirection trend = arrowForMetric(city, TrendUtil.Metric.PROSPERITY, prosperity);
+        return formatLineWithArrow(NamedTextColor.GOLD, "Prosperity: ", prosperity + "%", trend);
+    }
+
+    private String formatPopulationLine(City city) {
+        if (city == null) {
+            return null;
+        }
+        int population = Math.max(0, city.population);
+        String formatted = String.format(Locale.US, "%,d", population);
+        return formatLine(NamedTextColor.GREEN, "Pop: ", formatted);
     }
 
     private String formatGdpLine(City city) {
-        double gdp = city != null ? city.gdp : 0.0d;
-        return formatLine(NamedTextColor.AQUA, "GDP: ", formatShortNumber(gdp));
+        if (city == null || Double.isNaN(city.gdp)) {
+            return null;
+        }
+        double gdp = city.gdp;
+        String value = formatShortNumber(gdp);
+        TrendDirection trend = Double.isFinite(gdp) ? arrowForMetric(city, TrendUtil.Metric.GDP, gdp) : TrendDirection.FLAT;
+        return formatLineWithArrow(NamedTextColor.AQUA, "GDP: ", value, trend);
     }
 
     private String formatGdpPerCapitaLine(City city) {
-        double gdpPerCapita = city != null ? city.gdpPerCapita : 0.0d;
-        return formatLine(NamedTextColor.AQUA, "GDP/cap: ", formatShortNumber(gdpPerCapita));
+        if (city == null || Double.isNaN(city.gdpPerCapita)) {
+            return null;
+        }
+        double gdpPerCapita = city.gdpPerCapita;
+        String value = formatShortNumber(gdpPerCapita);
+        TrendDirection trend = Double.isFinite(gdpPerCapita) ? arrowForMetric(city, TrendUtil.Metric.GDP_PER_CAPITA, gdpPerCapita) : TrendDirection.FLAT;
+        return formatLineWithArrow(NamedTextColor.AQUA, "GDPpc: ", value, trend);
     }
 
-    private String formatSectorLine(City city, boolean detailedLabel) {
-        SectorLeader leader = resolveSectorLeader(city);
-        String value = leader == null ? "—" : leader.name() + " " + formatPercent(leader.share());
-        String label = detailedLabel ? "Sector leader: " : "Sector: ";
-        return formatLine(NamedTextColor.GREEN, label, value);
-    }
-
-    private String formatJobsPressureLine(City city) {
-        double delta = city != null ? city.jobsPressure : Double.NaN;
-        return formatLine(NamedTextColor.RED, "Jobs pressure: ", formatSignedPercent(delta));
-    }
-
-    private String formatHousingPressureLine(City city) {
-        double delta = city != null ? city.housingPressure : Double.NaN;
-        return formatLine(NamedTextColor.BLUE, "Housing pressure: ", formatSignedPercent(delta));
-    }
-
-    private String formatTransitPressureLine(City city) {
-        double delta = city != null ? city.transitPressure : Double.NaN;
-        return formatLine(NamedTextColor.LIGHT_PURPLE, "Transit pressure: ", formatSignedPercent(delta));
-    }
-
-    private String formatLandValueLine(City city) {
-        double landValue = city != null ? city.landValue : Double.NaN;
+    private String formatLandLine(City city) {
+        if (city == null || Double.isNaN(city.landValue)) {
+            return null;
+        }
+        double landValue = city.landValue;
         String value = Double.isFinite(landValue)
                 ? String.format(Locale.US, "%.0f", clamp(landValue, 0.0d, 100.0d))
                 : "—";
-        return formatLine(NamedTextColor.YELLOW, "Land value: ", value);
+        TrendDirection trend = Double.isFinite(landValue) ? arrowForMetric(city, TrendUtil.Metric.LAND_VALUE, landValue) : TrendDirection.FLAT;
+        return formatLineWithArrow(NamedTextColor.YELLOW, "Land: ", value, trend);
     }
 
-    private String formatLinksLine(City city) {
-        String value = "—";
-        if (linkService != null && linkService.isEnabled() && city != null) {
-            value = String.valueOf(Math.max(0, linkService.linkCount(city)));
-        }
-        return formatLine(NamedTextColor.DARK_AQUA, "Links: ", value);
-    }
+    private List<String> formatTopContributionLines(City city) {
+        List<String> lines = new ArrayList<>(3);
+        List<NamedContribution> positives = new ArrayList<>();
+        List<NamedContribution> negatives = new ArrayList<>();
 
-    private String formatTopLinkLine(City city) {
-        String value = "—";
-        if (linkService != null && linkService.isEnabled() && city != null) {
-            List<CityLink> links = linkService.topLinks(city, 1);
-            if (!links.isEmpty()) {
-                CityLink top = links.get(0);
-                String neighbor = top.neighbor() != null && top.neighbor().name != null && !top.neighbor().name.isBlank()
-                        ? top.neighbor().name
-                        : "?";
-                int strength = clampToInt(top.strength(), 0, 100);
-                value = neighbor + " S=" + strength;
+        if (city != null) {
+            EconomyBreakdown breakdown = city.economyBreakdown;
+            if (breakdown != null) {
+                addContribution(positives, negatives, "Emp", breakdown.employmentUtilization);
+                addContribution(positives, negatives, "Hous", breakdown.housingBalance);
+                addContribution(positives, negatives, "Tran", breakdown.transitCoverage);
+                addContribution(positives, negatives, "Light", breakdown.lighting);
+                addContribution(positives, negatives, "Nat", breakdown.nature);
+                addContribution(positives, negatives, "Poll", -Math.abs(breakdown.pollutionPenalty));
+                addContribution(positives, negatives, "Crowd", -Math.abs(breakdown.overcrowdingPenalty));
+                addContribution(positives, negatives, "Area", -Math.abs(breakdown.maintenanceArea));
+                addContribution(positives, negatives, "LightMx", -Math.abs(breakdown.maintenanceLighting));
+                addContribution(positives, negatives, "TranMx", -Math.abs(breakdown.maintenanceTransit));
+            } else {
+                ProsperityBreakdown prosperityBreakdown = city.prosperityBreakdown;
+                if (prosperityBreakdown != null) {
+                    ProsperityBreakdownFormatter.ContributionLists lists = ProsperityBreakdownFormatter.buildContributionLists(prosperityBreakdown);
+                    lists.positives().forEach(line -> addContribution(positives, negatives, labelFor(line.type()), line.value()));
+                    lists.negatives().forEach(line -> addContribution(positives, negatives, labelFor(line.type()), line.value()));
+                }
             }
         }
-        return formatLine(NamedTextColor.DARK_AQUA, "Top link: ", value);
+
+        positives.sort((a, b) -> Double.compare(b.value(), a.value()));
+        negatives.sort((a, b) -> Double.compare(a.value(), b.value()));
+
+        addContributionLine(lines, "Top+: ", positives, 0);
+        addContributionLine(lines, "Top+: ", positives, 1);
+        addContributionLine(lines, "Top−: ", negatives, 0);
+        return lines;
     }
 
-    private String formatMigrationLine(City city) {
+    private void addContributionLine(List<String> lines, String label, List<NamedContribution> contributions, int index) {
+        if (index >= contributions.size()) {
+            return;
+        }
+        NamedContribution entry = contributions.get(index);
+        if (Math.abs(entry.value()) < 0.05) {
+            return;
+        }
+        lines.add(formatLine(NamedTextColor.LIGHT_PURPLE, label, entry.label() + " " + formatContributionValue(entry.value())));
+    }
+
+    private String formatJobsDeltaLine(City city) {
+        return formatDeltaLine(city, "JobsΔ: ", city != null ? city.jobsPressure : null,
+                TrendUtil.Metric.JOBS_DELTA, NamedTextColor.RED);
+    }
+
+    private String formatHousingDeltaLine(City city) {
+        return formatDeltaLine(city, "HousΔ: ", city != null ? city.housingPressure : null,
+                TrendUtil.Metric.HOUSING_DELTA, NamedTextColor.BLUE);
+    }
+
+    private String formatDeltaLine(City city, String label, Double delta, TrendUtil.Metric metric, TextColor color) {
         String value = "—";
-        if (migrationService != null && city != null) {
+        TrendDirection trend = TrendDirection.FLAT;
+        if (delta != null && Double.isFinite(delta)) {
+            value = String.format(Locale.US, "%+.2f", delta);
+            trend = arrowForMetric(city, metric, delta);
+        }
+        return formatLineWithArrow(color, label, value, trend);
+    }
+
+    private String formatSectorLine(City city) {
+        SectorLeader leader = resolveSectorLeader(city);
+        if (leader == null) {
+            return null;
+        }
+        return formatLine(NamedTextColor.GREEN, "Sector: ", leader.name());
+    }
+
+    private List<String> formatConnectivityLines(City city) {
+        List<String> lines = new ArrayList<>(2);
+        if (linkService == null || !linkService.isEnabled() || city == null) {
+            return lines;
+        }
+        int linkCount = Math.max(0, linkService.linkCount(city));
+        if (linkCount <= 0) {
+            return lines;
+        }
+        TrendDirection linkTrend = arrowForMetric(city, TrendUtil.Metric.LINKS, linkCount);
+        lines.add(formatLineWithArrow(NamedTextColor.DARK_AQUA, "Links: ", String.valueOf(linkCount), linkTrend));
+
+        long migrationNet = 0;
+        boolean hasMigration = false;
+        if (migrationService != null) {
             MigrationService.CityMigrationSnapshot snapshot = migrationService.snapshot(city);
             if (snapshot != null) {
-                long net = snapshot.net();
-                if (net > 0) {
-                    value = "+" + net;
-                } else if (net < 0) {
-                    value = String.valueOf(net);
-                } else {
-                    value = "0";
-                }
+                migrationNet = snapshot.net();
+                hasMigration = migrationNet != 0;
             }
         }
-        return formatLine(NamedTextColor.GRAY, "Migration net: ", value);
-    }
-
-    private String formatMayorsLine(City city) {
-        String value = "0";
-        if (city != null && city.mayors != null) {
-            int count = 0;
-            for (String mayor : city.mayors) {
-                if (mayor != null && !mayor.isBlank()) {
-                    count++;
-                }
-            }
-            value = String.valueOf(count);
+        if (hasMigration) {
+            TrendDirection migrationTrend = arrowForMetric(city, TrendUtil.Metric.MIGRATION, migrationNet);
+            String value = migrationNet > 0 ? "+" + migrationNet : String.valueOf(migrationNet);
+            lines.add(formatLineWithArrow(NamedTextColor.GRAY, "Migration: ", value, migrationTrend));
         }
-        return formatLine(NamedTextColor.GRAY, "Mayors: ", value);
+        return lines;
     }
 
     private String formatLine(TextColor labelColor, String label, String value) {
@@ -357,6 +426,24 @@ public class ScoreboardService {
         Component component = Component.text(label, labelColor)
                 .append(Component.text(safeValue, VALUE_COLOR));
         return LEGACY.serialize(component);
+    }
+
+    private String formatLineWithArrow(TextColor labelColor, String label, String value, TrendDirection trend) {
+        String safeValue = (value == null || value.isBlank()) ? "—" : value;
+        Component component = Component.text(label, labelColor)
+                .append(Component.text(safeValue, VALUE_COLOR));
+        if (trend != null && trend != TrendDirection.FLAT && !trend.glyph().isEmpty()) {
+            TextColor arrowColor = trend == TrendDirection.UP ? NamedTextColor.GREEN : NamedTextColor.RED;
+            component = component.append(Component.text(" " + trend.glyph(), arrowColor));
+        }
+        return LEGACY.serialize(component);
+    }
+
+    private TrendDirection arrowForMetric(City city, TrendUtil.Metric metric, double value) {
+        if (city == null || city.id == null || !Double.isFinite(value)) {
+            return TrendDirection.FLAT;
+        }
+        return trendUtil.trendFor(city.id, metric, value);
     }
 
     private String formatShortNumber(double raw) {
@@ -381,23 +468,50 @@ public class ScoreboardService {
         return String.format(Locale.US, "%.1f%s", value, suffixes[index]);
     }
 
-    private String formatPercent(double raw) {
-        if (!Double.isFinite(raw)) {
-            return "—";
-        }
-        double clamped = clamp(raw, 0.0d, 1.0d);
-        return String.format(Locale.US, "%.0f%%", clamped * 100.0d);
+    private String formatContributionValue(double value) {
+        return String.format(Locale.US, "%+.1f", value);
     }
 
-    private String formatSignedPercent(double raw) {
-        if (!Double.isFinite(raw)) {
-            return "—";
+    private void addContribution(List<NamedContribution> positives,
+                                 List<NamedContribution> negatives,
+                                 String label,
+                                 double value) {
+        if (!Double.isFinite(value) || label == null || label.isBlank()) {
+            return;
         }
-        double percent = raw * 100.0d;
-        if (Math.abs(percent) < 0.05d) {
-            return "0.0%";
+        NamedContribution entry = new NamedContribution(label, value);
+        if (value >= 0.0) {
+            positives.add(entry);
+        } else {
+            negatives.add(entry);
         }
-        return String.format(Locale.US, "%+.1f%%", percent);
+    }
+
+    private String labelFor(EconomyBreakdownFormatter.ContributionType type) {
+        return switch (type) {
+            case EMPLOYMENT -> "Emp";
+            case HOUSING -> "Hous";
+            case TRANSIT -> "Tran";
+            case LIGHTING -> "Light";
+            case NATURE -> "Nat";
+            case POLLUTION -> "Poll";
+            case OVERCROWDING -> "Crowd";
+            case AREA_MAINTENANCE -> "Area";
+            case LIGHTING_MAINTENANCE -> "LightMx";
+            case TRANSIT_MAINTENANCE -> "TranMx";
+        };
+    }
+
+    private String labelFor(ProsperityBreakdownFormatter.ContributionType type) {
+        return switch (type) {
+            case LIGHT -> "Light";
+            case EMPLOYMENT -> "Emp";
+            case NATURE -> "Nat";
+            case HOUSING -> "Hous";
+            case TRANSIT -> "Tran";
+            case OVERCROWDING -> "Crowd";
+            case POLLUTION -> "Poll";
+        };
     }
 
     private SectorLeader resolveSectorLeader(City city) {
@@ -452,6 +566,9 @@ public class ScoreboardService {
     private record SectorLeader(String name, double share) {
     }
 
+    private record NamedContribution(String label, double value) {
+    }
+
     private List<String> decorateLines(List<String> raw) {
         List<String> decorated = new ArrayList<>(raw.size());
         for (int i = 0; i < raw.size(); i++) {
@@ -465,6 +582,12 @@ public class ScoreboardService {
         int score = lines.size();
         for (String line : lines) {
             objective.getScore(line).setScore(score--);
+        }
+    }
+
+    private void addIfPresent(List<String> lines, String line) {
+        if (line != null && !line.isBlank()) {
+            lines.add(line);
         }
     }
 
