@@ -1,27 +1,34 @@
 package dev.citysim.cmd.subcommand;
 
 import dev.citysim.city.City;
+import dev.citysim.city.Cuboid;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandMessages;
+import dev.citysim.links.CityLink;
+import dev.citysim.links.LinkService;
+import dev.citysim.migration.MigrationService;
 import dev.citysim.stats.EconomyBreakdown;
-import dev.citysim.stats.EconomyBreakdownFormatter;
 import dev.citysim.stats.ProsperityBreakdown;
 import dev.citysim.stats.ProsperityBreakdownFormatter;
-import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLists;
+import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLine;
+import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionType;
 import dev.citysim.stats.StationCountingMode;
 import dev.citysim.stats.StatsService;
 import dev.citysim.util.AdventureMessages;
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -29,10 +36,17 @@ public class StatsCommand implements CitySubcommand {
 
     private final CityManager cityManager;
     private final StatsService statsService;
+    private final LinkService linkService;
+    private final MigrationService migrationService;
 
-    public StatsCommand(CityManager cityManager, StatsService statsService) {
+    public StatsCommand(CityManager cityManager,
+                        StatsService statsService,
+                        LinkService linkService,
+                        MigrationService migrationService) {
         this.cityManager = cityManager;
         this.statsService = statsService;
+        this.linkService = linkService;
+        this.migrationService = migrationService;
     }
 
     @Override
@@ -74,85 +88,99 @@ public class StatsCommand implements CitySubcommand {
             return true;
         }
 
-        ProsperityBreakdown hb = statsService.computeProsperityBreakdown(city);
-        hb.setGhostTown(hb.isGhostTown() || city.isGhostTown() || city.population <= 0);
-
-        boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
-        String homesLine = "<blue>Homes:</blue> %d/%d".formatted(city.beds, city.population);
-        if (showStations) {
-            homesLine += "  <light_purple>Stations:</light_purple> %d".formatted(city.stations);
-        }
-        String mayorLine = formatMayorLine(city);
+        ProsperityBreakdown prosperity = statsService.computeProsperityBreakdown(city);
+        prosperity.setGhostTown(prosperity.isGhostTown() || city.isGhostTown() || city.population <= 0);
 
         String safeName = AdventureMessages.escapeMiniMessage(city.name);
-        if (hb.isGhostTown()) {
-            String msg = ("""
-            <white><b>%s — City stats</b></white>
-            %s
-            <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
-            %s
-            <gold>Prosperity:</gold> N/A (ghost town)
-            %s
-            """).formatted(
-                    safeName, mayorLine, city.population, city.employed, city.unemployed,
-                    homesLine,
-                    hb.dominantMessage()
-            ).stripTrailing();
-            player.sendMessage(AdventureMessages.mini(msg));
+        boolean showStations = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
+
+        if (prosperity.isGhostTown()) {
+            player.sendMessage(AdventureMessages.mini(buildGhostTownMessage(city, safeName, showStations, prosperity)));
             return true;
         }
 
-        ContributionLists contributionLists = StatsFormatting.filterTransitIfHidden(statsService, ProsperityBreakdownFormatter.buildContributionLists(hb));
+        EconomyBreakdown economyBreakdown = city.economyBreakdown;
+        int prosperityTotal = economyBreakdown != null ? economyBreakdown.total : prosperity.total;
+        int prosperityBase = economyBreakdown != null ? economyBreakdown.base : prosperity.base;
 
-        String breakdownLines = StatsFormatting.joinProsperityContributionLines(contributionLists.positives(), StatsFormatting::miniMessageLabelForProsperity);
-        String negativeLines = StatsFormatting.joinProsperityContributionLines(contributionLists.negatives(), StatsFormatting::miniMessageLabelForProsperity);
-        if (!negativeLines.isEmpty()) {
-            if (!breakdownLines.isEmpty()) {
-                breakdownLines += "\n";
-            }
-            breakdownLines += negativeLines;
+        List<String> lines = new ArrayList<>();
+        lines.add("<white><b>%s — City stats</b></white>".formatted(safeName));
+
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("OVERVIEW"));
+        lines.add(joinLine(
+                kv("City", safeName),
+                kv("Population", formatNumber(city.population)),
+                kv("Prosperity", prosperityString(prosperityTotal, prosperityBase)),
+                formatLandValue(city),
+                city.highrise ? kv("Highrise", "Yes") : null
+        ));
+
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("ECONOMY"));
+        lines.add(joinLine(
+                kv("GDP", formatShortNumber(city.gdp)),
+                kv("GDP per capita", formatShortNumber(city.gdpPerCapita)),
+                kv("Sectors", formatSectorBreakdown(city))
+        ));
+        if (economyBreakdown != null) {
+            List<NamedContribution> economyScores = new ArrayList<>();
+            economyScores.add(new NamedContribution("Employment score", economyBreakdown.employmentUtilization));
+            economyScores.add(new NamedContribution("Housing score", economyBreakdown.housingBalance));
+            economyScores.add(new NamedContribution("Transit score", economyBreakdown.transitCoverage));
+            economyScores.sort(Comparator.comparingDouble(NamedContribution::value).reversed());
+            lines.add(joinLine(
+                    kv(economyScores.get(0).label(), formatSigned(economyScores.get(0).value())),
+                    kv(economyScores.get(1).label(), formatSigned(economyScores.get(1).value()))
+            ));
         }
 
-        EconomyBreakdown economyBreakdown = city.economyBreakdown;
-        EconomyBreakdownFormatter.ContributionLists economyLists = EconomyBreakdownFormatter.buildContributionLists(economyBreakdown);
-        String economyPositive = StatsFormatting.joinEconomyContributionLines(economyLists.positives(), StatsFormatting::miniMessageLabelForEconomy);
-        String economyNegative = StatsFormatting.joinEconomyContributionLines(economyLists.negatives(), StatsFormatting::miniMessageLabelForEconomy);
-        String economyLines = combineLines(economyPositive, economyNegative);
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("PRESSURES & SERVICES"));
+        lines.add(joinLine(
+                kv("JobsΔ", formatSigned(city.jobsPressure)),
+                kv("HousingΔ", formatSigned(city.housingPressure)),
+                kv("TransitΔ", formatSigned(city.transitPressure))
+        ));
+        lines.add(joinLine(
+                kv("Housing ratio", formatRatio(city.housingRatio) + " beds/villager"),
+                kv("Employment ratio", formatRatio(city.employmentRate)),
+                kv("Transit coverage", formatRatio(city.transitCoverage))
+        ));
 
-        int prosperityTotal = economyBreakdown != null ? economyBreakdown.total : hb.total;
-        int prosperityBase = economyBreakdown != null ? economyBreakdown.base : hb.base;
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("CONNECTIVITY & MIGRATION"));
+        lines.addAll(buildConnectivityLines(city, economyBreakdown));
 
-        String gdpLine = formatGdpLine(city);
-        String sectorLine = formatSectorLine(city);
-        String pressureLine = formatPressureLine(city);
-        String landValueLine = formatLandValueLine(city);
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("ENVIRONMENT & INFRASTRUCTURE"));
+        if (economyBreakdown != null) {
+            lines.add(joinLine(
+                    kv("Lighting score", formatSigned(economyBreakdown.lighting)),
+                    kv("Nature score", formatSigned(economyBreakdown.nature)),
+                    kv("Pollution penalty", formatSigned(-economyBreakdown.pollutionPenalty)),
+                    kv("Crowding penalty", formatSigned(-economyBreakdown.overcrowdingPenalty))
+            ));
+        }
+        lines.add(joinLine(
+                kv("Area", formatArea(city)),
+                kv("Stations", String.valueOf(city.stations)),
+                formatLandValue(city)
+        ));
 
-        String msg = ("""
-        <white><b>%s — City stats</b></white>
-        %s
-        <gold>Population:</gold> %d  <aqua>Employed:</aqua> %d  <red>Unemployed:</red> %d
-        %s
-        <gold>Prosperity:</gold> %d%%  <white>(base %d)</white>
-        %s
-        <gray>Economy (Prosperity):</gray>
-        %s
-        %s
-        %s
-        %s
-        %s
-        """).formatted(
-                safeName, mayorLine, city.population, city.employed, city.unemployed,
-                homesLine,
-                prosperityTotal,
-                prosperityBase,
-                breakdownLines,
-                economyLines,
-                gdpLine,
-                sectorLine,
-                pressureLine,
-                landValueLine
-        ).stripTrailing();
-        player.sendMessage(AdventureMessages.mini(msg));
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("GOVERNANCE"));
+        lines.add(joinLine(
+                formatMayorEntry(city),
+                kv("Homes", "%d/%d".formatted(city.beds, city.population))
+        ));
+
+        String message = lines.stream()
+                .filter(Objects::nonNull)
+                .filter(line -> !line.isBlank())
+                .collect(Collectors.joining("\n"))
+                .stripTrailing();
+        player.sendMessage(AdventureMessages.mini(message));
         return true;
     }
 
@@ -164,12 +192,281 @@ public class StatsCommand implements CitySubcommand {
         return List.of();
     }
 
-    private String formatMayorLine(City city) {
+    private String buildGhostTownMessage(City city, String safeName, boolean showStations, ProsperityBreakdown prosperity) {
+        List<String> lines = new ArrayList<>();
+        lines.add("<white><b>%s — City stats</b></white>".formatted(safeName));
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("OVERVIEW"));
+        lines.add(joinLine(
+                kv("City", safeName),
+                kv("Pop", formatNumber(city.population)),
+                kv("Prosperity", "N/A (ghost town)")
+        ));
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("POPULATION"));
+        lines.add(joinLine(
+                kv("Employed", formatNumber(city.employed)),
+                kv("Unemployed", formatNumber(city.unemployed))
+        ));
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("HOUSING"));
+        lines.add(joinLine(
+                kv("Homes", "%d/%d".formatted(city.beds, city.population)),
+                showStations ? kv("Stations", String.valueOf(city.stations)) : null
+        ));
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("GOVERNANCE"));
+        lines.add(formatMayorEntry(city));
+        lines.add(sectionHeader("Notes"));
+        lines.add(prosperity.dominantMessage());
+        return lines.stream()
+                .filter(Objects::nonNull)
+                .filter(line -> !line.isBlank())
+                .collect(Collectors.joining("\n"))
+                .stripTrailing();
+    }
+
+    private String sectionHeader(String label) {
+        return "<yellow><b>%s</b></yellow>".formatted(label);
+    }
+
+    private String sectionSpacer() {
+        return "<gray>────────────</gray>";
+    }
+
+    private String kv(String label, String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return "<gold>%s:</gold> <white>%s</white>".formatted(label, value);
+    }
+
+    private String joinLine(String... parts) {
+        return Arrays.stream(parts)
+                .filter(Objects::nonNull)
+                .filter(part -> !part.isBlank())
+                .collect(Collectors.joining(" <gray>•</gray> "));
+    }
+
+    private String formatNumber(long value) {
+        return String.format(Locale.US, "%,d", value);
+    }
+
+    private String formatShortNumber(double raw) {
+        if (!Double.isFinite(raw) || raw == 0.0) {
+            return "0";
+        }
+        double value = raw;
+        double abs = Math.abs(value);
+        String[] suffixes = {"", "K", "M", "B", "T"};
+        int index = 0;
+        while (abs >= 1000.0 && index < suffixes.length - 1) {
+            value /= 1000.0;
+            abs /= 1000.0;
+            index++;
+        }
+        if (index == 0) {
+            return String.format(Locale.US, "%,.0f", value);
+        }
+        return String.format(Locale.US, "%,.1f%s", value, suffixes[index]);
+    }
+
+    private String prosperityString(int total, int base) {
+        return "%d%% (base %d)".formatted(total, base);
+    }
+
+    private ContributionSummary buildContributionSummary(City city) {
+        List<NamedContribution> positives = new ArrayList<>();
+        List<NamedContribution> negatives = new ArrayList<>();
+        EconomyBreakdown economy = city.economyBreakdown;
+        if (economy != null) {
+            addContribution(positives, negatives, "Employment", economy.employmentUtilization);
+            addContribution(positives, negatives, "Housing", economy.housingBalance);
+            addContribution(positives, negatives, "Transit", economy.transitCoverage);
+            addContribution(positives, negatives, "Lighting", economy.lighting);
+            addContribution(positives, negatives, "Nature", economy.nature);
+            addContribution(positives, negatives, "Pollution", -Math.abs(economy.pollutionPenalty));
+            addContribution(positives, negatives, "Crowding", -Math.abs(economy.overcrowdingPenalty));
+            addContribution(positives, negatives, "Area upkeep", -Math.abs(economy.maintenanceArea));
+            addContribution(positives, negatives, "Lighting upkeep", -Math.abs(economy.maintenanceLighting));
+            addContribution(positives, negatives, "Transit upkeep", -Math.abs(economy.maintenanceTransit));
+        } else {
+            boolean showTransit = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
+            ProsperityBreakdown breakdown = city.prosperityBreakdown;
+            if (breakdown != null) {
+                for (ContributionLine line : ProsperityBreakdownFormatter.buildContributionLists(breakdown).positives()) {
+                    if (!showTransit && line.type() == ProsperityBreakdownFormatter.ContributionType.TRANSIT) {
+                        continue;
+                    }
+                    addContribution(positives, negatives, labelFor(line.type()), line.value());
+                }
+                for (ContributionLine line : ProsperityBreakdownFormatter.buildContributionLists(breakdown).negatives()) {
+                    if (!showTransit && line.type() == ProsperityBreakdownFormatter.ContributionType.TRANSIT) {
+                        continue;
+                    }
+                    addContribution(positives, negatives, labelFor(line.type()), line.value());
+                }
+            }
+        }
+
+        positives.sort(Comparator.comparingDouble(NamedContribution::value).reversed());
+        negatives.sort(Comparator.comparingDouble(NamedContribution::value));
+        return new ContributionSummary(positives, negatives);
+    }
+
+    private String labelFor(ProsperityBreakdownFormatter.ContributionType type) {
+        return switch (type) {
+            case LIGHT -> "Lighting";
+            case EMPLOYMENT -> "Employment";
+            case NATURE -> "Nature";
+            case HOUSING -> "Housing";
+            case TRANSIT -> "Transit";
+            case OVERCROWDING -> "Crowding";
+            case POLLUTION -> "Pollution";
+        };
+    }
+
+    private void addContribution(List<NamedContribution> positives,
+                                 List<NamedContribution> negatives,
+                                 String label,
+                                 double value) {
+        if (!Double.isFinite(value) || label == null || label.isBlank()) {
+            return;
+        }
+        NamedContribution entry = new NamedContribution(label, value);
+        if (value >= 0.0) {
+            positives.add(entry);
+        } else {
+            negatives.add(entry);
+        }
+    }
+
+    private String formatContributionEntry(List<NamedContribution> contributions, int index) {
+        if (index >= contributions.size()) {
+            return "—";
+        }
+        NamedContribution entry = contributions.get(index);
+        if (Math.abs(entry.value()) < 0.05) {
+            return "—";
+        }
+        return entry.label() + " " + formatContributionValue(entry.value());
+    }
+
+    private String formatContributionValue(double value) {
+        return String.format(Locale.US, "%+.1f", value);
+    }
+
+    private List<String> buildConnectivityLines(City city, EconomyBreakdown economyBreakdown) {
+        List<String> lines = new ArrayList<>();
+        String linksValue = "0";
+        String topLinkValue = "—";
+        if (linkService != null) {
+            int count = Math.max(0, linkService.linkCount(city));
+            linksValue = String.valueOf(count);
+            List<CityLink> topLinks = linkService.topLinks(city, 1);
+            if (!topLinks.isEmpty()) {
+                CityLink top = topLinks.get(0);
+                String neighbor = top.neighbor() != null ? top.neighbor().name : "?";
+                topLinkValue = "%s (S=%d)".formatted(neighbor, top.strength());
+            }
+        }
+        lines.add(joinLine(
+                kv("Links", linksValue),
+                kv("Top link", topLinkValue)
+        ));
+        if (economyBreakdown != null) {
+            lines.add(joinLine(
+                    kv("Transit score", formatSigned(economyBreakdown.transitCoverage))
+            ));
+        }
+
+        String migrationValue = "0";
+        if (migrationService != null) {
+            MigrationService.CityMigrationSnapshot snapshot = migrationService.snapshot(city);
+            if (snapshot != null) {
+                long net = snapshot.net();
+                migrationValue = net > 0 ? "+" + net : String.valueOf(net);
+            }
+        }
+        lines.add(joinLine(
+                kv("Migration", migrationValue)
+        ));
+        return lines;
+    }
+
+    private String formatSigned(double value) {
+        if (!Double.isFinite(value)) {
+            return "0.00";
+        }
+        return String.format(Locale.US, "%+.2f", value);
+    }
+
+    private String formatRatio(double value) {
+        if (!Double.isFinite(value)) {
+            return "0.00";
+        }
+        return String.format(Locale.US, "%.2f", value);
+    }
+
+    private String formatSectorBreakdown(City city) {
+        String services = formatPercentValue(city.sectorServ);
+        String industry = formatPercentValue(city.sectorInd);
+        String agriculture = formatPercentValue(city.sectorAgri);
+        return "Serv %s / Ind %s / Agri %s".formatted(services, industry, agriculture);
+    }
+
+    private String formatPercentValue(double value) {
+        return String.format(Locale.US, "%.0f%%", clamp01(value) * 100.0);
+    }
+
+    private double clamp01(double value) {
+        if (value < 0.0) {
+            return 0.0;
+        }
+        if (value > 1.0) {
+            return 1.0;
+        }
+        return value;
+    }
+
+    private String formatLandValue(City city) {
+        if (!Double.isFinite(city.landValue)) {
+            return null;
+        }
+        return kv("Land value", String.format(Locale.US, "%.0f", city.landValue));
+    }
+
+    private String formatArea(City city) {
+        long area = computeArea(city);
+        if (area <= 0) {
+            return "—";
+        }
+        return formatShortNumber(area) + " m²";
+    }
+
+    private long computeArea(City city) {
+        if (city == null || city.cuboids == null) {
+            return 0;
+        }
+        long total = 0;
+        for (Cuboid cuboid : city.cuboids) {
+            if (cuboid == null) {
+                continue;
+            }
+            long width = Math.abs(cuboid.maxX - cuboid.minX) + 1L;
+            long depth = Math.abs(cuboid.maxZ - cuboid.minZ) + 1L;
+            total += width * depth;
+        }
+        return total;
+    }
+
+    private String formatMayorEntry(City city) {
         List<String> names = resolveMayorNames(city);
         if (names.isEmpty()) {
-            return "<yellow>Mayors:</yellow> <gray>None assigned</gray>";
+            return kv("Mayor", "None");
         }
-        return "<yellow>Mayors:</yellow> " + String.join("<gray>, </gray>", names);
+        String label = names.size() == 1 ? "Mayor" : "Mayors";
+        return kv(label, String.join(", ", names));
     }
 
     private List<String> resolveMayorNames(City city) {
@@ -185,7 +482,7 @@ public class StatsCommand implements CitySubcommand {
             if (display == null || display.isBlank()) {
                 continue;
             }
-            formatted.add("<white>" + AdventureMessages.escapeMiniMessage(display) + "</white>");
+            formatted.add(AdventureMessages.escapeMiniMessage(display));
         }
         return formatted;
     }
@@ -206,63 +503,15 @@ public class StatsCommand implements CitySubcommand {
         }
     }
 
-    private String combineLines(String primary, String secondary) {
-        if (primary.isEmpty()) {
-            return secondary;
+    private record NamedContribution(String label, double value) {
+    }
+
+    private record ContributionSummary(List<NamedContribution> positives, List<NamedContribution> negatives) {
+        List<NamedContribution> all() {
+            List<NamedContribution> combined = new ArrayList<>(positives);
+            combined.addAll(negatives);
+            combined.sort(Comparator.comparingDouble(NamedContribution::value).reversed());
+            return combined;
         }
-        if (secondary.isEmpty()) {
-            return primary;
-        }
-        return primary + "\n" + secondary;
-    }
-
-    private String formatGdpLine(City city) {
-        String gdp = formatLargeNumber(city.gdp);
-        String gdpPerCapita = formatLargeNumber(city.gdpPerCapita);
-        return "<gold>GDP:</gold> %s  <aqua>Per capita:</aqua> %s".formatted(gdp, gdpPerCapita);
-    }
-
-    private String formatSectorLine(City city) {
-        String agri = formatPercent(city.sectorAgri);
-        String industry = formatPercent(city.sectorInd);
-        String services = formatPercent(city.sectorServ);
-        return "<green>Sectors:</green> Agri %s • Ind %s • Serv %s".formatted(agri, industry, services);
-    }
-
-    private String formatPressureLine(City city) {
-        String jobs = formatSignedDelta(city.jobsPressure);
-        String housing = formatSignedDelta(city.housingPressure);
-        String transit = formatSignedDelta(city.transitPressure);
-        return "<red>Pressures:</red> Jobs Δ: %s  Housing Δ: %s  Transit Δ: %s".formatted(jobs, housing, transit);
-    }
-
-    private String formatLandValueLine(City city) {
-        return "<yellow>Land value:</yellow> %s".formatted(String.format(Locale.US, "%.1f", city.landValue));
-    }
-
-    private String formatLargeNumber(double value) {
-        return String.format(Locale.US, "%,.1f", value);
-    }
-
-    private String formatPercent(double value) {
-        return String.format(Locale.US, "%.0f%%", clamp01(value) * 100.0);
-    }
-
-    private String formatSignedDelta(double value) {
-        String formatted = String.format(Locale.US, "%+.2f", value);
-        if (formatted.startsWith("-")) {
-            return "−" + formatted.substring(1);
-        }
-        return formatted;
-    }
-
-    private double clamp01(double value) {
-        if (value < 0.0) {
-            return 0.0;
-        }
-        if (value > 1.0) {
-            return 1.0;
-        }
-        return value;
     }
 }
