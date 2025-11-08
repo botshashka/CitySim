@@ -7,17 +7,23 @@ public class HappinessCalculator {
     private static final double OVERCROWDING_BASELINE = 3.0;
     private static final double TRANSIT_IDEAL_SPACING_BLOCKS = 75.0;
     private static final double TRANSIT_EASING_EXPONENT = 0.5;
-    static final double NATURE_TARGET_RATIO = 0.10;
+    private static final double DEFAULT_NATURE_TARGET_RATIO = 0.10;
     private static final int NATURE_MIN_EFFECTIVE_SAMPLES = 36;
+    private static final int POLLUTION_MIN_EFFECTIVE_SAMPLES = 36;
+    private static final double POLLUTION_BLOCK_FULL_WEIGHT = 12.0;
     private static final double HOUSING_SURPLUS_CAP = 1.2;
     private static final double HOUSING_SHORTAGE_FLOOR = 0.6;
 
+    private double baseScore = 50.0;
     private double lightNeutral = 2.0;
     private double lightMaxPts = 10;
     private double employmentMaxPts = 15;
+    private double employmentNeutral = 0.75;
     private double overcrowdMaxPenalty = 10;
     private double natureMaxPts = 10;
+    private double natureTargetRatio = DEFAULT_NATURE_TARGET_RATIO;
     private double pollutionMaxPenalty = 15;
+    private double pollutionTargetRatio = 0.02;
     private double housingMaxPts = 10;
     private double transitMaxPts = 5;
     private StationCountingMode stationCountingMode = StationCountingMode.MANUAL;
@@ -29,6 +35,7 @@ public class HappinessCalculator {
         boolean ghostByPopulation = pop <= 0;
         boolean flaggedGhostTown = city.isGhostTown();
         hb.setGhostTown(flaggedGhostTown || ghostByPopulation);
+        hb.base = (int) Math.round(baseScore);
 
         if (hb.isGhostTown()) {
             hb.lightPoints = 0.0;
@@ -43,10 +50,11 @@ public class HappinessCalculator {
         }
 
         double lightScore = metrics.light;
-        double lightScoreNormalized = (lightScore - lightNeutral) / lightNeutral;
-        hb.lightPoints = clamp(lightScoreNormalized * lightMaxPts, -lightMaxPts, lightMaxPts);
+        double lightScoreNormalized = lightNeutral <= 0.0
+                ? 0.0
+                : (lightScore - lightNeutral) / lightNeutral;
+        hb.lightPoints = applySymmetricScaling(lightScoreNormalized, lightMaxPts);
 
-        double employmentNeutral = 0.75;
         double employmentScore;
         if (pop <= 0) {
             employmentScore = 0.0;
@@ -58,22 +66,20 @@ public class HappinessCalculator {
                 employmentScore = (employmentRate - employmentNeutral) / employmentNeutral;
             }
         }
-        hb.employmentPoints = clamp(employmentScore * employmentMaxPts, -employmentMaxPts, employmentMaxPts);
+        hb.employmentPoints = applySymmetricScaling(employmentScore, employmentMaxPts);
 
         hb.overcrowdingPenalty = clamp(metrics.overcrowdingPenalty, 0.0, overcrowdMaxPenalty);
 
         double adjustedNature = adjustNatureRatio(metrics.nature, metrics.natureSamples);
-        double natureScore = (adjustedNature - NATURE_TARGET_RATIO) / NATURE_TARGET_RATIO;
-        hb.naturePoints = clamp(natureScore * natureMaxPts, -natureMaxPts, natureMaxPts);
+        double natureScore = natureTargetRatio <= 0.0
+                ? 0.0
+                : (adjustedNature - natureTargetRatio) / natureTargetRatio;
+        hb.naturePoints = applySymmetricScaling(natureScore, natureMaxPts);
 
-        double pollution = metrics.pollution;
-        double pollutionTarget = 0.02;
-        if (metrics.pollutingBlocks < 4) {
-            hb.pollutionPenalty = 0.0;
-        } else {
-            double pollutionSeverity = Math.max(0.0, (pollution - pollutionTarget) / pollutionTarget);
-            hb.pollutionPenalty = clamp(pollutionSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
-        }
+        hb.pollutionPenalty = calculatePollutionPenalty(
+                metrics.pollution,
+                Math.max(0, metrics.pollutingBlocks),
+                Math.max(0, metrics.pollutionSamples));
 
         int beds = Math.max(0, city.beds);
         double housingRatio = pop <= 0 ? 1.0 : (double) beds / Math.max(1.0, (double) pop);
@@ -87,7 +93,7 @@ public class HappinessCalculator {
             double normalized = shortage / Math.max(0.0001, 1.0 - HOUSING_SHORTAGE_FLOOR);
             housingScore = -Math.min(1.0, normalized);
         }
-        hb.housingPoints = clamp(housingScore * housingMaxPts, -housingMaxPts, housingMaxPts);
+        hb.housingPoints = applySymmetricScaling(housingScore, housingMaxPts);
 
         hb.transitPoints = computeTransitPoints(city);
 
@@ -104,6 +110,14 @@ public class HappinessCalculator {
         if (total > 100) total = 100;
         hb.total = (int) Math.round(total);
         return hb;
+    }
+
+    public void setBaseScore(double baseScore) {
+        this.baseScore = Math.max(0.0, baseScore);
+    }
+
+    public double getBaseScore() {
+        return baseScore;
     }
 
     public void setLightNeutral(double lightNeutral) {
@@ -130,6 +144,14 @@ public class HappinessCalculator {
         return employmentMaxPts;
     }
 
+    public void setEmploymentNeutral(double employmentNeutral) {
+        this.employmentNeutral = clamp(employmentNeutral, 0.0001, 0.9999);
+    }
+
+    public double getEmploymentNeutral() {
+        return employmentNeutral;
+    }
+
     public void setOvercrowdMaxPenalty(double overcrowdMaxPenalty) {
         this.overcrowdMaxPenalty = overcrowdMaxPenalty;
     }
@@ -146,12 +168,24 @@ public class HappinessCalculator {
         return natureMaxPts;
     }
 
+    public void setNatureTargetRatio(double natureTargetRatio) {
+        this.natureTargetRatio = clamp(natureTargetRatio, 0.0001, 1.0);
+    }
+
     public void setPollutionMaxPenalty(double pollutionMaxPenalty) {
         this.pollutionMaxPenalty = pollutionMaxPenalty;
     }
 
     public double getPollutionMaxPenalty() {
         return pollutionMaxPenalty;
+    }
+
+    public void setPollutionTargetRatio(double pollutionTargetRatio) {
+        this.pollutionTargetRatio = clamp(pollutionTargetRatio, 0.0001, 1.0);
+    }
+
+    public double getPollutionTargetRatio() {
+        return pollutionTargetRatio;
     }
 
     public void setHousingMaxPts(double housingMaxPts) {
@@ -180,6 +214,15 @@ public class HappinessCalculator {
 
     public void setStationCountingMode(StationCountingMode stationCountingMode) {
         this.stationCountingMode = stationCountingMode;
+    }
+
+    public double computePollutionPenalty(City.BlockScanCache metrics) {
+        if (metrics == null) {
+            return 0.0;
+        }
+        return calculatePollutionPenalty(metrics.pollution,
+                Math.max(0, metrics.pollutingBlocks),
+                Math.max(0, metrics.pollutionSamples));
     }
 
     public double computeOvercrowdingPenalty(City city) {
@@ -250,12 +293,41 @@ public class HappinessCalculator {
         double clampedRatio = clamp(rawRatio, 0.0, 1.0);
         int samples = Math.max(0, sampleCount);
         double sampleWeight = Math.min(1.0, samples / (double) NATURE_MIN_EFFECTIVE_SAMPLES);
-        double adjusted = NATURE_TARGET_RATIO + sampleWeight * (clampedRatio - NATURE_TARGET_RATIO);
+        double adjusted = natureTargetRatio + sampleWeight * (clampedRatio - natureTargetRatio);
         return clamp(adjusted, 0.0, 1.0);
     }
 
     public double getNatureTargetRatio() {
-        return NATURE_TARGET_RATIO;
+        return natureTargetRatio;
+    }
+
+    private double applySymmetricScaling(double normalizedScore, double maxPoints) {
+        double span = Math.abs(maxPoints);
+        if (span == 0.0) {
+            return 0.0;
+        }
+        return clamp(normalizedScore * span, -span, span);
+    }
+
+    private double calculatePollutionPenalty(double pollutionRatio, int pollutingBlocks, int pollutionSamples) {
+        if (pollutionMaxPenalty <= 0.0 || pollutionTargetRatio <= 0.0) {
+            return 0.0;
+        }
+        if (pollutingBlocks <= 0 || pollutionSamples <= 0) {
+            return 0.0;
+        }
+
+        double sampleGrace = 1.0 / pollutionSamples;
+        double adjustedRatio = pollutionRatio - pollutionTargetRatio - sampleGrace;
+        if (adjustedRatio <= 0.0) {
+            return 0.0;
+        }
+
+        double severity = adjustedRatio / pollutionTargetRatio;
+        double sampleWeight = Math.min(1.0, pollutionSamples / (double) POLLUTION_MIN_EFFECTIVE_SAMPLES);
+        double blockWeight = Math.min(1.0, pollutingBlocks / POLLUTION_BLOCK_FULL_WEIGHT);
+        double weightedSeverity = severity * sampleWeight * blockWeight;
+        return clamp(weightedSeverity * pollutionMaxPenalty, 0.0, pollutionMaxPenalty);
     }
 
     private double totalEffectiveArea(City city) {

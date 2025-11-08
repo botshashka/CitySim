@@ -3,6 +3,8 @@ package dev.citysim.stats;
 import dev.citysim.city.City;
 import dev.citysim.city.Cuboid;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -11,6 +13,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.EnumSet;
+import java.util.List;
 
 /**
  * Provides reusable logic for sampling block-level metrics that feed into the happiness calculation.
@@ -21,6 +25,7 @@ public class BlockScanService {
 
     private final HappinessCalculator happinessCalculator;
     private long blockScanRefreshIntervalMillis = DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS;
+    private Set<Material> extraNatureBlocks = EnumSet.noneOf(Material.class);
 
     public BlockScanService(HappinessCalculator happinessCalculator) {
         this.happinessCalculator = happinessCalculator;
@@ -34,6 +39,23 @@ public class BlockScanService {
                 configuration.getLong("happiness.block_scan_refresh_interval_millis",
                         DEFAULT_BLOCK_SCAN_REFRESH_INTERVAL_MILLIS));
         setBlockScanRefreshIntervalMillis(configured);
+
+        List<String> configuredNature = configuration.getStringList("happiness.nature_block_allowlist");
+        if (configuredNature != null) {
+            Set<Material> parsed = EnumSet.noneOf(Material.class);
+            for (String entry : configuredNature) {
+                if (entry == null || entry.isBlank()) {
+                    continue;
+                }
+                Material material = Material.matchMaterial(entry.trim());
+                if (material != null) {
+                    parsed.add(material);
+                }
+            }
+            extraNatureBlocks = parsed;
+        } else {
+            extraNatureBlocks = EnumSet.noneOf(Material.class);
+        }
     }
 
     public void setBlockScanRefreshIntervalMillis(long intervalMillis) {
@@ -70,6 +92,7 @@ public class BlockScanService {
         PollutionStats pollutionStats = pollutionStats(city);
         cache.pollution = pollutionStats.ratio();
         cache.pollutingBlocks = pollutionStats.blockCount();
+        cache.pollutionSamples = pollutionStats.samples();
         cache.overcrowdingPenalty = happinessCalculator.computeOvercrowdingPenalty(city);
         cache.timestamp = now;
         city.blockScanCache = cache;
@@ -163,19 +186,7 @@ public class BlockScanService {
     }
 
     private SampledRatio natureRatio(City city) {
-        BlockTest natureTest = b -> {
-            org.bukkit.Material type = b.getType();
-            if (org.bukkit.Tag.LOGS.isTagged(type) || org.bukkit.Tag.LEAVES.isTagged(type)) {
-                return true;
-            }
-            return switch (type) {
-                case GRASS_BLOCK, SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN,
-                     VINE, LILY_PAD,
-                     DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP,
-                     OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
-                default -> false;
-            };
-        };
+        BlockTest natureTest = b -> matchesNatureBlock(b.getType());
 
         if (city.highrise) {
             return ratioHighriseColumns(city, 6, natureTest);
@@ -189,7 +200,7 @@ public class BlockScanService {
             case FURNACE, BLAST_FURNACE, SMOKER, CAMPFIRE, SOUL_CAMPFIRE, LAVA, LAVA_CAULDRON -> true;
             default -> false;
         });
-        return new PollutionStats(result.ratio(), result.found);
+        return new PollutionStats(result.ratio(), result.found, result.probes);
     }
 
     private SampledRatio ratioSurface(City city, int step, BlockTest test) {
@@ -327,6 +338,29 @@ public class BlockScanService {
         return (int) sampleBlock.getLightFromBlocks();
     }
 
+    private boolean matchesNatureBlock(Material type) {
+        if (type == null) {
+            return false;
+        }
+        if (Tag.LOGS.isTagged(type)
+                || Tag.LEAVES.isTagged(type)
+                || Tag.FLOWERS.isTagged(type)
+                || Tag.SAPLINGS.isTagged(type)
+                || Tag.CROPS.isTagged(type)) {
+            return true;
+        }
+        if (extraNatureBlocks.contains(type)) {
+            return true;
+        }
+        return switch (type) {
+            case GRASS_BLOCK, SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN,
+                    VINE, LILY_PAD,
+                    DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP,
+                    OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, SUNFLOWER, PEONY, ROSE_BUSH -> true;
+            default -> false;
+        };
+    }
+
     private interface BlockTest {
         boolean test(Block block);
     }
@@ -353,6 +387,6 @@ public class BlockScanService {
     private record SampledRatio(double ratio, int samples) {
     }
 
-    private record PollutionStats(double ratio, int blockCount) {
+    private record PollutionStats(double ratio, int blockCount, int samples) {
     }
 }

@@ -29,13 +29,22 @@ visualization:
 stations:
   counting_mode: traincarts # traincarts (default), manual, or disabled
 
+happiness:
+  nature_block_allowlist: []
+
 happiness_weights:
+  base_score: 50
+  light_neutral_level: 2.0
   nature_max_points: 10
   pollution_max_penalty: 15
   housing_max_points: 10
   light_max_points: 10
   employment_max_points: 15
   overcrowding_max_penalty: 10
+  transit_max_points: 5
+  employment_neutral: 0.75
+  pollution_target_ratio: 0.02
+  nature_target_ratio: 0.10
 
 titles:
   enabled: true
