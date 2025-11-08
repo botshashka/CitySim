@@ -95,7 +95,7 @@ public class CitySimPlugin extends JavaPlugin {
         this.bossBarService.start();
         getLogger().info("BossBarService started");
 
-        this.scoreboardService = new ScoreboardService(this, cityManager, statsService, displayPreferencesStore, linkService);
+        this.scoreboardService = new ScoreboardService(this, cityManager, displayPreferencesStore, linkService, migrationService);
         this.scoreboardService.start();
         getLogger().info("ScoreboardService started");
 

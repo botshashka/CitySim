@@ -133,6 +133,7 @@ class ScanSchedulerTest {
         }
 
         @Override
+        @SuppressWarnings("removal")
         public PluginLoader getPluginLoader() {
             return null;
         }

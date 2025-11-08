@@ -14,7 +14,7 @@ class ScoreboardServiceTest {
     void trimObjectiveTitleTruncatesLongNamesWithinLimit() throws Exception {
         ScoreboardService service = new ScoreboardService(null, null, null, null, null);
         Method method = ScoreboardService.class.getDeclaredMethod("trimObjectiveTitle", String.class);
-        method.setAccessible(true);
+        assertTrue(method.trySetAccessible(), "trimObjectiveTitle should be accessible for testing");
 
         String prefix = ChatColor.YELLOW + "" + ChatColor.BOLD;
         String longName = prefix + "This is a very very long city name that should be trimmed";
@@ -31,7 +31,7 @@ class ScoreboardServiceTest {
     void trimObjectiveTitleLeavesShortNamesUnchanged() throws Exception {
         ScoreboardService service = new ScoreboardService(null, null, null, null, null);
         Method method = ScoreboardService.class.getDeclaredMethod("trimObjectiveTitle", String.class);
-        method.setAccessible(true);
+        assertTrue(method.trySetAccessible(), "trimObjectiveTitle should be accessible for testing");
 
         String shortName = ChatColor.YELLOW + "" + ChatColor.BOLD + "Short City";
 

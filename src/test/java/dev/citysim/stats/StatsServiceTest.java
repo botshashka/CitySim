@@ -185,6 +185,7 @@ class StatsServiceTest {
         }
 
         @Override
+        @SuppressWarnings("removal")
         public PluginLoader getPluginLoader() {
             return null;
         }

@@ -139,6 +139,7 @@ class CitySimExpansionTest {
         }
 
         @Override
+        @SuppressWarnings("removal")
         public PluginLoader getPluginLoader() {
             return null;
         }

@@ -2,14 +2,9 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.links.CityLink;
 import dev.citysim.links.LinkService;
-import dev.citysim.stats.ProsperityBreakdown;
-import dev.citysim.stats.ProsperityBreakdownFormatter;
-import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLine;
-import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionLists;
-import dev.citysim.stats.ProsperityBreakdownFormatter.ContributionType;
-import dev.citysim.stats.StationCountingMode;
-import dev.citysim.stats.StatsService;
+import dev.citysim.migration.MigrationService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
@@ -33,10 +28,10 @@ public class ScoreboardService {
 
     public enum Mode { COMPACT, FULL }
 
-    private final StatsService statsService;
     private final Plugin plugin;
     private final CityManager cityManager;
     private final LinkService linkService;
+    private final MigrationService migrationService;
     private int taskId = -1;
 
     private final Map<UUID, Scoreboard> boards = new HashMap<>();
@@ -46,14 +41,14 @@ public class ScoreboardService {
 
     public ScoreboardService(Plugin plugin,
                              CityManager cityManager,
-                             StatsService statsService,
                              DisplayPreferencesStore displayPreferencesStore,
-                             LinkService linkService) {
-        this.statsService = statsService;
+                             LinkService linkService,
+                             MigrationService migrationService) {
         this.plugin = plugin;
         this.cityManager = cityManager;
         this.displayPreferencesStore = displayPreferencesStore;
         this.linkService = linkService;
+        this.migrationService = migrationService;
     }
 
     public void start() {
@@ -127,9 +122,6 @@ public class ScoreboardService {
                 continue;
             }
 
-            statsService.requestCityUpdate(city, false);
-            ProsperityBreakdown breakdown = statsService.computeProsperityBreakdown(city);
-
             Scoreboard board = boards.computeIfAbsent(player.getUniqueId(), id -> manager.getNewScoreboard());
             Objective objective = board.getObjective("citysim");
             if (objective == null) {
@@ -138,7 +130,7 @@ public class ScoreboardService {
             }
             String title = ChatColor.YELLOW + "" + ChatColor.BOLD + city.name;
             String safeTitle = trimObjectiveTitle(title);
-            List<String> lines = buildLines(city, breakdown, displayPreferencesStore.getScoreboardMode(player.getUniqueId()));
+            List<String> lines = buildLines(city, displayPreferencesStore.getScoreboardMode(player.getUniqueId()));
 
             UUID uuid = player.getUniqueId();
             String cachedTitle = lastTitles.get(uuid);
@@ -218,42 +210,233 @@ public class ScoreboardService {
         return candidate;
     }
 
-    private List<String> buildLines(City city, ProsperityBreakdown breakdown, Mode mode) {
-        StationCountingMode stationMode = statsService.getStationCountingMode();
-        boolean showStations = stationMode != StationCountingMode.DISABLED;
-        boolean ghostTown = breakdown != null && breakdown.isGhostTown();
+    private List<String> buildLines(City city, Mode mode) {
+        List<String> raw = mode == Mode.FULL ? buildFullLines(city) : buildCompactLines(city);
+        return decorateLines(raw);
+    }
 
-        List<String> raw = new ArrayList<>();
-        raw.add(ChatColor.GREEN + "Population: " + ChatColor.WHITE + city.population);
-        String prosperityValue = ghostTown ? "N/A" : city.prosperity + "%";
-        raw.add(ChatColor.GOLD + "Prosperity: " + ChatColor.WHITE + prosperityValue);
-        raw.add(ChatColor.AQUA + "Jobs: " + ChatColor.WHITE + city.employed + "/" + city.population);
-        raw.add(ChatColor.BLUE + "Homes: " + ChatColor.WHITE + city.beds + "/" + city.population);
-        if (showStations) {
-            raw.add(ChatColor.LIGHT_PURPLE + "Stations: " + ChatColor.WHITE + city.stations);
+    private List<String> buildCompactLines(City city) {
+        List<String> lines = new ArrayList<>(3);
+        lines.add(formatProsperityLine(city));
+        lines.add(formatGdpLine(city));
+        lines.add(formatSectorLine(city, false));
+        return lines;
+    }
+
+    private List<String> buildFullLines(City city) {
+        List<String> lines = new ArrayList<>(12);
+        lines.add(formatProsperityLine(city));
+        lines.add(formatGdpLine(city));
+        lines.add(formatGdpPerCapitaLine(city));
+        lines.add(formatSectorLine(city, true));
+        lines.add(formatJobsPressureLine(city));
+        lines.add(formatHousingPressureLine(city));
+        lines.add(formatTransitPressureLine(city));
+        lines.add(formatLandValueLine(city));
+        lines.add(formatLinksLine(city));
+        lines.add(formatTopLinkLine(city));
+        lines.add(formatMigrationLine(city));
+        lines.add(formatMayorsLine(city));
+        return lines;
+    }
+
+    private String formatProsperityLine(City city) {
+        int prosperity = city != null ? clampToInt(city.prosperity, 0, 100) : 0;
+        return formatLine(ChatColor.GOLD, "Prosperity: ", String.valueOf(prosperity));
+    }
+
+    private String formatGdpLine(City city) {
+        double gdp = city != null ? city.gdp : 0.0d;
+        return formatLine(ChatColor.AQUA, "GDP: ", formatShortNumber(gdp));
+    }
+
+    private String formatGdpPerCapitaLine(City city) {
+        double gdpPerCapita = city != null ? city.gdpPerCapita : 0.0d;
+        return formatLine(ChatColor.AQUA, "GDP/cap: ", formatShortNumber(gdpPerCapita));
+    }
+
+    private String formatSectorLine(City city, boolean detailedLabel) {
+        SectorLeader leader = resolveSectorLeader(city);
+        String value = leader == null ? "—" : leader.name() + " " + formatPercent(leader.share());
+        String label = detailedLabel ? "Sector leader: " : "Sector: ";
+        return formatLine(ChatColor.GREEN, label, value);
+    }
+
+    private String formatJobsPressureLine(City city) {
+        double delta = city != null ? city.jobsPressure : Double.NaN;
+        return formatLine(ChatColor.RED, "Jobs pressure: ", formatSignedPercent(delta));
+    }
+
+    private String formatHousingPressureLine(City city) {
+        double delta = city != null ? city.housingPressure : Double.NaN;
+        return formatLine(ChatColor.BLUE, "Housing pressure: ", formatSignedPercent(delta));
+    }
+
+    private String formatTransitPressureLine(City city) {
+        double delta = city != null ? city.transitPressure : Double.NaN;
+        return formatLine(ChatColor.LIGHT_PURPLE, "Transit pressure: ", formatSignedPercent(delta));
+    }
+
+    private String formatLandValueLine(City city) {
+        double landValue = city != null ? city.landValue : Double.NaN;
+        String value = Double.isFinite(landValue)
+                ? String.format(Locale.US, "%.0f", clamp(landValue, 0.0d, 100.0d))
+                : "—";
+        return formatLine(ChatColor.YELLOW, "Land value: ", value);
+    }
+
+    private String formatLinksLine(City city) {
+        String value = "—";
+        if (linkService != null && linkService.isEnabled() && city != null) {
+            value = String.valueOf(Math.max(0, linkService.linkCount(city)));
         }
-        if (mode == Mode.FULL && linkService != null && linkService.isEnabled()) {
-            int linkCount = linkService.linkCount(city);
-            raw.add(ChatColor.DARK_AQUA + "Links: " + ChatColor.WHITE + linkCount);
-        }
+        return formatLine(ChatColor.DARK_AQUA, "Links: ", value);
+    }
 
-        if (mode == Mode.FULL && !ghostTown) {
-            raw.add(ChatColor.DARK_GRAY + " ");
-            ContributionLists contributionLists = filterTransitIfHidden(ProsperityBreakdownFormatter.buildContributionLists(breakdown));
-
-            for (ContributionLine line : contributionLists.positives()) {
-                raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
+    private String formatTopLinkLine(City city) {
+        String value = "—";
+        if (linkService != null && linkService.isEnabled() && city != null) {
+            List<CityLink> links = linkService.topLinks(city, 1);
+            if (!links.isEmpty()) {
+                CityLink top = links.get(0);
+                String neighbor = top.neighbor() != null && top.neighbor().name != null && !top.neighbor().name.isBlank()
+                        ? top.neighbor().name
+                        : "?";
+                int strength = clampToInt(top.strength(), 0, 100);
+                value = neighbor + " S=" + strength;
             }
+        }
+        return formatLine(ChatColor.DARK_AQUA, "Top link: ", value);
+    }
 
-            if (!contributionLists.negatives().isEmpty()) {
-                raw.add(ChatColor.DARK_GRAY + " ");
-                for (ContributionLine line : contributionLists.negatives()) {
-                    raw.add(colorFor(line.type()) + labelFor(line.type()) + ChatColor.WHITE + formatPoints(line.value()));
+    private String formatMigrationLine(City city) {
+        String value = "—";
+        if (migrationService != null && city != null) {
+            MigrationService.CityMigrationSnapshot snapshot = migrationService.snapshot(city);
+            if (snapshot != null) {
+                long net = snapshot.net();
+                if (net > 0) {
+                    value = "+" + net;
+                } else if (net < 0) {
+                    value = String.valueOf(net);
+                } else {
+                    value = "0";
                 }
             }
         }
+        return formatLine(ChatColor.GRAY, "Migration net: ", value);
+    }
 
-        return decorateLines(raw);
+    private String formatMayorsLine(City city) {
+        String value = "0";
+        if (city != null && city.mayors != null) {
+            int count = 0;
+            for (String mayor : city.mayors) {
+                if (mayor != null && !mayor.isBlank()) {
+                    count++;
+                }
+            }
+            value = String.valueOf(count);
+        }
+        return formatLine(ChatColor.GRAY, "Mayors: ", value);
+    }
+
+    private String formatLine(ChatColor labelColor, String label, String value) {
+        String safeValue = (value == null || value.isBlank()) ? "—" : value;
+        return labelColor + label + ChatColor.WHITE + safeValue;
+    }
+
+    private String formatShortNumber(double raw) {
+        if (!Double.isFinite(raw)) {
+            return "—";
+        }
+        double value = raw;
+        double abs = Math.abs(value);
+        if (abs < 1.0d) {
+            return "0";
+        }
+        String[] suffixes = {"", "K", "M", "B", "T"};
+        int index = 0;
+        while (abs >= 1000.0d && index < suffixes.length - 1) {
+            value /= 1000.0d;
+            abs /= 1000.0d;
+            index++;
+        }
+        if (index == 0) {
+            return String.format(Locale.US, "%.0f", value);
+        }
+        return String.format(Locale.US, "%.1f%s", value, suffixes[index]);
+    }
+
+    private String formatPercent(double raw) {
+        if (!Double.isFinite(raw)) {
+            return "—";
+        }
+        double clamped = clamp(raw, 0.0d, 1.0d);
+        return String.format(Locale.US, "%.0f%%", clamped * 100.0d);
+    }
+
+    private String formatSignedPercent(double raw) {
+        if (!Double.isFinite(raw)) {
+            return "—";
+        }
+        double percent = raw * 100.0d;
+        if (Math.abs(percent) < 0.05d) {
+            return "0.0%";
+        }
+        return String.format(Locale.US, "%+.1f%%", percent);
+    }
+
+    private SectorLeader resolveSectorLeader(City city) {
+        if (city == null) {
+            return null;
+        }
+        SectorLeader leader = null;
+        leader = chooseLeader(leader, "Services", sanitizeFraction(city.sectorServ));
+        leader = chooseLeader(leader, "Industry", sanitizeFraction(city.sectorInd));
+        leader = chooseLeader(leader, "Agriculture", sanitizeFraction(city.sectorAgri));
+        return leader;
+    }
+
+    private SectorLeader chooseLeader(SectorLeader current, String name, double share) {
+        if (!Double.isFinite(share)) {
+            return current;
+        }
+        if (current == null || share > current.share()) {
+            return new SectorLeader(name, share);
+        }
+        return current;
+    }
+
+    private double sanitizeFraction(double value) {
+        if (!Double.isFinite(value)) {
+            return Double.NaN;
+        }
+        return clamp(value, 0.0d, 1.0d);
+    }
+
+    private double clamp(double value, double min, double max) {
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
+    }
+
+    private int clampToInt(double value, int min, int max) {
+        int rounded = (int) Math.round(value);
+        if (rounded < min) {
+            return min;
+        }
+        if (rounded > max) {
+            return max;
+        }
+        return rounded;
+    }
+
+    private record SectorLeader(String name, double share) {
     }
 
     private List<String> decorateLines(List<String> raw) {
@@ -263,56 +446,6 @@ public class ScoreboardService {
             decorated.add(raw.get(i) + ChatColor.COLOR_CHAR + code);
         }
         return decorated;
-    }
-
-    private String formatPoints(double value) {
-        return (value >= 0 ? "+" : "") + String.format(Locale.US, "%.1f", value);
-    }
-
-    private ChatColor colorFor(ContributionType type) {
-        return switch (type) {
-            case LIGHT -> ChatColor.YELLOW;
-            case EMPLOYMENT -> ChatColor.AQUA;
-            case NATURE -> ChatColor.DARK_GREEN;
-            case HOUSING -> ChatColor.BLUE;
-            case TRANSIT -> ChatColor.LIGHT_PURPLE;
-            case OVERCROWDING -> ChatColor.RED;
-            case POLLUTION -> ChatColor.DARK_RED;
-        };
-    }
-
-    private String labelFor(ContributionType type) {
-        return switch (type) {
-            case LIGHT -> "Light: ";
-            case EMPLOYMENT -> "Employment: ";
-            case NATURE -> "Nature: ";
-            case HOUSING -> "Housing: ";
-            case TRANSIT -> "Transit: ";
-            case OVERCROWDING -> "Crowding: ";
-            case POLLUTION -> "Pollution: ";
-        };
-    }
-
-    private ContributionLists filterTransitIfHidden(ContributionLists lists) {
-        if (lists.ghostTown()) {
-            return lists;
-        }
-        if (statsService.getStationCountingMode() != StationCountingMode.DISABLED) {
-            return lists;
-        }
-        List<ContributionLine> positives = new ArrayList<>();
-        for (ContributionLine line : lists.positives()) {
-            if (line.type() != ContributionType.TRANSIT) {
-                positives.add(line);
-            }
-        }
-        List<ContributionLine> negatives = new ArrayList<>();
-        for (ContributionLine line : lists.negatives()) {
-            if (line.type() != ContributionType.TRANSIT) {
-                negatives.add(line);
-            }
-        }
-        return new ContributionLists(List.copyOf(positives), List.copyOf(negatives), false);
     }
 
     private void applyLines(Objective objective, Scoreboard board, List<String> lines) {

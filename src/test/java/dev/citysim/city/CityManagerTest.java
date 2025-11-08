@@ -256,7 +256,7 @@ class CityManagerTest {
 
     private static void setBukkitServer(org.bukkit.Server server) throws Exception {
         Field serverField = Bukkit.class.getDeclaredField("server");
-        serverField.setAccessible(true);
+        assertTrue(serverField.trySetAccessible(), "Bukkit.server field should be accessible for tests");
         serverField.set(null, server);
     }
 
@@ -347,4 +347,3 @@ class CityManagerTest {
         }
     }
 }
-
