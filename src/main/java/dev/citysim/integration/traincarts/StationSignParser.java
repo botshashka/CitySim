@@ -1,6 +1,8 @@
 package dev.citysim.integration.traincarts;
 
-import org.bukkit.ChatColor;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import java.util.Collection;
 import java.util.Locale;
@@ -11,6 +13,9 @@ import java.util.Objects;
  * station service but is extracted so it can be unit-tested independently.
  */
 public class StationSignParser {
+
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
     public boolean isStationEntry(Collection<TrainCartsReflectionBinder.StationText> texts) {
         if (texts == null || texts.isEmpty()) {
@@ -59,10 +64,8 @@ public class StationSignParser {
         if (line == null) {
             return "";
         }
-        String stripped = ChatColor.stripColor(line);
-        if (stripped == null) {
-            stripped = line;
-        }
+        Component component = LEGACY.deserialize(line);
+        String stripped = PLAIN.serialize(component);
         return stripped.trim();
     }
 

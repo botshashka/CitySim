@@ -1,6 +1,6 @@
 package dev.citysim.ui;
 
-import org.bukkit.ChatColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -10,13 +10,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScoreboardServiceTest {
 
+    private static final char SECTION = LegacyComponentSerializer.SECTION_CHAR;
+    private static final String YELLOW_BOLD_PREFIX = "" + SECTION + 'e' + SECTION + 'l';
+
     @Test
     void trimObjectiveTitleTruncatesLongNamesWithinLimit() throws Exception {
         ScoreboardService service = new ScoreboardService(null, null, null, null, null);
         Method method = ScoreboardService.class.getDeclaredMethod("trimObjectiveTitle", String.class);
-        method.setAccessible(true);
+        assertTrue(method.trySetAccessible(), "trimObjectiveTitle should be accessible for testing");
 
-        String prefix = ChatColor.YELLOW + "" + ChatColor.BOLD;
+        String prefix = YELLOW_BOLD_PREFIX;
         String longName = prefix + "This is a very very long city name that should be trimmed";
 
         String trimmed = (String) method.invoke(service, longName);
@@ -31,9 +34,9 @@ class ScoreboardServiceTest {
     void trimObjectiveTitleLeavesShortNamesUnchanged() throws Exception {
         ScoreboardService service = new ScoreboardService(null, null, null, null, null);
         Method method = ScoreboardService.class.getDeclaredMethod("trimObjectiveTitle", String.class);
-        method.setAccessible(true);
+        assertTrue(method.trySetAccessible(), "trimObjectiveTitle should be accessible for testing");
 
-        String shortName = ChatColor.YELLOW + "" + ChatColor.BOLD + "Short City";
+        String shortName = YELLOW_BOLD_PREFIX + "Short City";
 
         String result = (String) method.invoke(service, shortName);
 

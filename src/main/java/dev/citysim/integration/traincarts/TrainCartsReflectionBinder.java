@@ -1,10 +1,15 @@
 package dev.citysim.integration.traincarts;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
+import org.bukkit.block.sign.Side;
+import org.bukkit.block.sign.SignSide;
 import org.bukkit.plugin.Plugin;
 
+import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
@@ -32,6 +37,8 @@ import java.util.logging.Logger;
  * across the range of supported plugin versions.
  */
 public class TrainCartsReflectionBinder {
+
+    private static final LegacyComponentSerializer SIGN_TEXT_SERIALIZER = LegacyComponentSerializer.legacySection();
 
     public interface TrainCartsBinding {
         Object getSignController() throws ReflectiveOperationException;
@@ -92,7 +99,7 @@ public class TrainCartsReflectionBinder {
                     false,
                     loader);
             chunkGetEntriesMethod = chunkClass.getMethod("getEntries");
-            chunkGetEntriesMethod.setAccessible(true);
+            ensureAccessible(chunkGetEntriesMethod);
         } catch (ClassNotFoundException ignored) {
             // Some versions hide the chunk class; discovery continues via fallbacks.
         }
@@ -117,12 +124,12 @@ public class TrainCartsReflectionBinder {
                 chunkIntrospector);
 
         Method entryGetBlockMethod = entryClass.getMethod("getBlock");
-        entryGetBlockMethod.setAccessible(true);
+        ensureAccessible(entryGetBlockMethod);
 
         Method entryHasSignActionEventsMethod;
         try {
             entryHasSignActionEventsMethod = entryClass.getMethod("hasSignActionEvents");
-            entryHasSignActionEventsMethod.setAccessible(true);
+            ensureAccessible(entryHasSignActionEventsMethod);
         } catch (NoSuchMethodException ignored) {
             entryHasSignActionEventsMethod = null;
             logFine("TrainCarts SignController$Entry has no hasSignActionEvents method; counting entries without the filter");
@@ -135,7 +142,7 @@ public class TrainCartsReflectionBinder {
         Method entryCreateFrontTrackedSignMethod;
         try {
             entryCreateFrontTrackedSignMethod = entryClass.getMethod("createFrontTrackedSign", railPieceClass);
-            entryCreateFrontTrackedSignMethod.setAccessible(true);
+            ensureAccessible(entryCreateFrontTrackedSignMethod);
         } catch (NoSuchMethodException ignored) {
             entryCreateFrontTrackedSignMethod = null;
             logFine("TrainCarts SignController$Entry has no createFrontTrackedSign method; falling back to block state text");
@@ -144,7 +151,7 @@ public class TrainCartsReflectionBinder {
         Method entryCreateBackTrackedSignMethod;
         try {
             entryCreateBackTrackedSignMethod = entryClass.getMethod("createBackTrackedSign", railPieceClass);
-            entryCreateBackTrackedSignMethod.setAccessible(true);
+            ensureAccessible(entryCreateBackTrackedSignMethod);
         } catch (NoSuchMethodException ignored) {
             entryCreateBackTrackedSignMethod = null;
             logFine("TrainCarts SignController$Entry has no createBackTrackedSign method; falling back to block state text");
@@ -179,6 +186,16 @@ public class TrainCartsReflectionBinder {
         if (logger != null) {
             logger.log(Level.FINE, message);
         }
+    }
+
+    private static void ensureAccessible(AccessibleObject member) {
+        if (member == null) {
+            return;
+        }
+        if (member.trySetAccessible()) {
+            return;
+        }
+        throw new IllegalStateException("Unable to access member via reflection: " + member);
     }
 
     private SignChunksAccessor discoverSignChunksAccessor(Class<?> signControllerWorldClass,
@@ -238,7 +255,7 @@ public class TrainCartsReflectionBinder {
                         && !referencesEntry) {
                     continue;
                 }
-                field.setAccessible(true);
+                ensureAccessible(field);
                 candidates.add(new AccessorCandidate(
                         createFieldAccessor(field, chunkIntrospector),
                         field.getDeclaringClass().getName() + "#" + field.getName()));
@@ -258,7 +275,7 @@ public class TrainCartsReflectionBinder {
                         && !referencesEntry) {
                     continue;
                 }
-                method.setAccessible(true);
+                ensureAccessible(method);
                 candidates.add(new AccessorCandidate(
                         createMethodAccessor(method, chunkIntrospector),
                         method.getDeclaringClass().getName() + "#" + method.getName() + "()"));
@@ -292,12 +309,12 @@ public class TrainCartsReflectionBinder {
     }
 
     private SignChunksAccessor createFieldAccessor(Field field, ChunkIntrospector chunkIntrospector) {
-        field.setAccessible(true);
+        ensureAccessible(field);
         return worldController -> chunkIntrospector.toCollection(field.get(worldController));
     }
 
     private SignChunksAccessor createMethodAccessor(Method method, ChunkIntrospector chunkIntrospector) {
-        method.setAccessible(true);
+        ensureAccessible(method);
         return worldController -> {
             try {
                 Object container = method.invoke(worldController);
@@ -314,7 +331,7 @@ public class TrainCartsReflectionBinder {
         while (current != null) {
             try {
                 Field field = current.getDeclaredField(name);
-                field.setAccessible(true);
+                ensureAccessible(field);
                 return field;
             } catch (NoSuchFieldException ignored) {
             }
@@ -329,7 +346,7 @@ public class TrainCartsReflectionBinder {
             try {
                 Method method = current.getDeclaredMethod(name);
                 if (method.getParameterCount() == 0) {
-                    method.setAccessible(true);
+                    ensureAccessible(method);
                     return method;
                 }
             } catch (NoSuchMethodException ignored) {
@@ -339,7 +356,7 @@ public class TrainCartsReflectionBinder {
         try {
             Method method = type.getMethod(name);
             if (method.getParameterCount() == 0) {
-                method.setAccessible(true);
+                ensureAccessible(method);
                 return method;
             }
         } catch (NoSuchMethodException ignored) {
@@ -351,7 +368,7 @@ public class TrainCartsReflectionBinder {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             for (Field field : current.getDeclaredFields()) {
                 if (typeReferences(field.getGenericType(), referencedClass)) {
-                    field.setAccessible(true);
+                    ensureAccessible(field);
                     return field;
                 }
             }
@@ -363,7 +380,7 @@ public class TrainCartsReflectionBinder {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             for (Method method : current.getDeclaredMethods()) {
                 if (method.getParameterCount() == 0 && typeReferences(method.getGenericReturnType(), referencedClass)) {
-                    method.setAccessible(true);
+                    ensureAccessible(method);
                     return method;
                 }
             }
@@ -373,7 +390,7 @@ public class TrainCartsReflectionBinder {
                 continue;
             }
             if (method.getParameterCount() == 0 && typeReferences(method.getGenericReturnType(), referencedClass)) {
-                method.setAccessible(true);
+                ensureAccessible(method);
                 return method;
             }
         }
@@ -673,14 +690,14 @@ public class TrainCartsReflectionBinder {
                     continue;
                 }
                 if (isEntriesCandidate(method)) {
-                    method.setAccessible(true);
+                    ensureAccessible(method);
                     return method;
                 }
             }
             for (Class<?> current = type; current != null; current = current.getSuperclass()) {
                 for (Method method : current.getDeclaredMethods()) {
                     if (isEntriesCandidate(method)) {
-                        method.setAccessible(true);
+                        ensureAccessible(method);
                         return method;
                     }
                 }
@@ -781,14 +798,14 @@ public class TrainCartsReflectionBinder {
                     continue;
                 }
                 if (isValuesCandidate(method)) {
-                    method.setAccessible(true);
+                    ensureAccessible(method);
                     return method;
                 }
             }
             for (Class<?> current = type; current != null; current = current.getSuperclass()) {
                 for (Method method : current.getDeclaredMethods()) {
                     if (isValuesCandidate(method)) {
-                        method.setAccessible(true);
+                        ensureAccessible(method);
                         return method;
                     }
                 }
@@ -819,7 +836,7 @@ public class TrainCartsReflectionBinder {
                 try {
                     Method method = current.getDeclaredMethod(name);
                     if (method.getParameterCount() == 0) {
-                        method.setAccessible(true);
+                        ensureAccessible(method);
                         return method;
                     }
                 } catch (NoSuchMethodException ignored) {
@@ -829,7 +846,7 @@ public class TrainCartsReflectionBinder {
             try {
                 Method method = type.getMethod(name);
                 if (method.getParameterCount() == 0) {
-                    method.setAccessible(true);
+                    ensureAccessible(method);
                     return method;
                 }
             } catch (NoSuchMethodException ignored) {
@@ -1007,7 +1024,12 @@ public class TrainCartsReflectionBinder {
 
         private String safeGetLine(Sign sign, int index) {
             try {
-                return sign.getLine(index);
+                SignSide front = sign.getSide(Side.FRONT);
+                Component line = front.line(index);
+                if (line == null) {
+                    return null;
+                }
+                return SIGN_TEXT_SERIALIZER.serialize(line);
             } catch (Throwable ignored) {
                 return null;
             }
