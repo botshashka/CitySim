@@ -27,7 +27,8 @@ shares these numbers in easy-to-read displays so players can instantly tell whet
    flips the highrise switch (loosens crowding limits for tall builds). `/city edit <cityId> station <add|remove|set|clear>
    <amount>` changes how many transit stations the score counts.
 5. **Keep an eye on things** – `/city stats [cityId]` shows the latest population, jobs, beds, station count, overall prosperity,
-   and every boost or penalty. `/city top [prosperity|pop]` ranks the most cheerful or most crowded cities.
+  and every boost or penalty. `/city top [prosperity|pop|gdp|gdppc|landvalue]` ranks cities by prosperity, population,
+  GDP, GDP per capita, or cached land value.
 
 ## Player HUD controls
 Players can opt in or out of the different overlays at any time:
@@ -86,7 +87,7 @@ java -version  # should report a Java 21 runtime
 /city display titles on|off                      # show or hide the entry banner for your HUD
 /city display bossbar on|off                     # toggle the boss bar HUD element
 /city display scoreboard <off|compact|full>      # pick the scoreboard style or turn it off entirely
-/city top [prosperity|pop]                       # rank cities by prosperity or population
+/city top [prosperity|pop|gdp|gdppc|landvalue]   # rank cities by prosperity, population, GDP, GDP/cap, or land value
 /city reload                                     # reload the plugin configuration (admin only)
 /city debug scans                                # print scan timing details to chat for troubleshooting (admin only)
 /city debug migration                            # stream live migration approvals, skips, and errors to chat (admin only)
