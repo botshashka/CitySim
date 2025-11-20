@@ -14,6 +14,29 @@ shares these numbers in easy-to-read displays so players can instantly tell whet
 - PlaceholderAPI expansion (`%citysim_*%`) for plugging stats into other plugins or custom scoreboards.
 - Admin commands to rename cities, adjust cuboids, switch highrise mode, and set the number of transit stations.
 
+## Developer API
+
+CitySim exposes a Bukkit service so companion plugins can read every city and follow updates without touching internal classes.
+
+- Fetch the service with `CitySimApi api = Bukkit.getServicesManager().load(CitySimApi.class);` (check for `null` and `api.getApiVersion()`).
+- `api.getCities()`, `api.getCity(id)`, and `api.cityAt(location)` return immutable `CitySnapshot`s containing cuboids, mayor list, prosperity/economy breakdowns, GDP, pressures, migration stats, and timestamps.
+- Register listeners with `registerLifecycleListener` or `registerStatsListener` to be notified when cities are created, renamed, updated, deleted, or when fresh scan data lands. Each registration returns a `ListenerSubscription` you can `unregister()` or close.
+
+```java
+CitySimApi api = Bukkit.getServicesManager().load(CitySimApi.class);
+if (api != null && api.getApiVersion() == CitySimApi.CURRENT_VERSION) {
+    api.getCities().forEach(snapshot -> {
+        Bukkit.getLogger().info("City " + snapshot.name() + " has GDP " + snapshot.stats().gdp());
+    });
+
+    api.registerStatsListener(this, (city, stats) -> {
+        Bukkit.getLogger().info(city.name() + " prosperity -> " + stats.prosperity());
+    });
+}
+```
+
+Listeners are automatically unregistered when their owning plugin disables, so connector plugins can subscribe during `onEnable` and forget about cleanup.
+
 ## City creation flow
 1. **Get the selection wand** – `/city wand` gives you the golden axe used to pick corners. Left-click sets corner 1, right-click
    sets corner 2. Use `/city wand clear` to reset the selection or `/city wand ymode <full|span>` to choose whether the cuboid

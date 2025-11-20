@@ -1,5 +1,7 @@
 package dev.citysim;
 
+import dev.citysim.api.CitySimApi;
+import dev.citysim.api.internal.CitySimApiImpl;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CityCommand;
@@ -28,6 +30,7 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.event.server.PluginEnableEvent;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Objects;
@@ -45,6 +48,7 @@ public class CitySimPlugin extends JavaPlugin {
     private LinkService linkService;
     private MigrationService migrationService;
     private StationPlatformResolver stationPlatformResolver;
+    private CitySimApiImpl citySimApi;
 
     @Override
     public void onEnable() {
@@ -71,6 +75,11 @@ public class CitySimPlugin extends JavaPlugin {
         getLogger().info("StatsService created (tracking " + cityManager.all().size() + " cities)");
         this.statsService.start();
         getLogger().info("StatsService started");
+
+        this.citySimApi = new CitySimApiImpl(this, cityManager, statsService);
+        getServer().getPluginManager().registerEvents(citySimApi, this);
+        getServer().getServicesManager().register(CitySimApi.class, citySimApi, this, ServicePriority.Normal);
+        getLogger().info("CitySim API registered");
 
         getServer().getPluginManager().registerEvents(new BedEventListener(cityManager), this);
         getLogger().info("BedEventListener registered");
@@ -135,6 +144,12 @@ public class CitySimPlugin extends JavaPlugin {
         if (visualizationService != null) {
             visualizationService.shutdown();
         }
+        if (citySimApi != null) {
+            HandlerList.unregisterAll(citySimApi);
+            getServer().getServicesManager().unregister(CitySimApi.class, citySimApi);
+            citySimApi.shutdown();
+            citySimApi = null;
+        }
         if (bossBarService != null) {
             bossBarService.stop();
         }
@@ -196,6 +211,10 @@ public class CitySimPlugin extends JavaPlugin {
 
     public MigrationService getMigrationService() {
         return migrationService;
+    }
+
+    public CitySimApi getCitySimApi() {
+        return citySimApi;
     }
 
     private TrainCartsStationService attemptTrainCartsBootstrap() {

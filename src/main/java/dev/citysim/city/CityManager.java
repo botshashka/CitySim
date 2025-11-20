@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.logging.Level;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class CityManager {
     private static final Type CITY_LIST_TYPE = new TypeToken<List<City>>(){}.getType();
@@ -27,6 +28,7 @@ public class CityManager {
     private final Map<String, List<City>> citiesByWorld = new HashMap<>();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final File dataFile;
+    private final List<CityManagerListener> listeners = new CopyOnWriteArrayList<>();
 
     public CityManager(Plugin plugin) {
         this.plugin = plugin;
@@ -39,6 +41,20 @@ public class CityManager {
 
     public Collection<City> all() { return byId.values(); }
     public City get(String id) { return byId.get(id.toLowerCase(Locale.ROOT)); }
+
+    public void addListener(CityManagerListener listener) {
+        if (listener == null) {
+            return;
+        }
+        listeners.add(listener);
+    }
+
+    public void removeListener(CityManagerListener listener) {
+        if (listener == null) {
+            return;
+        }
+        listeners.remove(listener);
+    }
 
     public City create(String name) {
         String id = slug(name);
@@ -54,6 +70,7 @@ public class CityManager {
         c.priority = byId.size();
         byId.put(id, c);
         verifyWorldIndexState("create " + id);
+        notifyCityCreated(c);
         return c;
     }
 
@@ -69,6 +86,7 @@ public class CityManager {
                 city.priority = index++;
             }
             verifyWorldIndexState("remove " + id);
+            notifyCityRemoved(removed);
         }
         return removed;
     }
@@ -92,6 +110,7 @@ public class CityManager {
         city.name = newName;
         if (newId.equals(oldId)) {
             verifyWorldIndexState("rename " + oldId + " (no id change)");
+            notifyCityUpdated(city);
             return city;
         }
 
@@ -104,6 +123,7 @@ public class CityManager {
         }
 
         verifyWorldIndexState("rename " + oldId + " -> " + newId);
+        notifyCityRenamed(oldId, city);
 
         return city;
     }
@@ -136,6 +156,7 @@ public class CityManager {
         addCityToWorldIndex(c);
         c.invalidateBlockScanCache();
         verifyWorldIndexState("addCuboid " + id);
+        notifyCityUpdated(c);
         return c.cuboids.size();
     }
 
@@ -158,6 +179,7 @@ public class CityManager {
 
         city.highrise = highrise;
         city.invalidateBlockScanCache();
+        notifyCityUpdated(city);
         return city;
     }
 
@@ -184,6 +206,7 @@ public class CityManager {
         }
         if (removed > 0) {
             verifyWorldIndexState("removeCuboidsContaining " + id);
+            notifyCityUpdated(city);
         }
         return removed;
     }
@@ -288,6 +311,46 @@ public class CityManager {
     private List<City> readCities(Charset charset) throws IOException, JsonParseException {
         try (Reader reader = Files.newBufferedReader(dataFile.toPath(), charset)) {
             return gson.fromJson(reader, CITY_LIST_TYPE);
+        }
+    }
+
+    private void notifyCityCreated(City city) {
+        for (CityManagerListener listener : listeners) {
+            try {
+                listener.onCityCreated(city);
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.WARNING, "CityManager listener threw during cityCreated", ex);
+            }
+        }
+    }
+
+    private void notifyCityRemoved(City city) {
+        for (CityManagerListener listener : listeners) {
+            try {
+                listener.onCityRemoved(city);
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.WARNING, "CityManager listener threw during cityRemoved", ex);
+            }
+        }
+    }
+
+    private void notifyCityRenamed(String previousId, City city) {
+        for (CityManagerListener listener : listeners) {
+            try {
+                listener.onCityRenamed(previousId, city);
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.WARNING, "CityManager listener threw during cityRenamed", ex);
+            }
+        }
+    }
+
+    private void notifyCityUpdated(City city) {
+        for (CityManagerListener listener : listeners) {
+            try {
+                listener.onCityUpdated(city);
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.WARNING, "CityManager listener threw during cityUpdated", ex);
+            }
         }
     }
 
