@@ -19,6 +19,7 @@ import org.bukkit.plugin.Plugin;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Level;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class StatsService {
 
@@ -39,6 +40,7 @@ public class StatsService {
     private int configuredMaxCitiesPerTick = 1;
     private int configuredMaxEntityChunksPerTick = 2;
     private int configuredMaxBedBlocksPerTick = 2048;
+    private final List<StatsUpdateListener> statsUpdateListeners = new CopyOnWriteArrayList<>();
 
     public StatsService(Plugin plugin, CityManager cityManager, StationCounter stationCounter) {
         this(plugin, cityManager, stationCounter, null, null, null);
@@ -143,6 +145,20 @@ public class StatsService {
 
     public StationCountingMode getStationCountingMode() {
         return stationCountingMode;
+    }
+
+    public void addStatsUpdateListener(StatsUpdateListener listener) {
+        if (listener == null) {
+            return;
+        }
+        statsUpdateListeners.add(listener);
+    }
+
+    public void removeStatsUpdateListener(StatsUpdateListener listener) {
+        if (listener == null) {
+            return;
+        }
+        statsUpdateListeners.remove(listener);
     }
 
     private void addPendingCity(String cityId, boolean forceRefresh, String reason, ScanContext context) {
@@ -469,6 +485,7 @@ public class StatsService {
             updateDerivedMetrics(city);
         }
         city.statsTimestamp = completedAtMillis;
+        notifyStatsUpdated(city);
     }
 
     public FreshnessSnapshot getFreshnessSnapshot() {
@@ -516,6 +533,19 @@ public class StatsService {
         } catch (IllegalStateException ignored) {
         }
         scanProgressTaskId = -1;
+    }
+
+    private void notifyStatsUpdated(City city) {
+        if (city == null) {
+            return;
+        }
+        for (StatsUpdateListener listener : statsUpdateListeners) {
+            try {
+                listener.onCityStatsUpdated(city);
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.WARNING, "StatsUpdateListener threw while handling update for " + city.id, ex);
+            }
+        }
     }
 
     private void progressActiveScans() {
