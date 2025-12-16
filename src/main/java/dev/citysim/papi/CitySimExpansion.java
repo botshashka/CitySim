@@ -14,7 +14,7 @@ public class CitySimExpansion extends PlaceholderExpansion {
     }
 
     @Override public @NotNull String getIdentifier() { return "citysim"; }
-    @Override public @NotNull String getAuthor() { return "you+gpt"; }
+    @Override public @NotNull String getAuthor() { return "botshashka"; }
     @Override public @NotNull String getVersion() { return "0.1.0"; }
     @Override public boolean persist() { return true; }
 
