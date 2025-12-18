@@ -56,15 +56,12 @@ public class ProsperityCalculator {
         hb.lightPoints = applySymmetricScaling(lightScoreNormalized, lightMaxPts);
 
         double employmentScore;
-        if (pop <= 0) {
-            employmentScore = 0.0;
+        int adultPop = Math.max(0, city.adultPopulation);
+        double employmentRate = (adultPop <= 0) ? 0.0 : (double) employed / (double) adultPop;
+        if (employmentRate >= employmentNeutral) {
+            employmentScore = (employmentRate - employmentNeutral) / (1.0 - employmentNeutral);
         } else {
-            double employmentRate = (double) employed / (double) pop;
-            if (employmentRate >= employmentNeutral) {
-                employmentScore = (employmentRate - employmentNeutral) / (1.0 - employmentNeutral);
-            } else {
-                employmentScore = (employmentRate - employmentNeutral) / employmentNeutral;
-            }
+            employmentScore = (employmentRate - employmentNeutral) / employmentNeutral;
         }
         hb.employmentPoints = applySymmetricScaling(employmentScore, employmentMaxPts);
 

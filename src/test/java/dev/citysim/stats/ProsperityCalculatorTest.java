@@ -24,6 +24,7 @@ class ProsperityCalculatorTest {
         City city = new City();
         city.id = "test-city";
         city.population = 100;
+        city.adultPopulation = 100;
         city.employed = 80;
         city.beds = 120;
         city.stations = 4;

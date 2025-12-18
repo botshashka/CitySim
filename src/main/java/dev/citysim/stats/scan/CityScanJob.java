@@ -36,7 +36,7 @@ public class CityScanJob {
     private int entityChunkIndex = 0;
 
     private int population = 0;
-    private int employed = 0;
+    private int employedAdults = 0;
     private final Map<Profession, Integer> professionHistogram = new HashMap<>();
     private int adultPopulation = 0;
     private int adultNoneCount = 0;
@@ -176,7 +176,8 @@ public class CityScanJob {
                     continue;
                 }
                 Profession profession = villager.getProfession();
-                if (villager.isAdult()) {
+                boolean adult = villager.isAdult();
+                if (adult) {
                     adultPopulation++;
                     if (profession == Profession.NONE) {
                         adultNoneCount++;
@@ -185,8 +186,8 @@ public class CityScanJob {
                     }
                 }
                 population++;
-                if (profession != Profession.NONE) {
-                    employed++;
+                if (adult && profession != Profession.NONE && profession != Profession.NITWIT) {
+                    employedAdults++;
                     professionHistogram.merge(profession, 1, Integer::sum);
                 }
             }
@@ -313,10 +314,10 @@ public class CityScanJob {
     }
 
     private void finalizeCity() {
-        int unemployed = Math.max(0, population - employed);
+        int unemployedAdults = Math.max(0, adultPopulation - employedAdults);
         city.population = population;
-        city.employed = employed;
-        city.unemployed = unemployed;
+        city.employed = employedAdults;
+        city.unemployed = unemployedAdults;
         city.adultPopulation = adultPopulation;
         city.adultNone = adultNoneCount;
         city.adultNitwit = adultNitwitCount;
@@ -436,7 +437,7 @@ public class CityScanJob {
     }
 
     public int employedCount() {
-        return employed;
+        return employedAdults;
     }
 
     public int bedCount() {
