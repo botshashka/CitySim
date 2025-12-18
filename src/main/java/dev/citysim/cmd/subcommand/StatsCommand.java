@@ -117,62 +117,63 @@ public class StatsCommand implements CitySubcommand {
         ));
 
         lines.add(sectionSpacer());
-        lines.add(sectionHeader("ECONOMY"));
-        lines.add(joinLine(
-                kv("GDP", formatShortNumber(city.gdp)),
-                kv("GDP per capita", formatShortNumber(city.gdpPerCapita)),
-                kv("Sectors", formatSectorBreakdown(city))
-        ));
+        lines.add(sectionHeader("PROSPERITY POINTS"));
         if (economyBreakdown != null) {
-            List<NamedContribution> economyScores = new ArrayList<>();
-            economyScores.add(new NamedContribution("Employment score", economyBreakdown.employmentUtilization));
-            economyScores.add(new NamedContribution("Housing score", economyBreakdown.housingBalance));
-            economyScores.add(new NamedContribution("Transit score", economyBreakdown.transitCoverage));
-            economyScores.sort(Comparator.comparingDouble(NamedContribution::value).reversed());
+            lines.add("<white><b>General</b></white>");
             lines.add(joinLine(
-                    kv(economyScores.get(0).label(), formatSigned(economyScores.get(0).value())),
-                    kv(economyScores.get(1).label(), formatSigned(economyScores.get(1).value()))
+                    kv("Employment", formatPointsWithCap(economyBreakdown.employmentUtilization, economyBreakdown.employmentMaxPts, economyBreakdown.employmentNeutral)),
+                    kv("Housing", formatPointsWithCap(economyBreakdown.housingBalance, economyBreakdown.housingMaxPts, 1.0))
+            ));
+            lines.add(joinLine(
+                    kv("Transit", formatPointsWithCap(economyBreakdown.transitCoverage, economyBreakdown.transitMaxPts, economyBreakdown.transitNeutral))
+            ));
+            lines.add("<white><b>Environment</b></white>");
+            lines.add(joinLine(
+                    kv("Lighting", formatPointsWithCap(economyBreakdown.lighting, economyBreakdown.lightingMaxPts, economyBreakdown.lightNeutral)),
+                    kv("Nature", formatPointsWithCap(economyBreakdown.nature, economyBreakdown.natureMaxPts, economyBreakdown.natureTargetRatio))
+            ));
+            lines.add(joinLine(
+                    kv("Pollution", formatPenaltyWithCap(economyBreakdown.pollutionPenalty, economyBreakdown.pollutionMaxPenalty, economyBreakdown.pollutionTargetRatio)),
+                    kv("Crowding", formatPenaltyWithCap(economyBreakdown.overcrowdingPenalty, economyBreakdown.overcrowdingMaxPenalty, null))
             ));
         }
 
         lines.add(sectionSpacer());
-        lines.add(sectionHeader("PRESSURES & SERVICES"));
+        lines.add(sectionHeader("MIGRATION PRESSURES Δ"));
         lines.add(joinLine(
                 kv("JobsΔ", formatSigned(city.jobsPressure)),
                 kv("HousingΔ", formatSigned(city.housingPressure)),
                 kv("TransitΔ", formatSigned(city.transitPressure))
         ));
+
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("ECONOMY"));
         lines.add(joinLine(
-                kv("Housing ratio", formatRatio(city.housingRatio) + " beds/villager"),
-                kv("Employment ratio", formatRatio(city.employmentRate)),
-                kv("Transit coverage", formatRatio(city.transitCoverage))
+                kv("GDP", formatShortNumber(city.gdp)),
+                kv("GDP per capita", formatShortNumber(city.gdpPerCapita))
+        ));
+        lines.add(joinLine(
+                kv("Sectors", formatSectorBreakdown(city))
         ));
 
         lines.add(sectionSpacer());
-        lines.add(sectionHeader("CONNECTIVITY & MIGRATION"));
+        lines.add(sectionHeader("CONNECTIVITY"));
         lines.addAll(buildConnectivityLines(city, economyBreakdown));
 
         lines.add(sectionSpacer());
-        lines.add(sectionHeader("ENVIRONMENT & INFRASTRUCTURE"));
-        if (economyBreakdown != null) {
-            lines.add(joinLine(
-                    kv("Lighting score", formatSigned(economyBreakdown.lighting)),
-                    kv("Nature score", formatSigned(economyBreakdown.nature)),
-                    kv("Pollution penalty", formatSigned(-economyBreakdown.pollutionPenalty)),
-                    kv("Crowding penalty", formatSigned(-economyBreakdown.overcrowdingPenalty))
-            ));
-        }
+        lines.add(sectionHeader("INFRASTRUCTURE"));
         lines.add(joinLine(
-                kv("Area", formatArea(city)),
-                kv("Stations", String.valueOf(city.stations)),
-                formatLandValue(city)
+                kv("Homes", "%d/%d".formatted(city.beds, city.population)),
+                kv("Stations", String.valueOf(city.stations))
+        ));
+        lines.add(joinLine(
+                kv("Area", formatArea(city))
         ));
 
         lines.add(sectionSpacer());
         lines.add(sectionHeader("GOVERNANCE"));
         lines.add(joinLine(
-                formatMayorEntry(city),
-                kv("Homes", "%d/%d".formatted(city.beds, city.population))
+                formatMayorEntry(city)
         ));
 
         String message = lines.stream()
@@ -217,8 +218,6 @@ public class StatsCommand implements CitySubcommand {
         lines.add(sectionSpacer());
         lines.add(sectionHeader("GOVERNANCE"));
         lines.add(formatMayorEntry(city));
-        lines.add(sectionHeader("Notes"));
-        lines.add(prosperity.dominantMessage());
         return lines.stream()
                 .filter(Objects::nonNull)
                 .filter(line -> !line.isBlank())
@@ -287,9 +286,6 @@ public class StatsCommand implements CitySubcommand {
             addContribution(positives, negatives, "Nature", economy.nature);
             addContribution(positives, negatives, "Pollution", -Math.abs(economy.pollutionPenalty));
             addContribution(positives, negatives, "Crowding", -Math.abs(economy.overcrowdingPenalty));
-            addContribution(positives, negatives, "Area upkeep", -Math.abs(economy.maintenanceArea));
-            addContribution(positives, negatives, "Lighting upkeep", -Math.abs(economy.maintenanceLighting));
-            addContribution(positives, negatives, "Transit upkeep", -Math.abs(economy.maintenanceTransit));
         } else {
             boolean showTransit = statsService.getStationCountingMode() != StationCountingMode.DISABLED;
             ProsperityBreakdown breakdown = city.prosperityBreakdown;
@@ -354,6 +350,22 @@ public class StatsCommand implements CitySubcommand {
 
     private String formatContributionValue(double value) {
         return String.format(Locale.US, "%+.1f", value);
+    }
+
+    private String formatPointsWithCap(double value, double cap, double target) {
+        if (!Double.isFinite(value) || !Double.isFinite(cap)) {
+            return "—";
+        }
+        return "%s / %s".formatted(formatSigned(value), formatSigned(cap));
+    }
+
+    private String formatPenaltyWithCap(double penaltyValue, double cap, Double target) {
+        if (!Double.isFinite(penaltyValue) || !Double.isFinite(cap)) {
+            return "—";
+        }
+        double signedValue = -Math.abs(penaltyValue);
+        double signedCap = -Math.abs(cap);
+        return "%s / %s".formatted(formatSigned(signedValue), formatSigned(signedCap));
     }
 
     private List<String> buildConnectivityLines(City city, EconomyBreakdown economyBreakdown) {

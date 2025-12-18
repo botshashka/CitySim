@@ -27,6 +27,7 @@ public class EconomyCalculator {
         }
 
         EconomyBreakdown breakdown = new EconomyBreakdown();
+        populateCapsAndTargets(breakdown);
         boolean ghostTown = city.isGhostTown() || city.population <= 0;
         if (prosperity != null && prosperity.isGhostTown()) {
             ghostTown = true;
@@ -77,10 +78,7 @@ public class EconomyCalculator {
                 + lightingPoints
                 + naturePoints
                 - pollutionPenalty
-                - overcrowdingPenalty
-                - areaDrag
-                - lightingDrag
-                - transitDrag;
+                - overcrowdingPenalty;
 
         total = clamp(total, 0.0, 100.0);
         breakdown.total = (int) Math.round(total);
@@ -198,6 +196,23 @@ public class EconomyCalculator {
             return max;
         }
         return value;
+    }
+
+    private void populateCapsAndTargets(EconomyBreakdown breakdown) {
+        breakdown.employmentMaxPts = prosperityCalculator.getEmploymentMaxPts();
+        breakdown.housingMaxPts = prosperityCalculator.getHousingMaxPts();
+        breakdown.transitMaxPts = prosperityCalculator.getTransitMaxPts();
+        breakdown.lightingMaxPts = prosperityCalculator.getLightMaxPts();
+        breakdown.natureMaxPts = prosperityCalculator.getNatureMaxPts();
+
+        breakdown.pollutionMaxPenalty = prosperityCalculator.getPollutionMaxPenalty();
+        breakdown.overcrowdingMaxPenalty = prosperityCalculator.getOvercrowdMaxPenalty();
+
+        breakdown.employmentNeutral = prosperityCalculator.getEmploymentNeutral();
+        breakdown.transitNeutral = TRANSIT_NEUTRAL_NORMALIZED;
+        breakdown.lightNeutral = prosperityCalculator.getLightNeutral();
+        breakdown.natureTargetRatio = prosperityCalculator.getNatureTargetRatio();
+        breakdown.pollutionTargetRatio = prosperityCalculator.getPollutionTargetRatio();
     }
 
     public record EconomyComputation(EconomyBreakdown breakdown,

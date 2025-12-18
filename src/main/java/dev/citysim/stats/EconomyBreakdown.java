@@ -13,6 +13,21 @@ public class EconomyBreakdown {
     public double pollutionPenalty;
     public double overcrowdingPenalty;
 
+    public double employmentMaxPts;
+    public double housingMaxPts;
+    public double transitMaxPts;
+    public double lightingMaxPts;
+    public double natureMaxPts;
+
+    public double pollutionMaxPenalty;
+    public double overcrowdingMaxPenalty;
+
+    public double employmentNeutral;
+    public double transitNeutral;
+    public double lightNeutral;
+    public double natureTargetRatio;
+    public double pollutionTargetRatio;
+
     public double maintenanceArea;
     public double maintenanceLighting;
     public double maintenanceTransit;
