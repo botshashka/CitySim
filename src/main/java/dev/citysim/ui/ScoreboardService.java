@@ -2,9 +2,12 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.budget.BudgetService;
+import dev.citysim.budget.BudgetSnapshot;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
 import dev.citysim.stats.EconomyBreakdown;
+import dev.citysim.util.CurrencyFormatter;
 import dev.citysim.util.TrendUtil;
 import dev.citysim.util.TrendUtil.TrendDirection;
 import net.kyori.adventure.text.Component;
@@ -41,6 +44,7 @@ public class ScoreboardService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
+    private final BudgetService budgetService;
     private final LinkService linkService;
     private final MigrationService migrationService;
     private final TrendUtil trendUtil = new TrendUtil();
@@ -53,11 +57,13 @@ public class ScoreboardService {
 
     public ScoreboardService(Plugin plugin,
                              CityManager cityManager,
+                             BudgetService budgetService,
                              DisplayPreferencesStore displayPreferencesStore,
                              LinkService linkService,
                              MigrationService migrationService) {
         this.plugin = plugin;
         this.cityManager = cityManager;
+        this.budgetService = budgetService;
         this.displayPreferencesStore = displayPreferencesStore;
         this.linkService = linkService;
         this.migrationService = migrationService;
@@ -233,6 +239,7 @@ public class ScoreboardService {
         List<String> lines = new ArrayList<>(12);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatBudgetLine(city));
         addIfPresent(lines, formatGdpLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatLandLine(city));
@@ -248,6 +255,7 @@ public class ScoreboardService {
         List<String> lines = new ArrayList<>(5);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatBudgetLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatSectorLine(city));
         return lines;
@@ -276,6 +284,25 @@ public class ScoreboardService {
         int population = Math.max(0, city.population);
         String formatted = String.format(Locale.US, "%,d", population);
         return formatLine(NamedTextColor.GREEN, "Pop: ", formatted);
+    }
+
+    private String formatBudgetLine(City city) {
+        if (city == null || budgetService == null) {
+            return null;
+        }
+        BudgetSnapshot snapshot = budgetService.previewCity(city);
+        if (snapshot == null) {
+            snapshot = city.lastBudgetSnapshot;
+        }
+        if (snapshot == null) {
+            return null;
+        }
+        String treasury = CurrencyFormatter.format(snapshot.treasuryAfter);
+        String net = CurrencyFormatter.format(snapshot.net);
+        if (snapshot.net > 0) {
+            net = "+" + net;
+        }
+        return formatLine(NamedTextColor.GOLD, "Budget: ", treasury + " (" + net + ")");
     }
 
     private String formatGdpLine(City city) {

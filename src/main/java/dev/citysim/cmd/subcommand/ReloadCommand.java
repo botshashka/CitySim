@@ -3,6 +3,7 @@ package dev.citysim.cmd.subcommand;
 import dev.citysim.CitySimPlugin;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
+import dev.citysim.budget.BudgetService;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
 import dev.citysim.stats.BossBarService;
@@ -53,6 +54,12 @@ public class ReloadCommand implements CitySubcommand {
         MigrationService migrationService = plugin.getMigrationService();
         if (migrationService != null) {
             migrationService.reload(plugin.getConfig());
+        }
+
+        BudgetService budgetService = plugin.getBudgetService();
+        if (budgetService != null) {
+            budgetService.reload(plugin.getConfig());
+            budgetService.restart();
         }
 
         BossBarService bossBars = plugin.getBossBarService();

@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
+import dev.citysim.budget.BudgetDefaults;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -68,6 +69,9 @@ public class CityManager {
         c.id = id;
         c.name = name;
         c.priority = byId.size();
+        c.taxRate = BudgetDefaults.DEFAULT_TAX_RATE;
+        c.landTaxRate = BudgetDefaults.DEFAULT_LAND_TAX_RATE;
+        c.treasury = 0.0;
         byId.put(id, c);
         verifyWorldIndexState("create " + id);
         notifyCityCreated(c);
@@ -300,6 +304,15 @@ public class CityManager {
                 c.cuboids = sanitized;
                 if (c.cuboids.isEmpty()) {
                     c.world = null;
+                }
+                if (!Double.isFinite(c.taxRate) || c.taxRate < 0.0) {
+                    c.taxRate = BudgetDefaults.DEFAULT_TAX_RATE;
+                }
+                if (!Double.isFinite(c.landTaxRate) || c.landTaxRate < 0.0) {
+                    c.landTaxRate = BudgetDefaults.DEFAULT_LAND_TAX_RATE;
+                }
+                if (!Double.isFinite(c.treasury)) {
+                    c.treasury = 0.0;
                 }
                 byId.put(c.id, c);
                 addCityToWorldIndex(c);

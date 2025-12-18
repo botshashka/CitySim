@@ -4,6 +4,7 @@ import dev.citysim.api.CitySimApi;
 import dev.citysim.api.internal.CitySimApiImpl;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.budget.BudgetService;
 import dev.citysim.cmd.CityCommand;
 import dev.citysim.cmd.CityTab;
 import dev.citysim.integration.traincarts.StationSignParser;
@@ -43,6 +44,7 @@ public class CitySimPlugin extends JavaPlugin {
     private TitleService titleService;
     private DisplayPreferencesStore displayPreferencesStore;
     private TrainCartsStationService trainCartsStationService;
+    private BudgetService budgetService;
     private VisualizationService visualizationService;
     private SelectionTracker selectionTracker;
     private LinkService linkService;
@@ -76,6 +78,11 @@ public class CitySimPlugin extends JavaPlugin {
         this.statsService.start();
         getLogger().info("StatsService started");
 
+        this.budgetService = new BudgetService(this, cityManager);
+        this.budgetService.reload(getConfig());
+        this.budgetService.start();
+        getLogger().info("BudgetService started");
+
         this.citySimApi = new CitySimApiImpl(this, cityManager, statsService);
         getServer().getPluginManager().registerEvents(citySimApi, this);
         getServer().getServicesManager().register(CitySimApi.class, citySimApi, this, ServicePriority.Normal);
@@ -104,7 +111,7 @@ public class CitySimPlugin extends JavaPlugin {
         this.bossBarService.start();
         getLogger().info("BossBarService started");
 
-        this.scoreboardService = new ScoreboardService(this, cityManager, displayPreferencesStore, linkService, migrationService);
+        this.scoreboardService = new ScoreboardService(this, cityManager, budgetService, displayPreferencesStore, linkService, migrationService);
         this.scoreboardService.start();
         getLogger().info("ScoreboardService started");
 
@@ -127,7 +134,7 @@ public class CitySimPlugin extends JavaPlugin {
         }
 
         if (getCommand("city") != null) {
-            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker, linkService, migrationService);
+            CityCommand cityCommand = new CityCommand(this, cityManager, statsService, budgetService, titleService, bossBarService, scoreboardService, visualizationService, selectionTracker, linkService, migrationService);
             getCommand("city").setExecutor(cityCommand);
             getCommand("city").setTabCompleter(new CityTab(cityCommand.getRegistry()));
             getLogger().info("/city command registered");
@@ -159,6 +166,9 @@ public class CitySimPlugin extends JavaPlugin {
         if (titleService != null) {
             titleService.stop();
         }
+        if (budgetService != null) {
+            budgetService.stop();
+        }
         if (statsService != null) {
             statsService.stop();
         }
@@ -183,6 +193,10 @@ public class CitySimPlugin extends JavaPlugin {
 
     public StatsService getStatsService() {
         return statsService;
+    }
+
+    public BudgetService getBudgetService() {
+        return budgetService;
     }
 
     public BossBarService getBossBarService() {

@@ -2,6 +2,7 @@ package dev.citysim.city;
 
 import dev.citysim.stats.EconomyBreakdown;
 import dev.citysim.stats.ProsperityBreakdown;
+import dev.citysim.budget.BudgetSnapshot;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,6 +27,11 @@ public class City {
     public int beds = 0;
     public int prosperity = 50;
     public int stations = 0;
+
+    public double treasury = 0.0;
+    public double taxRate = 0.0;
+    public double landTaxRate = 0.0;
+    public BudgetSnapshot lastBudgetSnapshot = null;
 
     public int level = 0;
     public double levelProgress = 0.0;
