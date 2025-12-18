@@ -421,14 +421,15 @@ public class StatsService {
             return;
         }
         int population = Math.max(0, city.population);
-        int employed = Math.max(0, city.employed);
+        int adults = Math.max(0, city.adultPopulation);
+        int employedAdults = Math.max(0, city.employed);
         int beds = Math.max(0, city.beds);
 
         if (population <= 0) {
             city.employmentRate = 0.0;
             city.housingRatio = 1.0;
         } else {
-            double employment = (double) employed / (double) population;
+            double employment = adults <= 0 ? 0.0 : (double) employedAdults / (double) adults;
             city.employmentRate = clamp(employment, 0.0, 1.0);
             city.housingRatio = (double) beds / (double) population;
         }

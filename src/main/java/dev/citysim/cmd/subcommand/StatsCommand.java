@@ -104,6 +104,7 @@ public class StatsCommand implements CitySubcommand {
         int prosperityBase = economyBreakdown != null ? economyBreakdown.base : prosperity.base;
 
         List<String> lines = new ArrayList<>();
+        lines.add("");
         lines.add("<white><b>%s — City stats</b></white>".formatted(safeName));
 
         lines.add(sectionSpacer());
@@ -151,6 +152,10 @@ public class StatsCommand implements CitySubcommand {
         lines.add(joinLine(
                 kv("GDP", formatShortNumber(city.gdp)),
                 kv("GDP per capita", formatShortNumber(city.gdpPerCapita))
+        ));
+        lines.add(joinLine(
+                kv("Employment rate", formatPercentValue(city.employmentRate)),
+                kv("Unemployed adults", formatUnemployedAdults(city.unemployed, city.adultNitwit))
         ));
         lines.add(joinLine(
                 kv("Sectors", formatSectorBreakdown(city))
@@ -249,6 +254,14 @@ public class StatsCommand implements CitySubcommand {
 
     private String formatNumber(long value) {
         return String.format(Locale.US, "%,d", value);
+    }
+
+    private String formatUnemployedAdults(int unemployedAdults, int nitwits) {
+        String base = formatNumber(unemployedAdults);
+        if (nitwits > 0) {
+            base += " (" + formatNumber(nitwits) + " nitwits)";
+        }
+        return base;
     }
 
     private String formatShortNumber(double raw) {

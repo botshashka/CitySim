@@ -231,7 +231,6 @@ public class ScoreboardService {
 
     private List<String> buildFullLines(City city) {
         List<String> lines = new ArrayList<>(12);
-        addIfPresent(lines, formatCityLine(city));
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
         addIfPresent(lines, formatGdpLine(city));
@@ -247,7 +246,6 @@ public class ScoreboardService {
 
     private List<String> buildCompactLines(City city) {
         List<String> lines = new ArrayList<>(5);
-        addIfPresent(lines, formatCityLine(city));
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
@@ -318,7 +316,7 @@ public class ScoreboardService {
     }
 
     private String formatHousingDeltaLine(City city) {
-        return formatDeltaLine(city, "HousΔ: ", city != null ? city.housingPressure : null,
+        return formatDeltaLine(city, "HousingΔ: ", city != null ? city.housingPressure : null,
                 TrendUtil.Metric.HOUSING_DELTA, NamedTextColor.BLUE);
     }
 
