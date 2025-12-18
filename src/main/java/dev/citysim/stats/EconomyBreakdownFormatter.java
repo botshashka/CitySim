@@ -32,15 +32,6 @@ public final class EconomyBreakdownFormatter {
         if (breakdown.overcrowdingPenalty > 0.0) {
             add(positives, negatives, ContributionType.OVERCROWDING, -breakdown.overcrowdingPenalty, false);
         }
-        if (breakdown.maintenanceArea > 0.0) {
-            add(positives, negatives, ContributionType.AREA_MAINTENANCE, -breakdown.maintenanceArea, false);
-        }
-        if (breakdown.maintenanceLighting > 0.0) {
-            add(positives, negatives, ContributionType.LIGHTING_MAINTENANCE, -breakdown.maintenanceLighting, false);
-        }
-        if (breakdown.maintenanceTransit > 0.0) {
-            add(positives, negatives, ContributionType.TRANSIT_MAINTENANCE, -breakdown.maintenanceTransit, false);
-        }
 
         positives.sort(Comparator.comparingDouble(ContributionLine::value).reversed());
         negatives.sort(Comparator.comparingDouble(ContributionLine::value).reversed());

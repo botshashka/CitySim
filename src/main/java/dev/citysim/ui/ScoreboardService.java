@@ -5,9 +5,6 @@ import dev.citysim.city.CityManager;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
 import dev.citysim.stats.EconomyBreakdown;
-import dev.citysim.stats.EconomyBreakdownFormatter;
-import dev.citysim.stats.ProsperityBreakdown;
-import dev.citysim.stats.ProsperityBreakdownFormatter;
 import dev.citysim.util.TrendUtil;
 import dev.citysim.util.TrendUtil.TrendDirection;
 import net.kyori.adventure.text.Component;
@@ -233,14 +230,13 @@ public class ScoreboardService {
     }
 
     private List<String> buildFullLines(City city) {
-        List<String> lines = new ArrayList<>(14);
+        List<String> lines = new ArrayList<>(12);
         addIfPresent(lines, formatCityLine(city));
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
         addIfPresent(lines, formatGdpLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatLandLine(city));
-        formatTopContributionLines(city).forEach(line -> addIfPresent(lines, line));
         addIfPresent(lines, formatJobsDeltaLine(city));
         addIfPresent(lines, formatHousingDeltaLine(city));
         addIfPresent(lines, formatSectorLine(city));
@@ -314,54 +310,6 @@ public class ScoreboardService {
                 : "—";
         TrendDirection trend = Double.isFinite(landValue) ? arrowForMetric(city, TrendUtil.Metric.LAND_VALUE, landValue) : TrendDirection.FLAT;
         return formatLineWithArrow(NamedTextColor.YELLOW, "Land: ", value, trend);
-    }
-
-    private List<String> formatTopContributionLines(City city) {
-        List<String> lines = new ArrayList<>(3);
-        List<NamedContribution> positives = new ArrayList<>();
-        List<NamedContribution> negatives = new ArrayList<>();
-
-        if (city != null) {
-            EconomyBreakdown breakdown = city.economyBreakdown;
-            if (breakdown != null) {
-                addContribution(positives, negatives, "Emp", breakdown.employmentUtilization);
-                addContribution(positives, negatives, "Hous", breakdown.housingBalance);
-                addContribution(positives, negatives, "Tran", breakdown.transitCoverage);
-                addContribution(positives, negatives, "Light", breakdown.lighting);
-                addContribution(positives, negatives, "Nat", breakdown.nature);
-                addContribution(positives, negatives, "Poll", -Math.abs(breakdown.pollutionPenalty));
-                addContribution(positives, negatives, "Crowd", -Math.abs(breakdown.overcrowdingPenalty));
-                addContribution(positives, negatives, "Area", -Math.abs(breakdown.maintenanceArea));
-                addContribution(positives, negatives, "LightMx", -Math.abs(breakdown.maintenanceLighting));
-                addContribution(positives, negatives, "TranMx", -Math.abs(breakdown.maintenanceTransit));
-            } else {
-                ProsperityBreakdown prosperityBreakdown = city.prosperityBreakdown;
-                if (prosperityBreakdown != null) {
-                    ProsperityBreakdownFormatter.ContributionLists lists = ProsperityBreakdownFormatter.buildContributionLists(prosperityBreakdown);
-                    lists.positives().forEach(line -> addContribution(positives, negatives, labelFor(line.type()), line.value()));
-                    lists.negatives().forEach(line -> addContribution(positives, negatives, labelFor(line.type()), line.value()));
-                }
-            }
-        }
-
-        positives.sort((a, b) -> Double.compare(b.value(), a.value()));
-        negatives.sort((a, b) -> Double.compare(a.value(), b.value()));
-
-        addContributionLine(lines, "Top+: ", positives, 0);
-        addContributionLine(lines, "Top+: ", positives, 1);
-        addContributionLine(lines, "Top−: ", negatives, 0);
-        return lines;
-    }
-
-    private void addContributionLine(List<String> lines, String label, List<NamedContribution> contributions, int index) {
-        if (index >= contributions.size()) {
-            return;
-        }
-        NamedContribution entry = contributions.get(index);
-        if (Math.abs(entry.value()) < 0.05) {
-            return;
-        }
-        lines.add(formatLine(NamedTextColor.LIGHT_PURPLE, label, entry.label() + " " + formatContributionValue(entry.value())));
     }
 
     private String formatJobsDeltaLine(City city) {
@@ -468,54 +416,8 @@ public class ScoreboardService {
         return String.format(Locale.US, "%.1f%s", value, suffixes[index]);
     }
 
-    private String formatContributionValue(double value) {
-        return String.format(Locale.US, "%+.1f", value);
-    }
-
-    private void addContribution(List<NamedContribution> positives,
-                                 List<NamedContribution> negatives,
-                                 String label,
-                                 double value) {
-        if (!Double.isFinite(value) || label == null || label.isBlank()) {
-            return;
-        }
-        NamedContribution entry = new NamedContribution(label, value);
-        if (value >= 0.0) {
-            positives.add(entry);
-        } else {
-            negatives.add(entry);
-        }
-    }
-
-    private String labelFor(EconomyBreakdownFormatter.ContributionType type) {
-        return switch (type) {
-            case EMPLOYMENT -> "Emp";
-            case HOUSING -> "Hous";
-            case TRANSIT -> "Tran";
-            case LIGHTING -> "Light";
-            case NATURE -> "Nat";
-            case POLLUTION -> "Poll";
-            case OVERCROWDING -> "Crowd";
-            case AREA_MAINTENANCE -> "Area";
-            case LIGHTING_MAINTENANCE -> "LightMx";
-            case TRANSIT_MAINTENANCE -> "TranMx";
-        };
-    }
-
-    private String labelFor(ProsperityBreakdownFormatter.ContributionType type) {
-        return switch (type) {
-            case LIGHT -> "Light";
-            case EMPLOYMENT -> "Emp";
-            case NATURE -> "Nat";
-            case HOUSING -> "Hous";
-            case TRANSIT -> "Tran";
-            case OVERCROWDING -> "Crowd";
-            case POLLUTION -> "Poll";
-        };
-    }
-
     private SectorLeader resolveSectorLeader(City city) {
-        if (city == null) {
+        if (city == null || city.population <= 0 || city.isGhostTown()) {
             return null;
         }
         SectorLeader leader = null;
@@ -564,9 +466,6 @@ public class ScoreboardService {
     }
 
     private record SectorLeader(String name, double share) {
-    }
-
-    private record NamedContribution(String label, double value) {
     }
 
     private List<String> decorateLines(List<String> raw) {
