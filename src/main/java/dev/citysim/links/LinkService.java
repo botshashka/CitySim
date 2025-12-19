@@ -89,14 +89,12 @@ public class LinkService {
             }
             double logisticsMultiplier = Math.min(logisticsMultiplier(city), logisticsMultiplier(candidate));
             double effectiveStrength = rawStrength * logisticsMultiplier;
-            int strength = (int) Math.round(effectiveStrength);
-            if (strength <= 0) {
-                continue;
-            }
-            links.add(new CityLink(candidate, distance, strength));
+            int raw = (int) Math.round(rawStrength);
+            int ops = (int) Math.round(effectiveStrength);
+            links.add(new CityLink(candidate, distance, raw, ops));
         }
         links.sort(Comparator
-                .comparingInt(CityLink::strength)
+                .comparingInt(CityLink::opsStrength)
                 .reversed()
                 .thenComparing(link -> link.neighbor().name, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
                 .thenComparing(link -> link.neighbor().id, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)));
@@ -112,7 +110,15 @@ public class LinkService {
     }
 
     public int linkCount(City city) {
-        return computeLinks(city).size();
+        return countOperationalLinks(city);
+    }
+
+    public int countPhysicalLinks(City city) {
+        return (int) computeLinks(city).stream().filter(link -> link.rawStrength() > 0).count();
+    }
+
+    public int countOperationalLinks(City city) {
+        return (int) computeLinks(city).stream().filter(link -> link.opsStrength() > 0).count();
     }
 
     private double computeRawStrength(int stationsA, int stationsB, double distance) {

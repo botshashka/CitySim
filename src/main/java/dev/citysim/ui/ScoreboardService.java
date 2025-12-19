@@ -239,6 +239,7 @@ public class ScoreboardService {
         List<String> lines = new ArrayList<>(12);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatTrustLine(city));
         addIfPresent(lines, formatBudgetLine(city));
         addIfPresent(lines, formatGdpLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
@@ -303,6 +304,28 @@ public class ScoreboardService {
             net = "+" + net;
         }
         return formatLine(NamedTextColor.GOLD, "Budget: ", treasury + " (" + net + ")");
+    }
+
+    private String formatTrustLine(City city) {
+        if (city == null) {
+            return null;
+        }
+        int trust = Math.max(0, Math.min(100, city.trust));
+        String label = trustLabel(trust);
+        return formatLine(NamedTextColor.AQUA, "Trust: ", trust + " (" + label + ")");
+    }
+
+    private String trustLabel(int trust) {
+        if (trust >= 60) {
+            return "STABLE";
+        }
+        if (trust >= 40) {
+            return "TENSE";
+        }
+        if (trust >= 20) {
+            return "UNREST";
+        }
+        return "CRISIS";
     }
 
     private String formatGdpLine(City city) {
@@ -370,12 +393,13 @@ public class ScoreboardService {
         if (linkService == null || !linkService.isEnabled() || city == null) {
             return lines;
         }
-        int linkCount = Math.max(0, linkService.linkCount(city));
-        if (linkCount <= 0) {
+        int rawCount = Math.max(0, linkService.countPhysicalLinks(city));
+        int opsCount = Math.max(0, linkService.countOperationalLinks(city));
+        if (rawCount <= 0) {
             return lines;
         }
-        TrendDirection linkTrend = arrowForMetric(city, TrendUtil.Metric.LINKS, linkCount);
-        lines.add(formatLineWithArrow(NamedTextColor.DARK_AQUA, "Links: ", String.valueOf(linkCount), linkTrend));
+        TrendDirection linkTrend = arrowForMetric(city, TrendUtil.Metric.LINKS, rawCount);
+        lines.add(formatLineWithArrow(NamedTextColor.DARK_AQUA, "Links: ", rawCount + " (ops " + opsCount + ")", linkTrend));
 
         long migrationNet = 0;
         boolean hasMigration = false;

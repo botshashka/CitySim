@@ -10,6 +10,13 @@ public class EconomyBreakdown {
     public double lighting;
     public double nature;
 
+    public double trustPoints;
+    public double trustNeutral;
+    public double trustMaxPts;
+    public double trustMinPts;
+    public double trustPositiveScale;
+    public double trustNegativeScale;
+
     public double pollutionPenalty;
     public double overcrowdingPenalty;
 

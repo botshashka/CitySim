@@ -5,5 +5,5 @@ import dev.citysim.city.City;
 /**
  * Represents a lightweight link between two cities computed on demand.
  */
-public record CityLink(City neighbor, double distance, int strength) {
+public record CityLink(City neighbor, double distance, int rawStrength, int opsStrength) {
 }

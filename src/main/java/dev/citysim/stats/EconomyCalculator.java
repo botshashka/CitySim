@@ -14,6 +14,11 @@ public class EconomyCalculator {
     private static final double TRANSIT_NEUTRAL_NORMALIZED = 0.5;
 
     private final ProsperityCalculator prosperityCalculator;
+    private double trustNeutral = 60.0;
+    private double trustPositiveScale = 0.20;
+    private double trustNegativeScale = 0.30;
+    private double trustMaxPositive = 8.0;
+    private double trustMaxNegative = 18.0;
 
     public EconomyCalculator(ProsperityCalculator prosperityCalculator) {
         this.prosperityCalculator = prosperityCalculator;
@@ -70,12 +75,21 @@ public class EconomyCalculator {
         breakdown.maintenanceLighting = lightingDrag;
         breakdown.maintenanceTransit = transitDrag;
 
+        double trustPoints = computeTrustPoints(city.trust);
+        breakdown.trustPoints = trustPoints;
+        breakdown.trustNeutral = trustNeutral;
+        breakdown.trustMaxPts = trustMaxPositive;
+        breakdown.trustMinPts = -trustMaxNegative;
+        breakdown.trustPositiveScale = trustPositiveScale;
+        breakdown.trustNegativeScale = trustNegativeScale;
+
         double total = breakdown.base
                 + employmentPoints
                 + housingPoints
                 + transitPoints
                 + lightingPoints
                 + naturePoints
+                + trustPoints
                 - pollutionPenalty
                 - overcrowdingPenalty;
 
@@ -245,5 +259,23 @@ public class EconomyCalculator {
             return 0.0;
         }
         return Math.min(1.0, multiplier);
+    }
+
+    public void configureTrust(double neutral, double positiveScale, double negativeScale, double maxPositive, double maxNegative) {
+        this.trustNeutral = neutral;
+        this.trustPositiveScale = positiveScale;
+        this.trustNegativeScale = negativeScale;
+        this.trustMaxPositive = maxPositive;
+        this.trustMaxNegative = maxNegative;
+    }
+
+    private double computeTrustPoints(int trust) {
+        double delta = trust - trustNeutral;
+        if (delta >= 0) {
+            double points = delta * trustPositiveScale;
+            return clamp(points, 0.0, trustMaxPositive);
+        }
+        double points = delta * trustNegativeScale;
+        return clamp(points, -trustMaxNegative, 0.0);
     }
 }

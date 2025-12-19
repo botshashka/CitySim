@@ -46,6 +46,11 @@ prosperity_weights:
   employment_neutral: 0.75
   pollution_target_ratio: 0.02
   nature_target_ratio: 0.10
+  trust_neutral: 60
+  trust_positive_scale: 0.20
+  trust_negative_scale: 0.30
+  trust_positive_cap: 8
+  trust_negative_cap: 18
 
 titles:
   enabled: true

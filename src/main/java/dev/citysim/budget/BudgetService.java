@@ -186,6 +186,8 @@ public class BudgetService {
         city.adminFundingMultiplier = snapshot.adminEffectiveMultiplier;
         city.logisticsFundingMultiplier = snapshot.logisticsEffectiveMultiplier;
         city.publicWorksFundingMultiplier = snapshot.publicWorksEffectiveMultiplier;
+
+        refreshTrustInEconomyBreakdown(city);
         return snapshot;
     }
 
@@ -375,5 +377,39 @@ public class BudgetService {
             return 1.0;
         }
         return value;
+    }
+
+    private double clamp(double value, double min, double max) {
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
+    }
+
+    private void refreshTrustInEconomyBreakdown(City city) {
+        EconomyBreakdown breakdown = city.economyBreakdown;
+        if (breakdown == null) {
+            return;
+        }
+        double neutral = breakdown.trustNeutral > 0 ? breakdown.trustNeutral : 60.0;
+        double posScale = breakdown.trustPositiveScale > 0.0 ? breakdown.trustPositiveScale : 0.20;
+        double negScale = breakdown.trustNegativeScale > 0.0 ? breakdown.trustNegativeScale : 0.30;
+        double maxPos = breakdown.trustMaxPts > 0.0 ? breakdown.trustMaxPts : 8.0;
+        double maxNeg = breakdown.trustMinPts < 0.0 ? -breakdown.trustMinPts : 18.0;
+
+        double delta = city.trust - neutral;
+        double newTrustPoints;
+        if (delta >= 0) {
+            newTrustPoints = clamp(delta * posScale, 0.0, maxPos);
+        } else {
+            newTrustPoints = clamp(delta * negScale, -maxNeg, 0.0);
+        }
+        double oldTrustPoints = breakdown.trustPoints;
+        breakdown.trustPoints = newTrustPoints;
+        double adjustedTotal = breakdown.total - oldTrustPoints + newTrustPoints;
+        breakdown.total = (int) Math.round(clamp(adjustedTotal, 0.0, 100.0));
     }
 }
