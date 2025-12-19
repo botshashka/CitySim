@@ -7,7 +7,9 @@ public class BudgetIncome {
     public double effectiveTotal;
     public double collectionEfficiency;
     public double toleratedTax;
+    public double toleratedLandTax;
     public double adminMultiplier;
     public boolean landTaxEnabled;
     public double taxRate;
+    public double landTaxRate;
 }

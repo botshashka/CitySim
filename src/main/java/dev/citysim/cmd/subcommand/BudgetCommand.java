@@ -252,12 +252,57 @@ public class BudgetCommand implements CitySubcommand {
             CommandFeedback.sendError(sender, "Provide a city id or stand in a city: /city budget austerity <on|off> [cityId]");
             return true;
         }
+
+        if (enable) {
+            if (!confirmAusterity(sender, city)) {
+                return true;
+            }
+        }
+
         city.austerityEnabled = enable;
+        long nowTick = sender instanceof Player p ? p.getWorld().getFullTime() : 0L;
+        if (enable) {
+            city.austerityEnabledAtTick = nowTick;
+        } else {
+            city.austerityLastDisabledAtTick = nowTick;
+        }
         budgetService.applyPolicyChangeTrust(city);
         CommandFeedback.sendSuccess(sender, "Austerity for " + city.name + " set to " + (enable ? "ON" : "OFF") + ".");
         budgetService.invalidatePreview(city);
         refreshBudget(city);
         return true;
+    }
+
+    private boolean confirmAusterity(CommandSender sender, City city) {
+        long nowTick = sender instanceof Player p ? p.getWorld().getFullTime() : 0L;
+        long lastPrompt = city.austerityEnablePromptTick;
+        long interval = budgetService != null ? budgetService.getBudgetIntervalTicks() : 6000L;
+        if (nowTick > 0 && nowTick - lastPrompt <= interval / 2 && city.austerityEnablePromptTick != 0L) {
+            city.austerityEnablePromptTick = 0L;
+            return true;
+        }
+
+        int trustBefore = city.trust;
+        BudgetSnapshot snapshot = null;
+        int projectedTrust = trustBefore;
+        if (budgetService != null) {
+            boolean prevAusterity = city.austerityEnabled;
+            city.austerityEnabled = true;
+            snapshot = budgetService.previewPolicySnapshot(city);
+            projectedTrust = budgetService.projectedTrustAfterPolicy(city, snapshot);
+            city.austerityEnabled = prevAusterity;
+        }
+        double cap = BudgetDefaults.AUSTERITY_CAP;
+
+        List<String> lines = new ArrayList<>();
+        lines.add("<yellow>Austerity cuts upkeep costs and caps effects, but reduces trust immediately and blocks trust gains while active.</yellow>");
+        lines.add("<white>Current trust: %d → projected: %d</white>".formatted(trustBefore, projectedTrust));
+        lines.add("<white>Admin/Logistics/Public Works capped at %.0f%% while ON.</white>".formatted(cap * 100.0));
+        lines.add("<gray>Run /city budget austerity on again within ~%ds to confirm.</gray>".formatted(Math.max(1, (int) (interval / 20 / 2))));
+        sender.sendMessage(AdventureMessages.mini(String.join("\n", lines)));
+
+        city.austerityEnablePromptTick = nowTick;
+        return false;
     }
 
     private City resolveCity(CommandSender sender, String[] args) {
@@ -292,13 +337,23 @@ public class BudgetCommand implements CitySubcommand {
         lines.add(joinLine(
                 kv("City", safeName),
                 kv("Treasury", treasuryLabel(snapshot.treasuryAfter)),
-                kv("Tax", formatPercent(city.taxRate) + " (tolerated: " + formatPercent(snapshot.toleratedTax) + ")"),
                 kv("Net", formatSignedCurrency(snapshot.net))
         ));
         lines.add(joinLine(
                 kv("Trust", snapshot.trust + " (" + snapshot.trustState + ")"),
-                kv("Collection", formatMultiplier(snapshot.collectionEfficiency) + " (floor " + formatMultiplier(BudgetDefaults.TRUST_COLLECTION_FLOOR) + ")"),
                 kv("Austerity", city.austerityEnabled ? "ON" : "OFF")
+        ));
+
+        lines.add(sectionSpacer());
+        lines.add(sectionHeader("TAXES"));
+        lines.add(joinLine(
+                kv("Tax", formatPercent(city.taxRate) + " (tolerated: " + formatPercent(snapshot.toleratedTax) + ")"),
+                snapshot.income != null && snapshot.income.landTaxEnabled
+                        ? kv("Land tax", formatPercent(city.landTaxRate) + " (tolerated: " + formatPercent(snapshot.toleratedLandTax) + ")")
+                        : null
+        ));
+        lines.add(joinLine(
+                kv("Collection", formatMultiplier(snapshot.collectionEfficiency) + " (floor " + formatMultiplier(BudgetDefaults.TRUST_COLLECTION_FLOOR) + ")")
         ));
 
         lines.add(sectionSpacer());
@@ -384,14 +439,12 @@ public class BudgetCommand implements CitySubcommand {
             return null;
         }
         String amount = CurrencyFormatter.format(-budget.paid);
-        String multiplier = includeMultiplier ? ", mult " + formatMultiplier(budget.multiplier) : "";
         long percent = Math.round(budget.ratio * 100.0);
-        return "<gold>%s:</gold> <white>%s (%s %d%%%s)</white>".formatted(
-                shortLabel(budget.subsystem),
+        return "<gold>%s:</gold> <white>%s (%s %d%%)</white>".formatted(
+                fullLabel(budget.subsystem),
                 amount,
                 budget.state.name(),
-                percent,
-                multiplier
+                percent
         );
     }
 
@@ -449,11 +502,11 @@ public class BudgetCommand implements CitySubcommand {
         return formatted;
     }
 
-    private String shortLabel(BudgetSubsystem subsystem) {
+    private String fullLabel(BudgetSubsystem subsystem) {
         return switch (subsystem) {
-            case ADMINISTRATION -> "Admin";
-            case LOGISTICS -> "Logi";
-            case PUBLIC_WORKS -> "Works";
+            case ADMINISTRATION -> "Administration";
+            case LOGISTICS -> "Logistics";
+            case PUBLIC_WORKS -> "Public Works";
         };
     }
 }

@@ -139,7 +139,7 @@ public class BudgetService {
         if (city == null) {
             return;
         }
-        double sanitized = Math.max(0.0, Math.min(1.0, rate));
+        double sanitized = Math.max(0.0, Math.min(BudgetDefaults.MAX_LAND_TAX_RATE, rate));
         city.landTaxRate = sanitized;
         invalidatePreview(city);
     }
@@ -147,11 +147,28 @@ public class BudgetService {
     public BudgetSnapshot applyPolicyChangeTrust(City city) {
         BudgetSnapshot snapshot = computeSnapshot(city, true, TrustAdjustmentMode.IMMEDIATE_POLICY);
         if (snapshot != null) {
-            city.trust = snapshot.trust;
+            double impact = computePolicyTrustImpact(city, snapshot);
+            if (impact > 0.0) {
+                double target = city.trust - impact;
+                city.trust = clampTrust((int) Math.round(Math.max(0.0, target)));
+            }
             refreshTrustInEconomyBreakdown(city);
             previewCache.remove(city.id);
         }
         return snapshot;
+    }
+
+    public BudgetSnapshot previewPolicySnapshot(City city) {
+        return computeSnapshot(city, true, TrustAdjustmentMode.IMMEDIATE_POLICY);
+    }
+
+    public int projectedTrustAfterPolicy(City city, BudgetSnapshot snapshot) {
+        if (city == null || snapshot == null) {
+            return city != null ? clampTrust(city.trust) : 0;
+        }
+        double impact = computePolicyTrustImpact(city, snapshot);
+        double target = city.trust - impact;
+        return clampTrust((int) Math.round(Math.max(0.0, target)));
     }
 
     public void invalidatePreview(City city) {
@@ -194,8 +211,8 @@ public class BudgetService {
         snapshot.preview = preview;
         snapshot.treasuryBefore = city.treasury;
 
-        double sanitizedTax = sanitizeRate(city.taxRate, BudgetDefaults.DEFAULT_TAX_RATE);
-        double sanitizedLandTax = sanitizeRate(city.landTaxRate, landTaxRateDefault);
+        double sanitizedTax = sanitizeRate(city.taxRate, BudgetDefaults.DEFAULT_TAX_RATE, BudgetDefaults.MAX_TAX_RATE);
+        double sanitizedLandTax = sanitizeRate(city.landTaxRate, landTaxRateDefault, BudgetDefaults.MAX_LAND_TAX_RATE);
         if (sanitizedTax <= 0.0 && city.lastBudgetSnapshot == null) {
             sanitizedTax = BudgetDefaults.DEFAULT_TAX_RATE;
         }
@@ -205,7 +222,7 @@ public class BudgetService {
         }
 
         BudgetIncome income = computeIncome(city, sanitizedTax, sanitizedLandTax);
-        BudgetExpenses expenses = computeExpenses(city, income, sanitizedTax);
+        BudgetExpenses expenses = computeExpenses(city, income, sanitizedTax, sanitizedLandTax);
 
         snapshot.income = income;
         snapshot.expenses = expenses;
@@ -216,8 +233,9 @@ public class BudgetService {
         snapshot.logisticsEffectiveMultiplier = effectiveLogisticsMultiplier(city, snapshot.logisticsMultiplier);
         snapshot.publicWorksEffectiveMultiplier = effectivePublicWorksMultiplier(city, snapshot.publicWorksMultiplier);
 
-        snapshot.toleratedTax = toleratedTax(city);
-        snapshot.collectionEfficiency = collectionEfficiency(city, sanitizedTax, snapshot.toleratedTax);
+        snapshot.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
+        snapshot.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        snapshot.collectionEfficiency = collectionEfficiency(city, sanitizedTax, sanitizedLandTax, snapshot.toleratedTax, snapshot.toleratedLandTax);
         double rawDelta = computeTrustDelta(city, snapshot, sanitizedTax, trustMode);
         double carry = trustCarry.getOrDefault(city.id, 0.0);
         double adjustedDelta = rawDelta + carry;
@@ -260,6 +278,7 @@ public class BudgetService {
     private BudgetIncome computeIncome(City city, double taxRate, double landTaxRate) {
         BudgetIncome income = new BudgetIncome();
         income.taxRate = Math.max(0.0, Math.min(1.0, taxRate));
+        income.landTaxRate = Math.max(0.0, Math.min(1.0, landTaxRate));
 
         double gdp = Math.max(0.0, city.gdp);
         income.gdpTax = gdp * income.taxRate;
@@ -271,16 +290,18 @@ public class BudgetService {
             if (!Double.isFinite(landRate) || landRate < 0.0) {
                 landRate = landTaxRateDefault;
             }
-            landRate = Math.max(0.0, Math.min(1.0, landRate));
+            landRate = Math.max(0.0, Math.min(BudgetDefaults.MAX_LAND_TAX_RATE, landRate));
             landTax = Math.max(0.0, city.population) * landValueRatio * landRate;
         }
         income.landTaxEnabled = landTaxEnabled;
         income.landTax = landTax;
+        income.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
+        income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
         income.rawTotal = income.gdpTax + income.landTax;
         return income;
     }
 
-    private BudgetExpenses computeExpenses(City city, BudgetIncome income, double taxRate) {
+    private BudgetExpenses computeExpenses(City city, BudgetIncome income, double taxRate, double landTaxRate) {
         double available = snapshotAvailableForSpending(city, income);
         EconomyBreakdown breakdown = city.economyBreakdown;
         double maintenanceTransit = breakdown != null ? breakdown.maintenanceTransit : 0.0;
@@ -303,8 +324,9 @@ public class BudgetService {
         available -= publicWorksPaid;
         SubsystemBudget publicWorks = SubsystemBudget.of(BudgetSubsystem.PUBLIC_WORKS, publicWorksRequired, publicWorksPaid);
 
-        income.toleratedTax = toleratedTax(city);
-        income.collectionEfficiency = collectionEfficiency(city, taxRate, income.toleratedTax);
+        income.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
+        income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        income.collectionEfficiency = collectionEfficiency(city, taxRate, landTaxRate, income.toleratedTax, income.toleratedLandTax);
 
         double over = Math.max(0.0, income.taxRate - income.toleratedTax);
         double overIncomePenalty = over > 0 ? clamp(1.0 - over * 2.0, 0.25, 1.0) : 1.0;
@@ -340,11 +362,11 @@ public class BudgetService {
         return configured;
     }
 
-    private double sanitizeRate(double value, double fallback) {
+    private double sanitizeRate(double value, double fallback, double maxRate) {
         if (!Double.isFinite(value)) {
             return fallback;
         }
-        return Math.max(0.0, Math.min(BudgetDefaults.MAX_TAX_RATE, value));
+        return Math.max(0.0, Math.min(maxRate, value));
     }
 
     private double effectiveAdminMultiplier(City city, double actual) {
@@ -362,21 +384,27 @@ public class BudgetService {
         return clampMultiplier(capped);
     }
 
-    private double collectionEfficiency(City city, double taxRate, double toleratedTax) {
+    private double collectionEfficiency(City city, double gdpTaxRate, double landTaxRate, double toleratedTax, double toleratedLandTax) {
         double trustRatio = clampMultiplier(city.trust / 100.0);
         double floor = BudgetDefaults.TRUST_COLLECTION_FLOOR;
-        if (taxRate > toleratedTax) {
-            double over = taxRate - toleratedTax;
-            double overShare = clamp(over / Math.max(toleratedTax, 0.01), 0.0, 1.0);
+        double overShare = 0.0;
+        if (gdpTaxRate > toleratedTax) {
+            double over = gdpTaxRate - toleratedTax;
+            overShare = Math.max(overShare, clamp(over / Math.max(BudgetDefaults.MAX_TAX_RATE, 0.01), 0.0, 1.0));
+        }
+        if (landTaxRate > toleratedLandTax) {
+            double over = landTaxRate - toleratedLandTax;
+            overShare = Math.max(overShare, clamp(over / Math.max(BudgetDefaults.MAX_LAND_TAX_RATE, 0.01), 0.0, 1.0));
+        }
+        if (overShare > 0.0) {
             floor = BudgetDefaults.TRUST_COLLECTION_FLOOR + (BudgetDefaults.OVER_TAX_COLLECTION_FLOOR - BudgetDefaults.TRUST_COLLECTION_FLOOR) * overShare;
         }
         return floor + (1.0 - floor) * trustRatio;
     }
 
-    private double toleratedTax(City city) {
-        double tolerated = BudgetDefaults.TRUST_BASE_TOLERANCE
-                + (clampMultiplier(city.trust / 100.0) * BudgetDefaults.TRUST_TOLERANCE_BONUS);
-        tolerated = Math.max(BudgetDefaults.TRUST_TOLERANCE_MIN, Math.min(BudgetDefaults.MAX_TAX_RATE, tolerated));
+    private double toleratedTax(City city, double maxRate, double base, double bonus, double min) {
+        double tolerated = base + (clampMultiplier(city.trust / 100.0) * bonus);
+        tolerated = Math.max(min, Math.min(maxRate, tolerated));
         return tolerated;
     }
 
@@ -401,16 +429,20 @@ public class BudgetService {
             delta -= 1;
         }
 
+        double overRate = 0.0;
         if (taxRate > toleratedTax) {
-            double over = taxRate - toleratedTax;
-            int taxPenalty = (int) Math.round(over * BudgetDefaults.OVER_TAX_SCALE);
-            if (mode != TrustAdjustmentMode.IMMEDIATE_POLICY) {
-                taxPenalty = (int) Math.min(3, taxPenalty);
+            overRate = Math.max(overRate, taxRate - toleratedTax);
+        }
+        if (snapshot.income != null && snapshot.income.landTaxRate > snapshot.toleratedLandTax) {
+            overRate = Math.max(overRate, snapshot.income.landTaxRate - snapshot.toleratedLandTax);
+        }
+        if (overRate > 0.0) {
+            double penalty = overRate * BudgetDefaults.OVER_TAX_SCALE;
+            penalty += overRate * overRate * BudgetDefaults.OVER_TAX_SCALE_BONUS;
+            if (penalty < 1) {
+                penalty = 1;
             }
-            if (taxPenalty < 1 && over > 0) {
-                taxPenalty = 1;
-            }
-            delta -= taxPenalty;
+            delta -= penalty;
         }
 
         if (mode != TrustAdjustmentMode.IMMEDIATE_POLICY) {
@@ -427,6 +459,35 @@ public class BudgetService {
         return delta;
     }
 
+    private double computePolicyTrustImpact(City city, BudgetSnapshot snapshot) {
+        double newTaxRate = snapshot.income != null ? snapshot.income.taxRate : city.taxRate;
+        double newLandRate = snapshot.income != null ? snapshot.income.landTaxRate : city.landTaxRate;
+        double tolerance = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
+        double toleranceLand = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        double overFraction = 0.0;
+        if (newTaxRate > tolerance) {
+            overFraction = Math.max(overFraction, (newTaxRate - tolerance) / BudgetDefaults.MAX_TAX_RATE);
+        }
+        if (newLandRate > toleranceLand) {
+            overFraction = Math.max(overFraction, (newLandRate - toleranceLand) / BudgetDefaults.MAX_LAND_TAX_RATE);
+        }
+        overFraction = clamp(overFraction, 0.0, 1.0);
+        double impact = 0.0;
+        if (overFraction > 0.0) {
+            impact = overFraction * BudgetDefaults.POLICY_TRUST_IMPACT_SCALE;
+            impact = Math.max(BudgetDefaults.POLICY_TRUST_IMPACT_MIN, impact);
+        } else if (city.austerityEnabled) {
+            boolean healthy = city.treasury > 0.0
+                    && (snapshot.expenses.administration == null || snapshot.expenses.administration.state == BudgetSubsystemState.FUNDED)
+                    && (snapshot.expenses.logistics == null || snapshot.expenses.logistics.state == BudgetSubsystemState.FUNDED)
+                    && (snapshot.expenses.publicWorks == null || snapshot.expenses.publicWorks.state == BudgetSubsystemState.FUNDED);
+            if (healthy) {
+                impact = BudgetDefaults.AUSTERITY_TRUST_IMPACT_MIN;
+            }
+        }
+        return impact;
+    }
+
     private int clampTrust(int trust) {
         if (trust < 0) {
             return 0;
@@ -439,15 +500,15 @@ public class BudgetService {
 
     private String trustState(int trust) {
         if (trust >= 60) {
-            return "STABLE";
+            return "Stable";
         }
         if (trust >= 40) {
-            return "TENSE";
+            return "Tense";
         }
         if (trust >= 20) {
-            return "UNREST";
+            return "Unrest";
         }
-        return "CRISIS";
+        return "Crisis";
     }
 
     private boolean withinNeutralBand(int trust) {

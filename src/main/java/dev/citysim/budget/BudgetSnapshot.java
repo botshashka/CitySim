@@ -18,6 +18,7 @@ public class BudgetSnapshot {
     public double publicWorksEffectiveMultiplier;
 
     public double toleratedTax;
+    public double toleratedLandTax;
     public double collectionEfficiency;
     public int trust;
     public double trustDelta;

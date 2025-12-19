@@ -326,15 +326,15 @@ public class ScoreboardService {
 
     private String trustLabel(int trust) {
         if (trust >= 60) {
-            return "STABLE";
+            return "Stable";
         }
         if (trust >= 40) {
-            return "TENSE";
+            return "Tense";
         }
         if (trust >= 20) {
-            return "UNREST";
+            return "Unrest";
         }
-        return "CRISIS";
+        return "Crisis";
     }
 
     private String formatGdpLine(City city) {

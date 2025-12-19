@@ -152,8 +152,8 @@ public class TopCommand implements CitySubcommand {
             @Override
             Comparator<City> comparator() {
                 return Comparator
-                        .comparing(City::isGhostTown)
-                        .thenComparing(Comparator.comparingInt((City c) -> c.trust).reversed())
+                        .comparingInt((City c) -> Math.max(0, Math.min(100, c.trust))).reversed()
+                        .thenComparing(City::isGhostTown)
                         .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
             }
 

@@ -58,6 +58,9 @@ public class City {
     public double landValue = 0.0;
 
     public int migrationZeroPopArrivals = 0;
+    public transient long austerityEnabledAtTick = 0L;
+    public transient long austerityLastDisabledAtTick = 0L;
+    public transient long austerityEnablePromptTick = 0L;
 
     public transient ProsperityBreakdown prosperityBreakdown = null;
     public transient EconomyBreakdown economyBreakdown = null;
