@@ -352,7 +352,7 @@ public class BudgetService {
         income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, landTaxBaseTolerance, landTaxToleranceBonus, landTaxToleranceMin);
         income.collectionEfficiency = collectionEfficiency(city, taxRate, landTaxRate, income.toleratedTax, income.toleratedLandTax);
 
-        double over = maxOverageAmount(income.taxRate, income.landTaxRate, income.toleratedTax, income.toleratedLandTax);
+        double over = TaxOverage.maxOverageAmount(income.taxRate, income.landTaxRate, income.toleratedTax, income.toleratedLandTax);
         double overIncomePenalty = over > 0 ? clamp(1.0 - over * 2.0, 0.25, 1.0) : 1.0;
         double effectiveIncome = income.rawTotal * effectiveAdminMultiplier(city, admin.multiplier) * income.collectionEfficiency * overIncomePenalty;
         income.adminMultiplier = admin.multiplier;
@@ -411,7 +411,7 @@ public class BudgetService {
     private double collectionEfficiency(City city, double gdpTaxRate, double landTaxRate, double toleratedTax, double toleratedLandTax) {
         double trustRatio = clampMultiplier(city.trust / 100.0);
         double floor = BudgetDefaults.TRUST_COLLECTION_FLOOR;
-        double overShare = maxOverageFraction(gdpTaxRate, landTaxRate, toleratedTax, toleratedLandTax);
+        double overShare = TaxOverage.maxOverageFraction(gdpTaxRate, landTaxRate, toleratedTax, toleratedLandTax);
         if (overShare > 0.0) {
             floor = BudgetDefaults.TRUST_COLLECTION_FLOOR + (BudgetDefaults.OVER_TAX_COLLECTION_FLOOR - BudgetDefaults.TRUST_COLLECTION_FLOOR) * overShare;
         }
@@ -422,18 +422,6 @@ public class BudgetService {
         double tolerated = base + (clampMultiplier(city.trust / 100.0) * bonus);
         tolerated = Math.max(min, Math.min(maxRate, tolerated));
         return tolerated;
-    }
-
-    private double maxOverageAmount(double gdpRate, double landRate, double toleratedTax, double toleratedLandTax) {
-        double overGdp = gdpRate > toleratedTax ? gdpRate - toleratedTax : 0.0;
-        double overLand = landRate > toleratedLandTax ? landRate - toleratedLandTax : 0.0;
-        return Math.max(overGdp, overLand);
-    }
-
-    private double maxOverageFraction(double gdpRate, double landRate, double toleratedTax, double toleratedLandTax) {
-        double fracGdp = gdpRate > toleratedTax ? (gdpRate - toleratedTax) / Math.max(BudgetDefaults.MAX_TAX_RATE, 0.01) : 0.0;
-        double fracLand = landRate > toleratedLandTax ? (landRate - toleratedLandTax) / Math.max(BudgetDefaults.MAX_LAND_TAX_RATE, 0.01) : 0.0;
-        return clamp(Math.max(fracGdp, fracLand), 0.0, 1.0);
     }
 
     private double computeTrustDelta(City city, BudgetSnapshot snapshot, double taxRate, TrustAdjustmentMode mode) {
@@ -457,7 +445,7 @@ public class BudgetService {
             delta -= 1;
         }
 
-        double overRate = maxOverageAmount(taxRate,
+        double overRate = TaxOverage.maxOverageAmount(taxRate,
                 snapshot.income != null ? snapshot.income.landTaxRate : city.landTaxRate,
                 snapshot.toleratedTax,
                 snapshot.toleratedLandTax);
@@ -489,7 +477,7 @@ public class BudgetService {
         double newLandRate = snapshot.income != null ? snapshot.income.landTaxRate : city.landTaxRate;
         double tolerance = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, taxBaseTolerance, taxToleranceBonus, taxToleranceMin);
         double toleranceLand = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, landTaxBaseTolerance, landTaxToleranceBonus, landTaxToleranceMin);
-        double overFraction = maxOverageFraction(newTaxRate, newLandRate, tolerance, toleranceLand);
+        double overFraction = TaxOverage.maxOverageFraction(newTaxRate, newLandRate, tolerance, toleranceLand);
         double impact = 0.0;
         if (overFraction > 0.0) {
             impact = overFraction * BudgetDefaults.POLICY_TRUST_IMPACT_SCALE;
