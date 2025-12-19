@@ -13,6 +13,9 @@ public class EconomyBreakdown {
     public double pollutionPenalty;
     public double overcrowdingPenalty;
 
+    public double maintenanceLighting;
+    public double maintenanceTransit;
+
     public double employmentMaxPts;
     public double housingMaxPts;
     public double transitMaxPts;
@@ -27,10 +30,6 @@ public class EconomyBreakdown {
     public double lightNeutral;
     public double natureTargetRatio;
     public double pollutionTargetRatio;
-
-    public double maintenanceArea;
-    public double maintenanceLighting;
-    public double maintenanceTransit;
 
     public int total;
 

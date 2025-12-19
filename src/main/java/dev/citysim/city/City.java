@@ -31,7 +31,12 @@ public class City {
     public double treasury = 0.0;
     public double taxRate = 0.0;
     public double landTaxRate = 0.0;
+    public int trust = 60;
+    public boolean austerityEnabled = false;
     public BudgetSnapshot lastBudgetSnapshot = null;
+    public transient double adminFundingMultiplier = 1.0;
+    public transient double logisticsFundingMultiplier = 1.0;
+    public transient double publicWorksFundingMultiplier = 1.0;
 
     public int level = 0;
     public double levelProgress = 0.0;

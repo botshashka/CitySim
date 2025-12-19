@@ -251,7 +251,7 @@ public class ProsperityCalculator {
             return 0.0;
         }
 
-        double actualStations = Math.max(0, city.stations);
+        double actualStations = Math.max(0, city.stations) * logisticsMultiplier(city);
         if (actualStations <= 0.0) {
             return -transitMaxPts;
         }
@@ -272,7 +272,7 @@ public class ProsperityCalculator {
             return 0.0;
         }
         double idealStations = Math.max(1.0, area / (TRANSIT_IDEAL_SPACING_BLOCKS * TRANSIT_IDEAL_SPACING_BLOCKS));
-        double actualStations = Math.max(0.0, city.stations);
+        double actualStations = Math.max(0.0, city.stations) * logisticsMultiplier(city);
         if (actualStations <= 0.0) {
             return 0.0;
         }
@@ -304,6 +304,20 @@ public class ProsperityCalculator {
             return 0.0;
         }
         return clamp(normalizedScore * span, -span, span);
+    }
+
+    private double logisticsMultiplier(City city) {
+        if (city == null) {
+            return 1.0;
+        }
+        double multiplier = city.logisticsFundingMultiplier;
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            multiplier = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.logisticsMultiplier : 1.0;
+        }
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            return 0.0;
+        }
+        return Math.min(1.0, multiplier);
     }
 
     private double calculatePollutionPenalty(double pollutionRatio, int pollutingBlocks, int pollutionSamples) {

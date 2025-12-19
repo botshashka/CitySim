@@ -480,11 +480,8 @@ public class StatsService {
             boolean ghostTown = city.isGhostTown() || city.population <= 0;
             effective.setGhostTown(ghostTown || effective.isGhostTown());
             city.prosperityBreakdown = effective;
-            city.prosperity = effective.total;
         }
-        if (!metricsComputed) {
-            updateDerivedMetrics(city);
-        }
+        updateDerivedMetrics(city);
         city.statsTimestamp = completedAtMillis;
         notifyStatsUpdated(city);
     }

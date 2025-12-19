@@ -3,8 +3,7 @@ package dev.citysim.budget;
 public enum BudgetSubsystem {
     ADMINISTRATION("Administration"),
     LOGISTICS("Logistics"),
-    PUBLIC_WORKS("Public Works"),
-    LAND_MANAGEMENT("Land Management");
+    PUBLIC_WORKS("Public Works");
 
     private final String displayName;
 

@@ -7,5 +7,4 @@ public class BudgetExpenses {
     public SubsystemBudget administration;
     public SubsystemBudget logistics;
     public SubsystemBudget publicWorks;
-    public SubsystemBudget landManagement;
 }

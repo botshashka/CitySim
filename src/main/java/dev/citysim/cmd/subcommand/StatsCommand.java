@@ -102,6 +102,7 @@ public class StatsCommand implements CitySubcommand {
         EconomyBreakdown economyBreakdown = city.economyBreakdown;
         int prosperityTotal = economyBreakdown != null ? economyBreakdown.total : prosperity.total;
         int prosperityBase = economyBreakdown != null ? economyBreakdown.base : prosperity.base;
+        city.prosperity = prosperityTotal;
 
         List<String> lines = new ArrayList<>();
         lines.add("");
@@ -116,6 +117,7 @@ public class StatsCommand implements CitySubcommand {
                 formatLandValue(city),
                 city.highrise ? kv("Highrise", "Yes") : null
         ));
+        addIfPresent(lines, formatOpsLine(city));
 
         lines.add(sectionSpacer());
         lines.add(sectionHeader("PROSPERITY POINTS"));
@@ -252,6 +254,12 @@ public class StatsCommand implements CitySubcommand {
                 .collect(Collectors.joining(" <gray>•</gray> "));
     }
 
+    private void addIfPresent(List<String> lines, String line) {
+        if (line != null && !line.isBlank()) {
+            lines.add(line);
+        }
+    }
+
     private String formatNumber(long value) {
         return String.format(Locale.US, "%,d", value);
     }
@@ -262,6 +270,17 @@ public class StatsCommand implements CitySubcommand {
             base += " (" + formatNumber(nitwits) + " nitwits)";
         }
         return base;
+    }
+
+    private String formatOpsLine(City city) {
+        if (city == null || city.lastBudgetSnapshot == null || city.lastBudgetSnapshot.expenses == null) {
+            return null;
+        }
+        var snap = city.lastBudgetSnapshot;
+        int adminPct = snap.expenses.administration != null ? (int) Math.round(snap.expenses.administration.ratio * 100.0) : 100;
+        int logiPct = snap.expenses.logistics != null ? (int) Math.round(snap.expenses.logistics.ratio * 100.0) : 100;
+        int worksPct = snap.expenses.publicWorks != null ? (int) Math.round(snap.expenses.publicWorks.ratio * 100.0) : 100;
+        return "<white>Ops: Admin %d%% • Logi %d%% • Works %d%%</white>".formatted(adminPct, logiPct, worksPct);
     }
 
     private String formatShortNumber(double raw) {

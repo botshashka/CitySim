@@ -71,6 +71,8 @@ public class CityManager {
         c.priority = byId.size();
         c.taxRate = BudgetDefaults.DEFAULT_TAX_RATE;
         c.landTaxRate = BudgetDefaults.DEFAULT_LAND_TAX_RATE;
+        c.trust = 60;
+        c.austerityEnabled = false;
         c.treasury = 0.0;
         byId.put(id, c);
         verifyWorldIndexState("create " + id);
@@ -311,9 +313,15 @@ public class CityManager {
                 if (!Double.isFinite(c.landTaxRate) || c.landTaxRate < 0.0) {
                     c.landTaxRate = BudgetDefaults.DEFAULT_LAND_TAX_RATE;
                 }
+                if (c.trust < 0 || c.trust > 100) {
+                    c.trust = Math.max(0, Math.min(100, c.trust));
+                }
                 if (!Double.isFinite(c.treasury)) {
                     c.treasury = 0.0;
                 }
+                c.adminFundingMultiplier = 1.0;
+                c.logisticsFundingMultiplier = 1.0;
+                c.publicWorksFundingMultiplier = 1.0;
                 byId.put(c.id, c);
                 addCityToWorldIndex(c);
             }

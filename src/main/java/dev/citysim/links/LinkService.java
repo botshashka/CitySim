@@ -83,7 +83,13 @@ public class LinkService {
             if (linkDistance > 0.0 && distance > linkDistance) {
                 continue;
             }
-            int strength = computeStrength(city.stations, candidate.stations, distance);
+            double rawStrength = computeRawStrength(city.stations, candidate.stations, distance);
+            if (rawStrength <= 0) {
+                continue;
+            }
+            double logisticsMultiplier = Math.min(logisticsMultiplier(city), logisticsMultiplier(candidate));
+            double effectiveStrength = rawStrength * logisticsMultiplier;
+            int strength = (int) Math.round(effectiveStrength);
             if (strength <= 0) {
                 continue;
             }
@@ -109,11 +115,11 @@ public class LinkService {
         return computeLinks(city).size();
     }
 
-    private int computeStrength(int stationsA, int stationsB, double distance) {
+    private double computeRawStrength(int stationsA, int stationsB, double distance) {
         double s = Math.max(0, stationsA) + Math.max(0, stationsB);
         double raw = stationFactor * s - distanceFactor * distance;
         double clamped = Math.max(0.0, Math.min(1.0, raw));
-        return (int) Math.round(clamped * 100.0);
+        return clamped * 100.0;
     }
 
     private Point2D centroidOf(City city) {
@@ -144,6 +150,23 @@ public class LinkService {
         double centerX = (minX + maxX) / 2.0;
         double centerZ = (minZ + maxZ) / 2.0;
         return new Point2D(centerX, centerZ);
+    }
+
+    private double logisticsMultiplier(City city) {
+        if (city == null) {
+            return 1.0;
+        }
+        double multiplier = city.logisticsFundingMultiplier;
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            multiplier = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.logisticsMultiplier : 1.0;
+        }
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            return 0.0;
+        }
+        if (multiplier > 1.0) {
+            multiplier = 1.0;
+        }
+        return multiplier;
     }
 
     private record Point2D(double x, double z) {

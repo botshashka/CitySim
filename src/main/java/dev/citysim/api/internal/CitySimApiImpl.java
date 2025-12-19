@@ -313,7 +313,6 @@ public class CitySimApiImpl implements CitySimApi, CityManagerListener, StatsUpd
                 breakdown.nature,
                 breakdown.pollutionPenalty,
                 breakdown.overcrowdingPenalty,
-                breakdown.maintenanceArea,
                 breakdown.maintenanceLighting,
                 breakdown.maintenanceTransit,
                 breakdown.total,

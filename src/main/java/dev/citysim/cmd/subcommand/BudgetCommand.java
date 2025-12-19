@@ -1,7 +1,9 @@
 package dev.citysim.cmd.subcommand;
 
 import dev.citysim.budget.BudgetService;
+import dev.citysim.budget.BudgetDefaults;
 import dev.citysim.budget.BudgetSnapshot;
+import dev.citysim.budget.BudgetSubsystem;
 import dev.citysim.budget.SubsystemBudget;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
@@ -61,6 +63,9 @@ public class BudgetCommand implements CitySubcommand {
             if ("set-land-tax".equals(sub) || "setlandtax".equals(sub)) {
                 return handleSetLandTax(sender, Arrays.copyOfRange(args, 1, args.length));
             }
+            if ("austerity".equals(sub)) {
+                return handleAusterity(sender, Arrays.copyOfRange(args, 1, args.length));
+            }
             if ("explain".equals(sub)) {
                 return handleExplain(sender, Arrays.copyOfRange(args, 1, args.length));
             }
@@ -79,6 +84,7 @@ public class BudgetCommand implements CitySubcommand {
             options.add("explain");
             options.add("set-tax");
             options.add("set-land-tax");
+            options.add("austerity");
             options.addAll(cityManager.all().stream().map(c -> c.id).toList());
             return options;
         }
@@ -95,6 +101,12 @@ public class BudgetCommand implements CitySubcommand {
             return List.of("5");
         }
         if (args.length == 3 && "set-land-tax".equalsIgnoreCase(args[0])) {
+            return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
+        }
+        if (args.length == 2 && "austerity".equalsIgnoreCase(args[0])) {
+            return List.of("on", "off");
+        }
+        if (args.length == 3 && "austerity".equalsIgnoreCase(args[0])) {
             return cityManager.all().stream().map(c -> c.id).collect(Collectors.toList());
         }
         return List.of();
@@ -209,6 +221,35 @@ public class BudgetCommand implements CitySubcommand {
         return true;
     }
 
+    private boolean handleAusterity(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("citysim.admin")) {
+            CommandFeedback.sendNoPermission(sender);
+            return true;
+        }
+        if (args.length < 1) {
+            CommandFeedback.sendError(sender, "Usage: /city budget austerity <on|off> [cityId]");
+            return true;
+        }
+        boolean enable;
+        if ("on".equalsIgnoreCase(args[0])) {
+            enable = true;
+        } else if ("off".equalsIgnoreCase(args[0])) {
+            enable = false;
+        } else {
+            CommandFeedback.sendError(sender, "Usage: /city budget austerity <on|off> [cityId]");
+            return true;
+        }
+        String[] cityArgs = args.length >= 2 ? new String[]{args[1]} : new String[0];
+        City city = resolveCity(sender, cityArgs);
+        if (city == null) {
+            CommandFeedback.sendError(sender, "Provide a city id or stand in a city: /city budget austerity <on|off> [cityId]");
+            return true;
+        }
+        city.austerityEnabled = enable;
+        CommandFeedback.sendSuccess(sender, "Austerity for " + city.name + " set to " + (enable ? "ON" : "OFF") + ".");
+        return true;
+    }
+
     private City resolveCity(CommandSender sender, String[] args) {
         City city = null;
         if (args.length >= 1) {
@@ -231,15 +272,20 @@ public class BudgetCommand implements CitySubcommand {
         lines.add(joinLine(
                 kv("City", safeName),
                 kv("Treasury", treasuryLabel(snapshot.treasuryAfter)),
-                kv("TaxRate", formatPercent(city.taxRate)),
+                kv("Tax", formatPercent(city.taxRate) + " (tolerated: " + formatPercent(snapshot.toleratedTax) + ")"),
                 kv("Net", formatSignedCurrency(snapshot.net))
+        ));
+        lines.add(joinLine(
+                kv("Trust", snapshot.trust + " (" + snapshot.trustState + ")"),
+                kv("Collection", formatMultiplier(snapshot.collectionEfficiency) + " (floor " + formatMultiplier(BudgetDefaults.TRUST_COLLECTION_FLOOR) + ")"),
+                kv("Austerity", city.austerityEnabled ? "ON" : "OFF")
         ));
 
         lines.add(sectionSpacer());
         lines.add(sectionHeader("INCOME"));
-        lines.add(kv("GDP tax", formatSignedCurrency(snapshot.income.gdpTax * snapshot.adminMultiplier)));
+        lines.add(kv("GDP tax", formatSignedCurrency(snapshot.income.gdpTax * snapshot.adminEffectiveMultiplier * snapshot.collectionEfficiency)));
         if (snapshot.income.landTaxEnabled) {
-            lines.add(kv("Land tax", formatSignedCurrency(snapshot.income.landTax * snapshot.adminMultiplier)));
+            lines.add(kv("Land tax", formatSignedCurrency(snapshot.income.landTax * snapshot.adminEffectiveMultiplier * snapshot.collectionEfficiency)));
         }
 
         lines.add(sectionSpacer());
@@ -247,15 +293,13 @@ public class BudgetCommand implements CitySubcommand {
         lines.add(formatExpense(snapshot.expenses.administration, false));
         lines.add(formatExpense(snapshot.expenses.logistics, true));
         lines.add(formatExpense(snapshot.expenses.publicWorks, true));
-        lines.add(formatExpense(snapshot.expenses.landManagement, true));
 
         lines.add(sectionSpacer());
         lines.add(sectionHeader("MULTIPLIERS"));
         lines.add(joinLine(
                 kv("Admin", formatMultiplier(snapshot.adminMultiplier)),
-                kv("Logistics", formatMultiplier(snapshot.logisticsMultiplier)),
-                kv("Public Works", formatMultiplier(snapshot.publicWorksMultiplier)),
-                kv("Land Mgmt", formatMultiplier(snapshot.landManagementMultiplier))
+                kv("Logi", formatMultiplier(snapshot.logisticsMultiplier)),
+                kv("Works", formatMultiplier(snapshot.publicWorksMultiplier))
         ));
 
         return lines.stream()
@@ -270,10 +314,9 @@ public class BudgetCommand implements CitySubcommand {
         EconomyBreakdown breakdown = city.economyBreakdown;
         double maintenanceTransit = breakdown != null ? breakdown.maintenanceTransit : 0.0;
         double maintenanceLighting = breakdown != null ? breakdown.maintenanceLighting : 0.0;
-        double maintenanceArea = breakdown != null ? breakdown.maintenanceArea : 0.0;
 
-        double gdpIncome = snapshot.income.gdpTax * snapshot.adminMultiplier;
-        double landIncome = snapshot.income.landTax * snapshot.adminMultiplier;
+        double gdpIncome = snapshot.income.gdpTax * snapshot.adminEffectiveMultiplier * snapshot.collectionEfficiency;
+        double landIncome = snapshot.income.landTax * snapshot.adminEffectiveMultiplier * snapshot.collectionEfficiency;
 
         List<String> lines = new ArrayList<>();
         lines.add("");
@@ -285,11 +328,11 @@ public class BudgetCommand implements CitySubcommand {
 
         lines.add(sectionSpacer());
         lines.add(sectionHeader("INCOME FORMULAS"));
-        lines.add("<white>GDP tax income = gdp(%s) * taxRate(%s) * adminMultiplier(%s) = %s</white>"
-                .formatted(formatNumber(city.gdp), formatPercent(snapshot.income.taxRate), formatMultiplier(snapshot.adminMultiplier), formatSignedCurrency(gdpIncome)));
+        lines.add("<white>GDP tax income = gdp(%s) * taxRate(%s) * adminEff(%s) * collection(%s) = %s</white>"
+                .formatted(formatNumber(city.gdp), formatPercent(snapshot.income.taxRate), formatMultiplier(snapshot.adminEffectiveMultiplier), formatMultiplier(snapshot.collectionEfficiency), formatSignedCurrency(gdpIncome)));
         if (snapshot.income.landTaxEnabled) {
             lines.add("<white>Land tax income = population(%d) * landValue(%s%%) * landTaxRate(%s) * adminMultiplier(%s) = %s</white>"
-                    .formatted(city.population, formatFlatNumber(city.landValue), formatPercent(city.landTaxRate), formatMultiplier(snapshot.adminMultiplier), formatSignedCurrency(landIncome)));
+                    .formatted(city.population, formatFlatNumber(city.landValue), formatPercent(city.landTaxRate), formatMultiplier(snapshot.adminEffectiveMultiplier), formatSignedCurrency(landIncome)));
         } else {
             lines.add("<white>Land tax is disabled in config.</white>");
         }
@@ -302,15 +345,12 @@ public class BudgetCommand implements CitySubcommand {
                 .formatted(formatFlatNumber(maintenanceTransit), formatFlatNumber(budgetService.getTransitCost()), CurrencyFormatter.format(snapshot.expenses.logistics.required)));
         lines.add("<white>Public Works upkeep = maintenanceLighting(%s) * LIGHTING_COST(%s) = %s</white>"
                 .formatted(formatFlatNumber(maintenanceLighting), formatFlatNumber(budgetService.getLightingCost()), CurrencyFormatter.format(snapshot.expenses.publicWorks.required)));
-        lines.add("<white>Land Management upkeep = maintenanceArea(%s) * AREA_COST(%s) = %s</white>"
-                .formatted(formatFlatNumber(maintenanceArea), formatFlatNumber(budgetService.getAreaCost()), CurrencyFormatter.format(snapshot.expenses.landManagement.required)));
 
         lines.add(sectionSpacer());
         lines.add(sectionHeader("CURRENT FUNDING"));
         lines.add(formatExpense(snapshot.expenses.administration, true));
         lines.add(formatExpense(snapshot.expenses.logistics, true));
         lines.add(formatExpense(snapshot.expenses.publicWorks, true));
-        lines.add(formatExpense(snapshot.expenses.landManagement, true));
 
         return lines.stream()
                 .filter(Objects::nonNull)
@@ -327,7 +367,7 @@ public class BudgetCommand implements CitySubcommand {
         String multiplier = includeMultiplier ? ", mult " + formatMultiplier(budget.multiplier) : "";
         long percent = Math.round(budget.ratio * 100.0);
         return "<gold>%s:</gold> <white>%s (%s %d%%%s)</white>".formatted(
-                budget.subsystem.displayName(),
+                shortLabel(budget.subsystem),
                 amount,
                 budget.state.name(),
                 percent,
@@ -387,5 +427,13 @@ public class BudgetCommand implements CitySubcommand {
             return "+" + formatted;
         }
         return formatted;
+    }
+
+    private String shortLabel(BudgetSubsystem subsystem) {
+        return switch (subsystem) {
+            case ADMINISTRATION -> "Admin";
+            case LOGISTICS -> "Logi";
+            case PUBLIC_WORKS -> "Works";
+        };
     }
 }

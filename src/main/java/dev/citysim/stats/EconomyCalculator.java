@@ -8,8 +8,6 @@ public class EconomyCalculator {
     private static final double BASE_PRODUCTIVITY = 20.0;
     private static final double MULTIPLIER_BASE = 0.5;
     private static final double MULTIPLIER_SPAN = 1.0;
-    private static final double AREA_DRAG_SCALE = 200000.0;
-    private static final double AREA_DRAG_MAX = 4.0;
     private static final double LIGHTING_DRAG_MAX = 2.0;
     private static final double TRANSIT_DRAG_PER_STATION = 0.3;
     private static final double TRANSIT_DRAG_MAX = 3.0;
@@ -50,9 +48,12 @@ public class EconomyCalculator {
         breakdown.housingBalance = housingPoints;
 
         double transitPoints = prosperity != null ? prosperity.transitPoints : prosperityCalculator.computeTransitPoints(city);
+        if (prosperity != null) {
+            transitPoints *= logisticsMultiplier(city);
+        }
         breakdown.transitCoverage = transitPoints;
 
-        double lightingPoints = prosperity != null ? prosperity.lightPoints : computeLightingPoints(metrics);
+        double lightingPoints = prosperity != null ? prosperity.lightPoints * publicWorksMultiplier(city) : computeLightingPoints(city, metrics);
         breakdown.lighting = lightingPoints;
 
         double naturePoints = prosperity != null ? prosperity.naturePoints : computeNaturePoints(metrics);
@@ -64,10 +65,8 @@ public class EconomyCalculator {
         double overcrowdingPenalty = prosperity != null ? prosperity.overcrowdingPenalty : prosperityCalculator.computeOvercrowdingPenalty(city);
         breakdown.overcrowdingPenalty = overcrowdingPenalty;
 
-        double areaDrag = computeAreaDrag(city);
         double lightingDrag = computeLightingDrag(metrics);
         double transitDrag = computeTransitDrag(city);
-        breakdown.maintenanceArea = areaDrag;
         breakdown.maintenanceLighting = lightingDrag;
         breakdown.maintenanceTransit = transitDrag;
 
@@ -84,7 +83,8 @@ public class EconomyCalculator {
         breakdown.total = (int) Math.round(total);
 
         double prosperityMultiplier = MULTIPLIER_BASE + (total / 100.0) * MULTIPLIER_SPAN;
-        double gdp = city.population * BASE_PRODUCTIVITY * prosperityMultiplier;
+        double workingPopulation = Math.max(0, city.employed);
+        double gdp = workingPopulation * BASE_PRODUCTIVITY * prosperityMultiplier;
         double gdpPerCapita = city.population <= 0 ? 0.0 : gdp / city.population;
 
         double jobsPressure = city.employmentRate - EMPLOYMENT_NEUTRAL;
@@ -130,14 +130,15 @@ public class EconomyCalculator {
         return clamp(score * housingMaxPts, -housingMaxPts, housingMaxPts);
     }
 
-    private double computeLightingPoints(City.BlockScanCache metrics) {
+    private double computeLightingPoints(City city, City.BlockScanCache metrics) {
         if (metrics == null) {
             return 0.0;
         }
         double lightNeutral = prosperityCalculator.getLightNeutral();
         double lightMaxPts = prosperityCalculator.getLightMaxPts();
         double normalized = (metrics.light - lightNeutral) / lightNeutral;
-        return clamp(normalized * lightMaxPts, -lightMaxPts, lightMaxPts);
+        double raw = clamp(normalized * lightMaxPts, -lightMaxPts, lightMaxPts);
+        return raw * publicWorksMultiplier(city);
     }
 
     private double computeNaturePoints(City.BlockScanCache metrics) {
@@ -149,15 +150,6 @@ public class EconomyCalculator {
         double target = prosperityCalculator.getNatureTargetRatio();
         double score = (adjustedNature - target) / target;
         return clamp(score * natureMaxPts, -natureMaxPts, natureMaxPts);
-    }
-
-    private double computeAreaDrag(City city) {
-        double area = prosperityCalculator.estimateFootprintArea(city);
-        if (area <= 0.0) {
-            return 0.0;
-        }
-        double drag = area / AREA_DRAG_SCALE;
-        return clamp(drag, 0.0, AREA_DRAG_MAX);
     }
 
     private double computeLightingDrag(City.BlockScanCache metrics) {
@@ -225,5 +217,33 @@ public class EconomyCalculator {
                                      double housingPressure,
                                      double transitPressure,
                                      double landValue) {
+    }
+
+    private double publicWorksMultiplier(City city) {
+        if (city == null) {
+            return 1.0;
+        }
+        double multiplier = city.publicWorksFundingMultiplier;
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            multiplier = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.publicWorksMultiplier : 1.0;
+        }
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            return 0.0;
+        }
+        return Math.min(1.0, multiplier);
+    }
+
+    private double logisticsMultiplier(City city) {
+        if (city == null) {
+            return 1.0;
+        }
+        double multiplier = city.logisticsFundingMultiplier;
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            multiplier = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.logisticsMultiplier : 1.0;
+        }
+        if (!Double.isFinite(multiplier) || multiplier <= 0.0) {
+            return 0.0;
+        }
+        return Math.min(1.0, multiplier);
     }
 }

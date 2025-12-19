@@ -12,7 +12,17 @@ public class BudgetSnapshot {
     public double adminMultiplier;
     public double logisticsMultiplier;
     public double publicWorksMultiplier;
-    public double landManagementMultiplier;
+
+    public double adminEffectiveMultiplier;
+    public double logisticsEffectiveMultiplier;
+    public double publicWorksEffectiveMultiplier;
+
+    public double toleratedTax;
+    public double collectionEfficiency;
+    public int trust;
+    public int trustDelta;
+    public String trustState;
+    public boolean austerityEnabled;
 
     public boolean preview;
 }
