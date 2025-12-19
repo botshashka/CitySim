@@ -24,6 +24,12 @@ public class BudgetService {
     private double adminPerCapita = BudgetDefaults.ADMIN_PER_CAPITA;
     private double transitCost = BudgetDefaults.TRANSIT_COST;
     private double lightingCost = BudgetDefaults.LIGHTING_COST;
+    private double taxBaseTolerance = BudgetDefaults.TRUST_BASE_TOLERANCE;
+    private double taxToleranceBonus = BudgetDefaults.TRUST_TOLERANCE_BONUS;
+    private double taxToleranceMin = BudgetDefaults.TRUST_TOLERANCE_MIN;
+    private double landTaxBaseTolerance = BudgetDefaults.LAND_TRUST_BASE_TOLERANCE;
+    private double landTaxToleranceBonus = BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS;
+    private double landTaxToleranceMin = BudgetDefaults.LAND_TRUST_TOLERANCE_MIN;
 
     private static final long PREVIEW_TTL_MS = 5000L;
 
@@ -46,6 +52,12 @@ public class BudgetService {
         adminPerCapita = safeNonNegative(config.getDouble("budget.admin_per_capita", BudgetDefaults.ADMIN_PER_CAPITA), BudgetDefaults.ADMIN_PER_CAPITA);
         transitCost = safeNonNegative(config.getDouble("budget.transit_cost", BudgetDefaults.TRANSIT_COST), BudgetDefaults.TRANSIT_COST);
         lightingCost = safeNonNegative(config.getDouble("budget.lighting_cost", BudgetDefaults.LIGHTING_COST), BudgetDefaults.LIGHTING_COST);
+        taxBaseTolerance = clamp(config.getDouble("budget.tolerance.base", BudgetDefaults.TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_TAX_RATE);
+        taxToleranceBonus = clamp(config.getDouble("budget.tolerance.bonus", BudgetDefaults.TRUST_TOLERANCE_BONUS), 0.0, 1.0);
+        taxToleranceMin = clamp(config.getDouble("budget.tolerance.min", BudgetDefaults.TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_TAX_RATE);
+        landTaxBaseTolerance = clamp(config.getDouble("budget.land_tax.tolerance.base", BudgetDefaults.LAND_TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
+        landTaxToleranceBonus = clamp(config.getDouble("budget.land_tax.tolerance.bonus", BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS), 0.0, 1.0);
+        landTaxToleranceMin = clamp(config.getDouble("budget.land_tax.tolerance.min", BudgetDefaults.LAND_TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
     }
 
     public void start() {
@@ -233,8 +245,8 @@ public class BudgetService {
         snapshot.logisticsEffectiveMultiplier = effectiveLogisticsMultiplier(city, snapshot.logisticsMultiplier);
         snapshot.publicWorksEffectiveMultiplier = effectivePublicWorksMultiplier(city, snapshot.publicWorksMultiplier);
 
-        snapshot.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
-        snapshot.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        snapshot.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, taxBaseTolerance, taxToleranceBonus, taxToleranceMin);
+        snapshot.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, landTaxBaseTolerance, landTaxToleranceBonus, landTaxToleranceMin);
         snapshot.collectionEfficiency = collectionEfficiency(city, sanitizedTax, sanitizedLandTax, snapshot.toleratedTax, snapshot.toleratedLandTax);
         double rawDelta = computeTrustDelta(city, snapshot, sanitizedTax, trustMode);
         double carry = trustCarry.getOrDefault(city.id, 0.0);
@@ -295,8 +307,8 @@ public class BudgetService {
         }
         income.landTaxEnabled = landTaxEnabled;
         income.landTax = landTax;
-        income.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
-        income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        income.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, taxBaseTolerance, taxToleranceBonus, taxToleranceMin);
+        income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, landTaxBaseTolerance, landTaxToleranceBonus, landTaxToleranceMin);
         income.rawTotal = income.gdpTax + income.landTax;
         return income;
     }
@@ -324,11 +336,13 @@ public class BudgetService {
         available -= publicWorksPaid;
         SubsystemBudget publicWorks = SubsystemBudget.of(BudgetSubsystem.PUBLIC_WORKS, publicWorksRequired, publicWorksPaid);
 
-        income.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
-        income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        income.toleratedTax = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, taxBaseTolerance, taxToleranceBonus, taxToleranceMin);
+        income.toleratedLandTax = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, landTaxBaseTolerance, landTaxToleranceBonus, landTaxToleranceMin);
         income.collectionEfficiency = collectionEfficiency(city, taxRate, landTaxRate, income.toleratedTax, income.toleratedLandTax);
 
-        double over = Math.max(0.0, income.taxRate - income.toleratedTax);
+        double overGdp = Math.max(0.0, income.taxRate - income.toleratedTax);
+        double overLand = Math.max(0.0, income.landTaxRate - income.toleratedLandTax);
+        double over = Math.max(overGdp, overLand);
         double overIncomePenalty = over > 0 ? clamp(1.0 - over * 2.0, 0.25, 1.0) : 1.0;
         double effectiveIncome = income.rawTotal * effectiveAdminMultiplier(city, admin.multiplier) * income.collectionEfficiency * overIncomePenalty;
         income.adminMultiplier = admin.multiplier;
@@ -462,8 +476,8 @@ public class BudgetService {
     private double computePolicyTrustImpact(City city, BudgetSnapshot snapshot) {
         double newTaxRate = snapshot.income != null ? snapshot.income.taxRate : city.taxRate;
         double newLandRate = snapshot.income != null ? snapshot.income.landTaxRate : city.landTaxRate;
-        double tolerance = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, BudgetDefaults.TRUST_BASE_TOLERANCE, BudgetDefaults.TRUST_TOLERANCE_BONUS, BudgetDefaults.TRUST_TOLERANCE_MIN);
-        double toleranceLand = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, BudgetDefaults.LAND_TRUST_BASE_TOLERANCE, BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS, BudgetDefaults.LAND_TRUST_TOLERANCE_MIN);
+        double tolerance = toleratedTax(city, BudgetDefaults.MAX_TAX_RATE, taxBaseTolerance, taxToleranceBonus, taxToleranceMin);
+        double toleranceLand = toleratedTax(city, BudgetDefaults.MAX_LAND_TAX_RATE, landTaxBaseTolerance, landTaxToleranceBonus, landTaxToleranceMin);
         double overFraction = 0.0;
         if (newTaxRate > tolerance) {
             overFraction = Math.max(overFraction, (newTaxRate - tolerance) / BudgetDefaults.MAX_TAX_RATE);

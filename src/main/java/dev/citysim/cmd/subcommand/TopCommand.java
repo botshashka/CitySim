@@ -167,17 +167,14 @@ public class TopCommand implements CitySubcommand {
             @Override
             Comparator<City> comparator() {
                 return Comparator
-                        .comparing(City::isGhostTown)
-                        .thenComparing((City c) -> {
-                            double treasury = c.lastBudgetSnapshot != null ? c.lastBudgetSnapshot.treasuryAfter : c.treasury;
-                            return treasury;
-                        }, Comparator.reverseOrder())
+                        .comparingDouble((City c) -> currentTreasury(c)).reversed()
+                        .thenComparing(City::isGhostTown)
                         .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
             }
 
             @Override
             String formatLine(int rank, City city) {
-                double treasury = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.treasuryAfter : city.treasury;
+                double treasury = currentTreasury(city);
                 return "%2d. %s — Budget %s • prosp %d%%"
                         .formatted(rank, city.name, CurrencyFormatter.format(treasury), city.prosperity);
             }
@@ -231,7 +228,19 @@ public class TopCommand implements CitySubcommand {
         return String.format(Locale.US, "%,.1f%s", value, suffixes[index]);
     }
 
-    private static String formatNumber(long value) {
-        return String.format(Locale.US, "%,d", value);
-    }
+        private static String formatNumber(long value) {
+            return String.format(Locale.US, "%,d", value);
+        }
+
+        private static double currentTreasury(City city) {
+            if (city == null) {
+                return 0.0;
+            }
+            double live = city.treasury;
+            if (Double.isFinite(live)) {
+                return live;
+            }
+            double snapshotValue = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.treasuryAfter : 0.0;
+            return Double.isFinite(snapshotValue) ? snapshotValue : 0.0;
+        }
 }

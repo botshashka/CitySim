@@ -253,14 +253,21 @@ public class BudgetCommand implements CitySubcommand {
             return true;
         }
 
-        if (enable) {
-            if (!confirmAusterity(sender, city)) {
-                return true;
-            }
+        if (enable && city.austerityEnabled) {
+            CommandFeedback.sendSuccess(sender, "Austerity for " + city.name + " is already ON.");
+            return true;
+        }
+        if (!enable && !city.austerityEnabled) {
+            CommandFeedback.sendSuccess(sender, "Austerity for " + city.name + " is already OFF.");
+            return true;
+        }
+
+        if (enable && !confirmAusterity(sender, city, args)) {
+            return true;
         }
 
         city.austerityEnabled = enable;
-        long nowTick = sender instanceof Player p ? p.getWorld().getFullTime() : 0L;
+        long nowTick = currentTick(sender);
         if (enable) {
             city.austerityEnabledAtTick = nowTick;
         } else {
@@ -273,8 +280,8 @@ public class BudgetCommand implements CitySubcommand {
         return true;
     }
 
-    private boolean confirmAusterity(CommandSender sender, City city) {
-        long nowTick = sender instanceof Player p ? p.getWorld().getFullTime() : 0L;
+    private boolean confirmAusterity(CommandSender sender, City city, String[] args) {
+        long nowTick = currentTick(sender);
         long lastPrompt = city.austerityEnablePromptTick;
         long interval = budgetService != null ? budgetService.getBudgetIntervalTicks() : 6000L;
         if (nowTick > 0 && nowTick - lastPrompt <= interval / 2 && city.austerityEnablePromptTick != 0L) {
@@ -286,11 +293,12 @@ public class BudgetCommand implements CitySubcommand {
         BudgetSnapshot snapshot = null;
         int projectedTrust = trustBefore;
         if (budgetService != null) {
-            boolean prevAusterity = city.austerityEnabled;
+            boolean prev = city.austerityEnabled;
             city.austerityEnabled = true;
+            budgetService.invalidatePreview(city);
             snapshot = budgetService.previewPolicySnapshot(city);
             projectedTrust = budgetService.projectedTrustAfterPolicy(city, snapshot);
-            city.austerityEnabled = prevAusterity;
+            city.austerityEnabled = prev;
         }
         double cap = BudgetDefaults.AUSTERITY_CAP;
 
@@ -298,11 +306,19 @@ public class BudgetCommand implements CitySubcommand {
         lines.add("<yellow>Austerity cuts upkeep costs and caps effects, but reduces trust immediately and blocks trust gains while active.</yellow>");
         lines.add("<white>Current trust: %d → projected: %d</white>".formatted(trustBefore, projectedTrust));
         lines.add("<white>Admin/Logistics/Public Works capped at %.0f%% while ON.</white>".formatted(cap * 100.0));
-        lines.add("<gray>Run /city budget austerity on again within ~%ds to confirm.</gray>".formatted(Math.max(1, (int) (interval / 20 / 2))));
+        String rerun = "/city budget austerity on" + (args != null && args.length >= 2 ? " " + args[1] : "");
+        lines.add("<gray>Run %s again within ~%ds to confirm.</gray>".formatted(rerun, Math.max(1, (int) (interval / 20 / 2))));
         sender.sendMessage(AdventureMessages.mini(String.join("\n", lines)));
 
         city.austerityEnablePromptTick = nowTick;
         return false;
+    }
+
+    private long currentTick(CommandSender sender) {
+        if (sender instanceof Player p) {
+            return p.getWorld().getFullTime();
+        }
+        return System.currentTimeMillis() / 50L;
     }
 
     private City resolveCity(CommandSender sender, String[] args) {
@@ -336,7 +352,7 @@ public class BudgetCommand implements CitySubcommand {
         lines.add(sectionHeader("OVERVIEW"));
         lines.add(joinLine(
                 kv("City", safeName),
-                kv("Treasury", treasuryLabel(snapshot.treasuryAfter)),
+                kv("Treasury", treasuryLabel(snapshot.treasuryBefore)),
                 kv("Net", formatSignedCurrency(snapshot.net))
         ));
         lines.add(joinLine(

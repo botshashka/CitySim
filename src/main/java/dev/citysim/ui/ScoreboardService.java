@@ -302,7 +302,7 @@ public class ScoreboardService {
         if (snapshot == null) {
             return null;
         }
-        String treasury = CurrencyFormatter.format(snapshot.treasuryAfter);
+        String treasury = CurrencyFormatter.format(city.treasury);
         String net = CurrencyFormatter.format(snapshot.net);
         if (snapshot.net > 0) {
             net = "+" + net;
