@@ -2,9 +2,12 @@ package dev.citysim.ui;
 
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
+import dev.citysim.budget.BudgetService;
+import dev.citysim.budget.BudgetSnapshot;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
 import dev.citysim.stats.EconomyBreakdown;
+import dev.citysim.util.CurrencyFormatter;
 import dev.citysim.util.TrendUtil;
 import dev.citysim.util.TrendUtil.TrendDirection;
 import net.kyori.adventure.text.Component;
@@ -41,6 +44,7 @@ public class ScoreboardService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
+    private final BudgetService budgetService;
     private final LinkService linkService;
     private final MigrationService migrationService;
     private final TrendUtil trendUtil = new TrendUtil();
@@ -53,11 +57,13 @@ public class ScoreboardService {
 
     public ScoreboardService(Plugin plugin,
                              CityManager cityManager,
+                             BudgetService budgetService,
                              DisplayPreferencesStore displayPreferencesStore,
                              LinkService linkService,
                              MigrationService migrationService) {
         this.plugin = plugin;
         this.cityManager = cityManager;
+        this.budgetService = budgetService;
         this.displayPreferencesStore = displayPreferencesStore;
         this.linkService = linkService;
         this.migrationService = migrationService;
@@ -107,6 +113,10 @@ public class ScoreboardService {
 
     public boolean isEnabled(Player player) {
         return displayPreferencesStore.isScoreboardEnabled(player.getUniqueId());
+    }
+
+    public void refreshNow() {
+        tick();
     }
 
     private void tick() {
@@ -225,14 +235,17 @@ public class ScoreboardService {
     }
 
     private List<String> buildLines(City city, Mode mode) {
-        List<String> raw = mode == Mode.FULL ? buildFullLines(city) : buildCompactLines(city);
+        BudgetSnapshot preview = budgetService != null ? budgetService.previewCity(city) : null;
+        List<String> raw = mode == Mode.FULL ? buildFullLines(city, preview) : buildCompactLines(city, preview);
         return decorateLines(raw);
     }
 
-    private List<String> buildFullLines(City city) {
+    private List<String> buildFullLines(City city, BudgetSnapshot preview) {
         List<String> lines = new ArrayList<>(12);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatTrustLine(city, preview));
+        addIfPresent(lines, formatBudgetLine(city, preview));
         addIfPresent(lines, formatGdpLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatLandLine(city));
@@ -244,10 +257,11 @@ public class ScoreboardService {
         return lines;
     }
 
-    private List<String> buildCompactLines(City city) {
+    private List<String> buildCompactLines(City city, BudgetSnapshot preview) {
         List<String> lines = new ArrayList<>(5);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
+        addIfPresent(lines, formatBudgetLine(city, preview));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatSectorLine(city));
         return lines;
@@ -276,6 +290,51 @@ public class ScoreboardService {
         int population = Math.max(0, city.population);
         String formatted = String.format(Locale.US, "%,d", population);
         return formatLine(NamedTextColor.GREEN, "Pop: ", formatted);
+    }
+
+    private String formatBudgetLine(City city, BudgetSnapshot snapshot) {
+        if (city == null) {
+            return null;
+        }
+        if (snapshot == null) {
+            snapshot = city.lastBudgetSnapshot;
+        }
+        if (snapshot == null) {
+            return null;
+        }
+        String treasury = CurrencyFormatter.format(city.treasury);
+        String net = CurrencyFormatter.format(snapshot.net);
+        if (snapshot.net > 0) {
+            net = "+" + net;
+        }
+        return formatLine(NamedTextColor.GOLD, "Budget: ", treasury + " (" + net + ")");
+    }
+
+    private String formatTrustLine(City city, BudgetSnapshot snapshot) {
+        if (city == null) {
+            return null;
+        }
+        if (snapshot == null) {
+            snapshot = city.lastBudgetSnapshot;
+        }
+        int trust = snapshot != null ? snapshot.trust : city.trust;
+        trust = Math.max(0, Math.min(100, trust));
+        String label = trustLabel(trust);
+        TrendDirection trend = arrowForMetric(city, TrendUtil.Metric.TRUST, trust);
+        return formatLineWithArrow(NamedTextColor.AQUA, "Trust: ", trust + " (" + label + ")", trend);
+    }
+
+    private String trustLabel(int trust) {
+        if (trust >= 60) {
+            return "Stable";
+        }
+        if (trust >= 40) {
+            return "Tense";
+        }
+        if (trust >= 20) {
+            return "Unrest";
+        }
+        return "Crisis";
     }
 
     private String formatGdpLine(City city) {
@@ -343,12 +402,13 @@ public class ScoreboardService {
         if (linkService == null || !linkService.isEnabled() || city == null) {
             return lines;
         }
-        int linkCount = Math.max(0, linkService.linkCount(city));
-        if (linkCount <= 0) {
+        int rawCount = Math.max(0, linkService.countPhysicalLinks(city));
+        int opsCount = Math.max(0, linkService.countOperationalLinks(city));
+        if (rawCount <= 0) {
             return lines;
         }
-        TrendDirection linkTrend = arrowForMetric(city, TrendUtil.Metric.LINKS, linkCount);
-        lines.add(formatLineWithArrow(NamedTextColor.DARK_AQUA, "Links: ", String.valueOf(linkCount), linkTrend));
+        TrendDirection linkTrend = arrowForMetric(city, TrendUtil.Metric.LINKS, rawCount);
+        lines.add(formatLineWithArrow(NamedTextColor.DARK_AQUA, "Links: ", rawCount + " (ops " + opsCount + ")", linkTrend));
 
         long migrationNet = 0;
         boolean hasMigration = false;

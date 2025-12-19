@@ -85,7 +85,7 @@ public class LinksCommand implements CitySubcommand {
                     .append(Component.text(neighbor.name, NamedTextColor.WHITE))
                     .append(Component.text("  ", NamedTextColor.DARK_GRAY))
                     .append(Component.text("Strength: ", NamedTextColor.LIGHT_PURPLE))
-                    .append(Component.text(link.strength(), NamedTextColor.WHITE))
+                    .append(Component.text("raw " + link.rawStrength() + " | operational " + link.opsStrength(), NamedTextColor.WHITE))
                     .append(Component.text("  ", NamedTextColor.DARK_GRAY))
                     .append(Component.text("Distance: ", NamedTextColor.AQUA))
                     .append(Component.text(distance + "m", NamedTextColor.WHITE))

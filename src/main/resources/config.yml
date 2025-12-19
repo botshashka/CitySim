@@ -3,6 +3,7 @@
 updates:
   stats_interval_ticks: 100     # ~5 seconds between stat updates (min 20, max 12000)
   stats_initial_delay_ticks: 40 # Delay before the first stat update (0 - 6000)
+  budget_interval_ticks: 6000   # ~5 minutes between budget ticks
   bossbar_interval_ticks: 40    # ~2 seconds
   max_cities_per_tick: 1        # How many city scans to start/process each tick
   max_entity_chunks_per_tick: 2 # Loaded chunks checked per active city scan each tick
@@ -45,6 +46,11 @@ prosperity_weights:
   employment_neutral: 0.75
   pollution_target_ratio: 0.02
   nature_target_ratio: 0.10
+  trust_neutral: 60
+  trust_positive_scale: 0.20
+  trust_negative_scale: 0.30
+  trust_positive_cap: 8
+  trust_negative_cap: 18
 
 titles:
   enabled: true
@@ -218,6 +224,14 @@ migration:
       - POWERED_RAIL
       - DETECTOR_RAIL
       - ACTIVATOR_RAIL
+
+budget:
+  admin_per_capita: 1.0
+  transit_cost: 14.0
+  lighting_cost: 10.0
+  land_tax:
+    enabled: true
+    rate: 0.05 # expressed as decimal (5%); players set this via percent inputs
 
 ui:
   bossbar:

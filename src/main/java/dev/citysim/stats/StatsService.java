@@ -356,6 +356,11 @@ public class StatsService {
         double pollutionTargetRatio = 0.02;
         double housingMaxPts = 10.0;
         double transitMaxPts = 5.0;
+        double trustNeutral = 60.0;
+        double trustPositiveScale = 0.20;
+        double trustNegativeScale = 0.30;
+        double trustMaxPositive = 8.0;
+        double trustMaxNegative = 18.0;
 
         if (config != null) {
             maxCitiesPerTick = Math.max(1, config.getInt("updates.max_cities_per_tick", maxCitiesPerTick));
@@ -374,6 +379,11 @@ public class StatsService {
             pollutionTargetRatio = config.getDouble("prosperity_weights.pollution_target_ratio", pollutionTargetRatio);
             housingMaxPts = config.getDouble("prosperity_weights.housing_max_points", housingMaxPts);
             transitMaxPts = config.getDouble("prosperity_weights.transit_max_points", transitMaxPts);
+            trustNeutral = config.getDouble("prosperity_weights.trust_neutral", trustNeutral);
+            trustPositiveScale = config.getDouble("prosperity_weights.trust_positive_scale", trustPositiveScale);
+            trustNegativeScale = config.getDouble("prosperity_weights.trust_negative_scale", trustNegativeScale);
+            trustMaxPositive = config.getDouble("prosperity_weights.trust_positive_cap", trustMaxPositive);
+            trustMaxNegative = config.getDouble("prosperity_weights.trust_negative_cap", trustMaxNegative);
         }
 
         scanScheduler.setLimits(maxCitiesPerTick, maxEntityChunksPerTick, maxBedBlocksPerTick);
@@ -395,6 +405,7 @@ public class StatsService {
         prosperityCalculator.setPollutionTargetRatio(pollutionTargetRatio);
         prosperityCalculator.setHousingMaxPts(housingMaxPts);
         prosperityCalculator.setTransitMaxPts(transitMaxPts);
+        economyCalculator.configureTrust(trustNeutral, trustPositiveScale, trustNegativeScale, trustMaxPositive, trustMaxNegative);
         prosperityCalculator.setStationCountingMode(stationCountingMode);
     }
 
@@ -480,11 +491,8 @@ public class StatsService {
             boolean ghostTown = city.isGhostTown() || city.population <= 0;
             effective.setGhostTown(ghostTown || effective.isGhostTown());
             city.prosperityBreakdown = effective;
-            city.prosperity = effective.total;
         }
-        if (!metricsComputed) {
-            updateDerivedMetrics(city);
-        }
+        updateDerivedMetrics(city);
         city.statsTimestamp = completedAtMillis;
         notifyStatsUpdated(city);
     }

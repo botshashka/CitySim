@@ -197,7 +197,6 @@ class CitySimApiImplTest {
         economy.nature = 0.6;
         economy.pollutionPenalty = -0.2;
         economy.overcrowdingPenalty = -0.1;
-        economy.maintenanceArea = 2.0;
         economy.maintenanceLighting = 1.5;
         economy.maintenanceTransit = 1.0;
         economy.total = 90;

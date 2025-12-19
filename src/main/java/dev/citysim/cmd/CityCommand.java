@@ -8,6 +8,7 @@ import dev.citysim.cmd.subcommand.CitySubcommandRegistry;
 import dev.citysim.cmd.subcommand.CreateCityCommand;
 import dev.citysim.cmd.subcommand.DebugCommand;
 import dev.citysim.cmd.subcommand.DisplayCommand;
+import dev.citysim.cmd.subcommand.BudgetCommand;
 import dev.citysim.cmd.subcommand.EditCityCommand;
 import dev.citysim.cmd.subcommand.ExpandCityCommand;
 import dev.citysim.cmd.subcommand.LinksCommand;
@@ -21,6 +22,7 @@ import dev.citysim.cmd.subcommand.WandCommand;
 import dev.citysim.links.LinkService;
 import dev.citysim.migration.MigrationService;
 import dev.citysim.stats.StatsService;
+import dev.citysim.budget.BudgetService;
 import dev.citysim.ui.ScoreboardService;
 import dev.citysim.ui.TitleService;
 import dev.citysim.stats.BossBarService;
@@ -42,11 +44,13 @@ public class CityCommand implements CommandExecutor {
 
     private final CityManager cityManager;
     private final StatsService statsService;
+    private final BudgetService budgetService;
     private final CitySubcommandRegistry registry = new CitySubcommandRegistry();
 
     public CityCommand(CitySimPlugin plugin,
                        CityManager cityManager,
                        StatsService statsService,
+                       BudgetService budgetService,
                        TitleService titleService,
                        BossBarService bossBarService,
                        ScoreboardService scoreboardService,
@@ -56,6 +60,7 @@ public class CityCommand implements CommandExecutor {
                        MigrationService migrationService) {
         this.cityManager = cityManager;
         this.statsService = statsService;
+        this.budgetService = budgetService;
 
         register(new WandCommand(selectionTracker));
         register(new CreateCityCommand(cityManager, statsService, selectionTracker, visualizationService));
@@ -64,13 +69,14 @@ public class CityCommand implements CommandExecutor {
         EditCityCommand editCityCommand = new EditCityCommand(cityManager, statsService, visualizationService, selectionTracker);
         register(editCityCommand);
         register(new ExpandCityCommand(cityManager, editCityCommand));
+        register(new BudgetCommand(cityManager, budgetService, scoreboardService));
         register(new StatsCommand(cityManager, statsService, linkService, migrationService));
         register(new ScanCityCommand(cityManager, statsService));
         register(new LinksCommand(cityManager, linkService, migrationService));
         register(new DisplayCommand(titleService, bossBarService, scoreboardService));
         register(new TopCommand(cityManager));
         register(new ReloadCommand(plugin));
-        register(new DebugCommand(statsService, migrationService));
+        register(new DebugCommand(cityManager, statsService, migrationService, budgetService));
     }
 
     public CitySubcommandRegistry getRegistry() {

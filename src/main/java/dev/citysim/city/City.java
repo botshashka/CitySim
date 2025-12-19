@@ -2,6 +2,7 @@ package dev.citysim.city;
 
 import dev.citysim.stats.EconomyBreakdown;
 import dev.citysim.stats.ProsperityBreakdown;
+import dev.citysim.budget.BudgetSnapshot;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,6 +28,16 @@ public class City {
     public int prosperity = 50;
     public int stations = 0;
 
+    public double treasury = 0.0;
+    public double taxRate = 0.0;
+    public double landTaxRate = 0.0;
+    public int trust = 60;
+    public boolean austerityEnabled = false;
+    public BudgetSnapshot lastBudgetSnapshot = null;
+    public transient double adminFundingMultiplier = 1.0;
+    public transient double logisticsFundingMultiplier = 1.0;
+    public transient double publicWorksFundingMultiplier = 1.0;
+
     public int level = 0;
     public double levelProgress = 0.0;
     public java.util.List<String> mayors = new java.util.ArrayList<>();
@@ -47,6 +58,9 @@ public class City {
     public double landValue = 0.0;
 
     public int migrationZeroPopArrivals = 0;
+    public transient long austerityEnabledAtTick = 0L;
+    public transient long austerityLastDisabledAtTick = 0L;
+    public transient long austerityEnablePromptTick = 0L;
 
     public transient ProsperityBreakdown prosperityBreakdown = null;
     public transient EconomyBreakdown economyBreakdown = null;

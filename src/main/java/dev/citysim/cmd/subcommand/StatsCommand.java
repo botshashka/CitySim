@@ -102,6 +102,7 @@ public class StatsCommand implements CitySubcommand {
         EconomyBreakdown economyBreakdown = city.economyBreakdown;
         int prosperityTotal = economyBreakdown != null ? economyBreakdown.total : prosperity.total;
         int prosperityBase = economyBreakdown != null ? economyBreakdown.base : prosperity.base;
+        city.prosperity = prosperityTotal;
 
         List<String> lines = new ArrayList<>();
         lines.add("");
@@ -116,14 +117,14 @@ public class StatsCommand implements CitySubcommand {
                 formatLandValue(city),
                 city.highrise ? kv("Highrise", "Yes") : null
         ));
-
         lines.add(sectionSpacer());
         lines.add(sectionHeader("PROSPERITY POINTS"));
         if (economyBreakdown != null) {
             lines.add("<white><b>General</b></white>");
             lines.add(joinLine(
                     kv("Employment", formatPointsWithCap(economyBreakdown.employmentUtilization, economyBreakdown.employmentMaxPts, economyBreakdown.employmentNeutral)),
-                    kv("Housing", formatPointsWithCap(economyBreakdown.housingBalance, economyBreakdown.housingMaxPts, 1.0))
+                    kv("Housing", formatPointsWithCap(economyBreakdown.housingBalance, economyBreakdown.housingMaxPts, 1.0)),
+                    kv("Trust", formatPointsWithCap(economyBreakdown.trustPoints, economyBreakdown.trustMaxPts, economyBreakdown.trustNeutral))
             ));
             lines.add(joinLine(
                     kv("Transit", formatPointsWithCap(economyBreakdown.transitCoverage, economyBreakdown.transitMaxPts, economyBreakdown.transitNeutral))
@@ -166,6 +167,10 @@ public class StatsCommand implements CitySubcommand {
         lines.addAll(buildConnectivityLines(city, economyBreakdown));
 
         lines.add(sectionSpacer());
+        lines.add(sectionHeader("OPERATIONS"));
+        addIfPresent(lines, formatOpsLine(city));
+
+        lines.add(sectionSpacer());
         lines.add(sectionHeader("INFRASTRUCTURE"));
         lines.add(joinLine(
                 kv("Homes", "%d/%d".formatted(city.beds, city.population)),
@@ -178,6 +183,7 @@ public class StatsCommand implements CitySubcommand {
         lines.add(sectionSpacer());
         lines.add(sectionHeader("GOVERNANCE"));
         lines.add(joinLine(
+                formatTrustEntry(city),
                 formatMayorEntry(city)
         ));
 
@@ -222,7 +228,10 @@ public class StatsCommand implements CitySubcommand {
         ));
         lines.add(sectionSpacer());
         lines.add(sectionHeader("GOVERNANCE"));
-        lines.add(formatMayorEntry(city));
+        lines.add(joinLine(
+                formatTrustEntry(city),
+                formatMayorEntry(city)
+        ));
         return lines.stream()
                 .filter(Objects::nonNull)
                 .filter(line -> !line.isBlank())
@@ -252,6 +261,12 @@ public class StatsCommand implements CitySubcommand {
                 .collect(Collectors.joining(" <gray>•</gray> "));
     }
 
+    private void addIfPresent(List<String> lines, String line) {
+        if (line != null && !line.isBlank()) {
+            lines.add(line);
+        }
+    }
+
     private String formatNumber(long value) {
         return String.format(Locale.US, "%,d", value);
     }
@@ -262,6 +277,21 @@ public class StatsCommand implements CitySubcommand {
             base += " (" + formatNumber(nitwits) + " nitwits)";
         }
         return base;
+    }
+
+    private String formatOpsLine(City city) {
+        if (city == null || city.lastBudgetSnapshot == null || city.lastBudgetSnapshot.expenses == null) {
+            return null;
+        }
+        var snap = city.lastBudgetSnapshot;
+        int adminPct = snap.expenses.administration != null ? (int) Math.round(snap.expenses.administration.ratio * 100.0) : 100;
+        int logiPct = snap.expenses.logistics != null ? (int) Math.round(snap.expenses.logistics.ratio * 100.0) : 100;
+        int worksPct = snap.expenses.publicWorks != null ? (int) Math.round(snap.expenses.publicWorks.ratio * 100.0) : 100;
+        return joinLine(
+                kv("Administration", adminPct + "%"),
+                kv("Logistics", logiPct + "%"),
+                kv("Public Works", worksPct + "%")
+        );
     }
 
     private String formatShortNumber(double raw) {
@@ -386,25 +416,20 @@ public class StatsCommand implements CitySubcommand {
         String linksValue = "0";
         String topLinkValue = "—";
         if (linkService != null) {
-            int count = Math.max(0, linkService.linkCount(city));
-            linksValue = String.valueOf(count);
+            int rawCount = Math.max(0, linkService.countPhysicalLinks(city));
+            int opsCount = Math.max(0, linkService.countOperationalLinks(city));
+            linksValue = rawCount + " (operational " + opsCount + ")";
             List<CityLink> topLinks = linkService.topLinks(city, 1);
             if (!topLinks.isEmpty()) {
                 CityLink top = topLinks.get(0);
                 String neighbor = top.neighbor() != null ? top.neighbor().name : "?";
-                topLinkValue = "%s (S=%d)".formatted(neighbor, top.strength());
+                topLinkValue = "%s (raw %d | operational %d)".formatted(neighbor, top.rawStrength(), top.opsStrength());
             }
         }
         lines.add(joinLine(
                 kv("Links", linksValue),
                 kv("Top link", topLinkValue)
         ));
-        if (economyBreakdown != null) {
-            lines.add(joinLine(
-                    kv("Transit score", formatSigned(economyBreakdown.transitCoverage))
-            ));
-        }
-
         String migrationValue = "0";
         if (migrationService != null) {
             MigrationService.CityMigrationSnapshot snapshot = migrationService.snapshot(city);
@@ -492,6 +517,24 @@ public class StatsCommand implements CitySubcommand {
         }
         String label = names.size() == 1 ? "Mayor" : "Mayors";
         return kv(label, String.join(", ", names));
+    }
+
+    private String formatTrustEntry(City city) {
+        if (city == null) {
+            return null;
+        }
+        int trust = Math.max(0, Math.min(100, city.trust));
+        String label;
+        if (trust >= 60) {
+            label = "Stable";
+        } else if (trust >= 40) {
+            label = "Tense";
+        } else if (trust >= 20) {
+            label = "Unrest";
+        } else {
+            label = "Crisis";
+        }
+        return kv("Trust", trust + " (" + label + ")");
     }
 
     private List<String> resolveMayorNames(City city) {

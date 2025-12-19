@@ -465,7 +465,7 @@ public class MigrationService implements Runnable {
                 continue;
             }
 
-            double strength = Math.max(0, link.strength());
+            double strength = Math.max(0, link.rawStrength());
 
             DestinationCandidate candidate = new DestinationCandidate(destination, link, strength, prosperityDelta);
             rawCandidates.add(candidate);

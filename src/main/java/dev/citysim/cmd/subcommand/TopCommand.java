@@ -3,6 +3,7 @@ package dev.citysim.cmd.subcommand;
 import dev.citysim.city.City;
 import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandMessages;
+import dev.citysim.util.CurrencyFormatter;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
@@ -33,7 +34,7 @@ public class TopCommand implements CitySubcommand {
 
     @Override
     public List<Component> help() {
-        return List.of(CommandMessages.help("/city top [prosperity|pop|gdp|gdppc|landvalue]"));
+        return List.of(CommandMessages.help("/city top [prosperity|pop|gdp|gdppc|landvalue|trust|budget]"));
     }
 
     @Override
@@ -59,7 +60,7 @@ public class TopCommand implements CitySubcommand {
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
-            return List.of("prosperity", "pop", "gdp", "gdppc", "landvalue");
+            return List.of("prosperity", "pop", "gdp", "gdppc", "landvalue", "trust", "budget");
         }
         return List.of();
     }
@@ -146,6 +147,37 @@ public class TopCommand implements CitySubcommand {
                 return "%2d. %s — Land %s • pop %s • prosp %d%%"
                         .formatted(rank, city.name, formatShort(city.landValue), formatNumber(city.population), city.prosperity);
             }
+        },
+        TRUST("trust") {
+            @Override
+            Comparator<City> comparator() {
+                return Comparator
+                        .comparingInt((City c) -> Math.max(0, Math.min(100, c.trust))).reversed()
+                        .thenComparing(City::isGhostTown)
+                        .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
+            }
+
+            @Override
+            String formatLine(int rank, City city) {
+                return "%2d. %s — Trust %d • prosp %d%%"
+                        .formatted(rank, city.name, Math.max(0, Math.min(100, city.trust)), city.prosperity);
+            }
+        },
+        BUDGET("budget") {
+            @Override
+            Comparator<City> comparator() {
+                return Comparator
+                        .comparingDouble((City c) -> currentTreasury(c)).reversed()
+                        .thenComparing(City::isGhostTown)
+                        .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER);
+            }
+
+            @Override
+            String formatLine(int rank, City city) {
+                double treasury = currentTreasury(city);
+                return "%2d. %s — Budget %s • prosp %d%%"
+                        .formatted(rank, city.name, CurrencyFormatter.format(treasury), city.prosperity);
+            }
         };
 
         final String label;
@@ -171,6 +203,8 @@ public class TopCommand implements CitySubcommand {
                 case "gdp" -> GDP;
                 case "gdppc", "gdppercapita" -> GDP_PER_CAPITA;
                 case "land", "landvalue" -> LAND_VALUE;
+                case "trust" -> TRUST;
+                case "budget" -> BUDGET;
                 default -> PROSPERITY;
             };
         }
@@ -194,7 +228,19 @@ public class TopCommand implements CitySubcommand {
         return String.format(Locale.US, "%,.1f%s", value, suffixes[index]);
     }
 
-    private static String formatNumber(long value) {
-        return String.format(Locale.US, "%,d", value);
-    }
+        private static String formatNumber(long value) {
+            return String.format(Locale.US, "%,d", value);
+        }
+
+        private static double currentTreasury(City city) {
+            if (city == null) {
+                return 0.0;
+            }
+            double live = city.treasury;
+            if (Double.isFinite(live)) {
+                return live;
+            }
+            double snapshotValue = city.lastBudgetSnapshot != null ? city.lastBudgetSnapshot.treasuryAfter : 0.0;
+            return Double.isFinite(snapshotValue) ? snapshotValue : 0.0;
+        }
 }

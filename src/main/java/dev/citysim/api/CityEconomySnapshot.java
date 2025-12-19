@@ -12,7 +12,6 @@ public record CityEconomySnapshot(
         double nature,
         double pollutionPenalty,
         double overcrowdingPenalty,
-        double maintenanceArea,
         double maintenanceLighting,
         double maintenanceTransit,
         int total,
