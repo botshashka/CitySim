@@ -252,6 +252,7 @@ public class BudgetCommand implements CitySubcommand {
             CommandFeedback.sendError(sender, "Provide a city id or stand in a city: /city budget austerity <on|off> [cityId]");
             return true;
         }
+        long nowTick = currentTick(sender);
 
         if (enable && city.austerityEnabled) {
             CommandFeedback.sendSuccess(sender, "Austerity for " + city.name + " is already ON.");
@@ -262,12 +263,29 @@ public class BudgetCommand implements CitySubcommand {
             return true;
         }
 
+        if (enable) {
+            long sinceDisabled = nowTick - city.austerityLastDisabledAtTick;
+            long cooldownTicks = budgetService != null ? budgetService.getAusterityCooldownTicks() : 0L;
+            if (city.austerityLastDisabledAtTick > 0 && sinceDisabled < cooldownTicks) {
+                long remaining = cooldownTicks - sinceDisabled;
+                CommandFeedback.sendError(sender, "Austerity was just disabled. Wait ~" + ticksToSeconds(remaining) + "s before enabling again.");
+                return true;
+            }
+        } else {
+            long sinceEnabled = nowTick - city.austerityEnabledAtTick;
+            long minOnTicks = budgetService != null ? budgetService.getAusterityMinOnTicks() : 0L;
+            if (city.austerityEnabledAtTick > 0 && sinceEnabled < minOnTicks) {
+                long remaining = minOnTicks - sinceEnabled;
+                CommandFeedback.sendError(sender, "Austerity must stay ON for ~" + ticksToSeconds(remaining) + "s before disabling.");
+                return true;
+            }
+        }
+
         if (enable && !confirmAusterity(sender, city, args)) {
             return true;
         }
 
         city.austerityEnabled = enable;
-        long nowTick = currentTick(sender);
         if (enable) {
             city.austerityEnabledAtTick = nowTick;
         } else {
@@ -319,6 +337,13 @@ public class BudgetCommand implements CitySubcommand {
             return p.getWorld().getFullTime();
         }
         return System.currentTimeMillis() / 50L;
+    }
+
+    private long ticksToSeconds(long ticks) {
+        if (ticks <= 0) {
+            return 0;
+        }
+        return ticks / 20L;
     }
 
     private City resolveCity(CommandSender sender, String[] args) {

@@ -30,6 +30,8 @@ public class BudgetService {
     private double landTaxBaseTolerance = BudgetDefaults.LAND_TRUST_BASE_TOLERANCE;
     private double landTaxToleranceBonus = BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS;
     private double landTaxToleranceMin = BudgetDefaults.LAND_TRUST_TOLERANCE_MIN;
+    private long austerityMinOnIntervals = BudgetDefaults.AUSTERITY_MIN_ON_INTERVALS;
+    private long austerityCooldownIntervals = BudgetDefaults.AUSTERITY_COOLDOWN_INTERVALS;
 
     private static final long PREVIEW_TTL_MS = 5000L;
 
@@ -58,6 +60,8 @@ public class BudgetService {
         landTaxBaseTolerance = clamp(config.getDouble("budget.land_tax.tolerance.base", BudgetDefaults.LAND_TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
         landTaxToleranceBonus = clamp(config.getDouble("budget.land_tax.tolerance.bonus", BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS), 0.0, 1.0);
         landTaxToleranceMin = clamp(config.getDouble("budget.land_tax.tolerance.min", BudgetDefaults.LAND_TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
+        austerityMinOnIntervals = Math.max(0, config.getLong("budget.austerity.min_on_intervals", BudgetDefaults.AUSTERITY_MIN_ON_INTERVALS));
+        austerityCooldownIntervals = Math.max(0, config.getLong("budget.austerity.cooldown_intervals", BudgetDefaults.AUSTERITY_COOLDOWN_INTERVALS));
     }
 
     public void start() {
@@ -211,6 +215,14 @@ public class BudgetService {
 
     public long getBudgetIntervalTicks() {
         return scheduler.getBudgetIntervalTicks();
+    }
+
+    public long getAusterityMinOnTicks() {
+        return Math.max(0L, austerityMinOnIntervals * getBudgetIntervalTicks());
+    }
+
+    public long getAusterityCooldownTicks() {
+        return Math.max(0L, austerityCooldownIntervals * getBudgetIntervalTicks());
     }
 
     private BudgetSnapshot computeSnapshot(City city, boolean preview, TrustAdjustmentMode trustMode) {
