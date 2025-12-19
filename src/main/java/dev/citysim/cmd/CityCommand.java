@@ -69,14 +69,14 @@ public class CityCommand implements CommandExecutor {
         EditCityCommand editCityCommand = new EditCityCommand(cityManager, statsService, visualizationService, selectionTracker);
         register(editCityCommand);
         register(new ExpandCityCommand(cityManager, editCityCommand));
-        register(new BudgetCommand(cityManager, budgetService));
+        register(new BudgetCommand(cityManager, budgetService, scoreboardService));
         register(new StatsCommand(cityManager, statsService, linkService, migrationService));
         register(new ScanCityCommand(cityManager, statsService));
         register(new LinksCommand(cityManager, linkService, migrationService));
         register(new DisplayCommand(titleService, bossBarService, scoreboardService));
         register(new TopCommand(cityManager));
         register(new ReloadCommand(plugin));
-        register(new DebugCommand(statsService, migrationService));
+        register(new DebugCommand(cityManager, statsService, migrationService, budgetService));
     }
 
     public CitySubcommandRegistry getRegistry() {

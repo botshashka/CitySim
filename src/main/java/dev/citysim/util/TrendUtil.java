@@ -46,7 +46,8 @@ public final class TrendUtil {
         JOBS_DELTA(0.01, false),
         HOUSING_DELTA(0.01, false),
         LINKS(0.0, true),
-        MIGRATION(0.0, true);
+        MIGRATION(0.0, true),
+        TRUST(0.5, false);
 
         private final double threshold;
         private final boolean requireExactChange;

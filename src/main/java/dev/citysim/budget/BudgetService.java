@@ -7,18 +7,25 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.Plugin;
 
 import java.util.logging.Level;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Objects;
 
 public class BudgetService {
 
     private final Plugin plugin;
     private final CityManager cityManager;
     private final BudgetUpdateScheduler scheduler;
+    private final Map<String, PreviewCacheEntry> previewCache = new HashMap<>();
+    private final Map<String, Double> trustCarry = new HashMap<>();
 
     private boolean landTaxEnabled = true;
     private double landTaxRateDefault = BudgetDefaults.DEFAULT_LAND_TAX_RATE;
     private double adminPerCapita = BudgetDefaults.ADMIN_PER_CAPITA;
     private double transitCost = BudgetDefaults.TRANSIT_COST;
     private double lightingCost = BudgetDefaults.LIGHTING_COST;
+
+    private static final long PREVIEW_TTL_MS = 5000L;
 
     public BudgetService(Plugin plugin, CityManager cityManager) {
         this.plugin = plugin;
@@ -73,7 +80,7 @@ public class BudgetService {
         if (city == null) {
             return null;
         }
-        BudgetSnapshot snapshot = computeSnapshot(city, false);
+        BudgetSnapshot snapshot = computeSnapshot(city, false, TrustAdjustmentMode.TICK);
         if (snapshot == null) {
             return null;
         }
@@ -86,7 +93,24 @@ public class BudgetService {
     }
 
     public BudgetSnapshot previewCity(City city) {
-        return computeSnapshot(city, true);
+        return previewCity(city, false);
+    }
+
+    public BudgetSnapshot previewCity(City city, boolean force) {
+        if (city == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        PreviewCacheEntry cached = previewCache.get(city.id);
+        PreviewSignature signature = PreviewSignature.from(city, landTaxEnabled);
+        if (!force && cached != null && cached.signature.equals(signature) && (now - cached.timestamp) < PREVIEW_TTL_MS) {
+            return cached.snapshot;
+        }
+        BudgetSnapshot snapshot = computeSnapshot(city, true, TrustAdjustmentMode.PREVIEW);
+        if (snapshot != null) {
+            previewCache.put(city.id, new PreviewCacheEntry(signature, snapshot, now));
+        }
+        return snapshot;
     }
 
     public void tickAllCities() {
@@ -108,6 +132,7 @@ public class BudgetService {
         }
         double sanitized = Math.max(0.0, Math.min(BudgetDefaults.MAX_TAX_RATE, rate));
         city.taxRate = sanitized;
+        invalidatePreview(city);
     }
 
     public void setLandTaxRate(City city, double rate) {
@@ -116,6 +141,23 @@ public class BudgetService {
         }
         double sanitized = Math.max(0.0, Math.min(1.0, rate));
         city.landTaxRate = sanitized;
+        invalidatePreview(city);
+    }
+
+    public BudgetSnapshot applyPolicyChangeTrust(City city) {
+        BudgetSnapshot snapshot = computeSnapshot(city, true, TrustAdjustmentMode.IMMEDIATE_POLICY);
+        if (snapshot != null) {
+            city.trust = snapshot.trust;
+            refreshTrustInEconomyBreakdown(city);
+            previewCache.remove(city.id);
+        }
+        return snapshot;
+    }
+
+    public void invalidatePreview(City city) {
+        if (city != null) {
+            previewCache.remove(city.id);
+        }
     }
 
     public boolean isLandTaxEnabled() {
@@ -142,7 +184,7 @@ public class BudgetService {
         return scheduler.getBudgetIntervalTicks();
     }
 
-    private BudgetSnapshot computeSnapshot(City city, boolean preview) {
+    private BudgetSnapshot computeSnapshot(City city, boolean preview, TrustAdjustmentMode trustMode) {
         if (city == null) {
             return null;
         }
@@ -157,11 +199,13 @@ public class BudgetService {
         if (sanitizedTax <= 0.0 && city.lastBudgetSnapshot == null) {
             sanitizedTax = BudgetDefaults.DEFAULT_TAX_RATE;
         }
-        city.taxRate = sanitizedTax;
-        city.landTaxRate = sanitizedLandTax;
+        if (!preview) {
+            city.taxRate = sanitizedTax;
+            city.landTaxRate = sanitizedLandTax;
+        }
 
-        BudgetIncome income = computeIncome(city);
-        BudgetExpenses expenses = computeExpenses(city, income);
+        BudgetIncome income = computeIncome(city, sanitizedTax, sanitizedLandTax);
+        BudgetExpenses expenses = computeExpenses(city, income, sanitizedTax);
 
         snapshot.income = income;
         snapshot.expenses = expenses;
@@ -173,28 +217,49 @@ public class BudgetService {
         snapshot.publicWorksEffectiveMultiplier = effectivePublicWorksMultiplier(city, snapshot.publicWorksMultiplier);
 
         snapshot.toleratedTax = toleratedTax(city);
-        snapshot.collectionEfficiency = collectionEfficiency(city);
-        snapshot.trustDelta = computeTrustDelta(city, snapshot);
-        snapshot.trust = clampTrust(city.trust + snapshot.trustDelta);
+        snapshot.collectionEfficiency = collectionEfficiency(city, sanitizedTax, snapshot.toleratedTax);
+        double rawDelta = computeTrustDelta(city, snapshot, sanitizedTax, trustMode);
+        double carry = trustCarry.getOrDefault(city.id, 0.0);
+        double adjustedDelta = rawDelta + carry;
+        double appliedDelta;
+        double newCarry = carry;
+        if (trustMode == TrustAdjustmentMode.IMMEDIATE_POLICY) {
+            appliedDelta = adjustedDelta;
+            newCarry = 0.0;
+        } else {
+            appliedDelta = Math.floor(adjustedDelta);
+            newCarry = adjustedDelta - appliedDelta;
+        }
+        snapshot.trustDelta = appliedDelta;
+        if (!preview || trustMode == TrustAdjustmentMode.IMMEDIATE_POLICY) {
+            trustCarry.put(city.id, newCarry);
+        }
+        if (trustMode == TrustAdjustmentMode.IMMEDIATE_POLICY) {
+            snapshot.trust = clampTrust((int) Math.round(city.trust + appliedDelta));
+        } else {
+            snapshot.trust = smoothTrust(city.trust, appliedDelta);
+        }
         snapshot.trustState = trustState(snapshot.trust);
         snapshot.austerityEnabled = city.austerityEnabled;
 
         snapshot.net = income.effectiveTotal - expenses.totalPaid;
         snapshot.treasuryAfter = snapshot.treasuryBefore + snapshot.net;
 
-        city.trust = snapshot.trust;
-        city.adminFundingMultiplier = snapshot.adminEffectiveMultiplier;
-        city.logisticsFundingMultiplier = snapshot.logisticsEffectiveMultiplier;
-        city.publicWorksFundingMultiplier = snapshot.publicWorksEffectiveMultiplier;
+        if (!preview) {
+            city.trust = snapshot.trust;
+            city.adminFundingMultiplier = snapshot.adminEffectiveMultiplier;
+            city.logisticsFundingMultiplier = snapshot.logisticsEffectiveMultiplier;
+            city.publicWorksFundingMultiplier = snapshot.publicWorksEffectiveMultiplier;
+            refreshTrustInEconomyBreakdown(city);
+            previewCache.remove(city.id);
+        }
 
-        refreshTrustInEconomyBreakdown(city);
         return snapshot;
     }
 
-    private BudgetIncome computeIncome(City city) {
+    private BudgetIncome computeIncome(City city, double taxRate, double landTaxRate) {
         BudgetIncome income = new BudgetIncome();
-        income.taxRate = Math.max(0.0, Math.min(1.0, city.taxRate));
-        city.taxRate = income.taxRate;
+        income.taxRate = Math.max(0.0, Math.min(1.0, taxRate));
 
         double gdp = Math.max(0.0, city.gdp);
         income.gdpTax = gdp * income.taxRate;
@@ -202,12 +267,11 @@ public class BudgetService {
         double landTax = 0.0;
         if (landTaxEnabled) {
             double landValueRatio = Math.max(0.0, city.landValue) / 100.0;
-            double landRate = city.landTaxRate;
+            double landRate = landTaxRate;
             if (!Double.isFinite(landRate) || landRate < 0.0) {
                 landRate = landTaxRateDefault;
             }
             landRate = Math.max(0.0, Math.min(1.0, landRate));
-            city.landTaxRate = landRate;
             landTax = Math.max(0.0, city.population) * landValueRatio * landRate;
         }
         income.landTaxEnabled = landTaxEnabled;
@@ -216,7 +280,7 @@ public class BudgetService {
         return income;
     }
 
-    private BudgetExpenses computeExpenses(City city, BudgetIncome income) {
+    private BudgetExpenses computeExpenses(City city, BudgetIncome income, double taxRate) {
         double available = snapshotAvailableForSpending(city, income);
         EconomyBreakdown breakdown = city.economyBreakdown;
         double maintenanceTransit = breakdown != null ? breakdown.maintenanceTransit : 0.0;
@@ -240,9 +304,11 @@ public class BudgetService {
         SubsystemBudget publicWorks = SubsystemBudget.of(BudgetSubsystem.PUBLIC_WORKS, publicWorksRequired, publicWorksPaid);
 
         income.toleratedTax = toleratedTax(city);
-        income.collectionEfficiency = collectionEfficiency(city);
+        income.collectionEfficiency = collectionEfficiency(city, taxRate, income.toleratedTax);
 
-        double effectiveIncome = income.rawTotal * effectiveAdminMultiplier(city, admin.multiplier) * income.collectionEfficiency;
+        double over = Math.max(0.0, income.taxRate - income.toleratedTax);
+        double overIncomePenalty = over > 0 ? clamp(1.0 - over * 2.0, 0.25, 1.0) : 1.0;
+        double effectiveIncome = income.rawTotal * effectiveAdminMultiplier(city, admin.multiplier) * income.collectionEfficiency * overIncomePenalty;
         income.adminMultiplier = admin.multiplier;
         income.effectiveTotal = effectiveIncome;
 
@@ -296,9 +362,14 @@ public class BudgetService {
         return clampMultiplier(capped);
     }
 
-    private double collectionEfficiency(City city) {
+    private double collectionEfficiency(City city, double taxRate, double toleratedTax) {
         double trustRatio = clampMultiplier(city.trust / 100.0);
         double floor = BudgetDefaults.TRUST_COLLECTION_FLOOR;
+        if (taxRate > toleratedTax) {
+            double over = taxRate - toleratedTax;
+            double overShare = clamp(over / Math.max(toleratedTax, 0.01), 0.0, 1.0);
+            floor = BudgetDefaults.TRUST_COLLECTION_FLOOR + (BudgetDefaults.OVER_TAX_COLLECTION_FLOOR - BudgetDefaults.TRUST_COLLECTION_FLOOR) * overShare;
+        }
         return floor + (1.0 - floor) * trustRatio;
     }
 
@@ -309,8 +380,8 @@ public class BudgetService {
         return tolerated;
     }
 
-    private int computeTrustDelta(City city, BudgetSnapshot snapshot) {
-        int delta = 0;
+    private double computeTrustDelta(City city, BudgetSnapshot snapshot, double taxRate, TrustAdjustmentMode mode) {
+        double delta = 0;
         boolean adminOffline = snapshot.expenses.administration != null && snapshot.expenses.administration.state == BudgetSubsystemState.OFFLINE;
         boolean logiOffline = snapshot.expenses.logistics != null && snapshot.expenses.logistics.state == BudgetSubsystemState.OFFLINE;
         boolean worksOffline = snapshot.expenses.publicWorks != null && snapshot.expenses.publicWorks.state == BudgetSubsystemState.OFFLINE;
@@ -321,24 +392,37 @@ public class BudgetService {
         boolean noneOffline = !anyOffline;
 
         double toleratedTax = snapshot.toleratedTax;
-        if (allFunded && city.taxRate <= toleratedTax && !city.austerityEnabled) {
-            delta += 2;
-        } else if (noneOffline && city.taxRate <= toleratedTax && !city.austerityEnabled) {
+        if (allFunded && taxRate <= toleratedTax && !city.austerityEnabled) {
+            delta += 1;
+        } else if (noneOffline && taxRate <= toleratedTax && !city.austerityEnabled) {
             delta += 1;
         }
         if (anyOffline) {
-            delta -= 2;
+            delta -= 1;
         }
 
-        if (city.taxRate > toleratedTax) {
-            double over = city.taxRate - toleratedTax;
-            int taxPenalty = (int) Math.min(3, Math.round(over * BudgetDefaults.OVER_TAX_SCALE));
+        if (taxRate > toleratedTax) {
+            double over = taxRate - toleratedTax;
+            int taxPenalty = (int) Math.round(over * BudgetDefaults.OVER_TAX_SCALE);
+            if (mode != TrustAdjustmentMode.IMMEDIATE_POLICY) {
+                taxPenalty = (int) Math.min(3, taxPenalty);
+            }
+            if (taxPenalty < 1 && over > 0) {
+                taxPenalty = 1;
+            }
             delta -= taxPenalty;
         }
 
-        delta = Math.max(-3, Math.min(2, delta));
-        if (city.austerityEnabled && delta > 0) {
-            delta = 0;
+        if (mode != TrustAdjustmentMode.IMMEDIATE_POLICY) {
+            if (taxRate <= toleratedTax) {
+                delta = Math.max(BudgetDefaults.TRUST_DELTA_CAP_NEG, Math.min(BudgetDefaults.TRUST_DELTA_CAP_POS, delta));
+            }
+            if (city.austerityEnabled && delta > 0) {
+                delta = 0;
+            }
+            if (withinNeutralBand(city.trust) && delta > 0) {
+                delta = Math.max(0.5, delta * 0.5);
+            }
         }
         return delta;
     }
@@ -364,6 +448,21 @@ public class BudgetService {
             return "UNREST";
         }
         return "CRISIS";
+    }
+
+    private boolean withinNeutralBand(int trust) {
+        return trust >= BudgetDefaults.TRUST_NEUTRAL_BAND_MIN && trust <= BudgetDefaults.TRUST_NEUTRAL_BAND_MAX;
+    }
+
+    private int smoothTrust(int current, double delta) {
+        double target = clamp(current + delta, 0.0, 100.0);
+        double alpha = clamp(BudgetDefaults.TRUST_EMA_ALPHA, 0.0, 1.0);
+        double blended = current + alpha * (target - current);
+        int smoothed = clampTrust((int) Math.round(blended));
+        if (smoothed == current && Math.abs(target - current) >= 1.0 && delta != 0.0) {
+            smoothed = clampTrust(current + (target > current ? 1 : -1));
+        }
+        return smoothed;
     }
 
     private double clampMultiplier(double value) {
@@ -411,5 +510,44 @@ public class BudgetService {
         breakdown.trustPoints = newTrustPoints;
         double adjustedTotal = breakdown.total - oldTrustPoints + newTrustPoints;
         breakdown.total = (int) Math.round(clamp(adjustedTotal, 0.0, 100.0));
+    }
+
+    private record PreviewSignature(double taxRate,
+                                    double landTaxRate,
+                                    boolean austerity,
+                                    double treasury,
+                                    double gdp,
+                                    double landValue,
+                                    int population,
+                                    int employed,
+                                    double maintenanceTransit,
+                                    double maintenanceLighting,
+                                    boolean landTaxEnabled) {
+        static PreviewSignature from(City city, boolean landTaxEnabled) {
+            EconomyBreakdown breakdown = city.economyBreakdown;
+            double maintenanceTransit = breakdown != null ? breakdown.maintenanceTransit : 0.0;
+            double maintenanceLighting = breakdown != null ? breakdown.maintenanceLighting : 0.0;
+            return new PreviewSignature(
+                    city.taxRate,
+                    city.landTaxRate,
+                    city.austerityEnabled,
+                    city.treasury,
+                    city.gdp,
+                    city.landValue,
+                    city.population,
+                    city.employed,
+                    maintenanceTransit,
+                    maintenanceLighting,
+                    landTaxEnabled
+            );
+        }
+    }
+
+    private record PreviewCacheEntry(PreviewSignature signature, BudgetSnapshot snapshot, long timestamp) { }
+
+    private enum TrustAdjustmentMode {
+        TICK,
+        PREVIEW,
+        IMMEDIATE_POLICY
     }
 }

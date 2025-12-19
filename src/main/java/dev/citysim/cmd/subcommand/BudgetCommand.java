@@ -10,6 +10,7 @@ import dev.citysim.city.CityManager;
 import dev.citysim.cmd.CommandFeedback;
 import dev.citysim.cmd.CommandMessages;
 import dev.citysim.stats.EconomyBreakdown;
+import dev.citysim.ui.ScoreboardService;
 import dev.citysim.util.AdventureMessages;
 import dev.citysim.util.CurrencyFormatter;
 import net.kyori.adventure.text.Component;
@@ -28,10 +29,12 @@ public class BudgetCommand implements CitySubcommand {
 
     private final CityManager cityManager;
     private final BudgetService budgetService;
+    private final ScoreboardService scoreboardService;
 
-    public BudgetCommand(CityManager cityManager, BudgetService budgetService) {
+    public BudgetCommand(CityManager cityManager, BudgetService budgetService, ScoreboardService scoreboardService) {
         this.cityManager = cityManager;
         this.budgetService = budgetService;
+        this.scoreboardService = scoreboardService;
     }
 
     @Override
@@ -119,7 +122,7 @@ public class BudgetCommand implements CitySubcommand {
             return true;
         }
 
-        BudgetSnapshot snapshot = budgetService.previewCity(city);
+        BudgetSnapshot snapshot = budgetService.previewCity(city, true);
         if (snapshot == null) {
             snapshot = budgetService.ensureSnapshot(city);
         }
@@ -184,7 +187,9 @@ public class BudgetCommand implements CitySubcommand {
         }
 
         budgetService.setTaxRate(city, rate);
+        budgetService.applyPolicyChangeTrust(city);
         CommandFeedback.sendSuccess(sender, "Set tax rate for " + city.name + " to " + formatPercent(city.taxRate) + ".");
+        refreshBudget(city);
         return true;
     }
 
@@ -217,7 +222,9 @@ public class BudgetCommand implements CitySubcommand {
         }
 
         budgetService.setLandTaxRate(city, rate);
+        budgetService.applyPolicyChangeTrust(city);
         CommandFeedback.sendSuccess(sender, "Set land tax rate for " + city.name + " to " + formatPercent(city.landTaxRate) + ".");
+        refreshBudget(city);
         return true;
     }
 
@@ -246,7 +253,10 @@ public class BudgetCommand implements CitySubcommand {
             return true;
         }
         city.austerityEnabled = enable;
+        budgetService.applyPolicyChangeTrust(city);
         CommandFeedback.sendSuccess(sender, "Austerity for " + city.name + " set to " + (enable ? "ON" : "OFF") + ".");
+        budgetService.invalidatePreview(city);
+        refreshBudget(city);
         return true;
     }
 
@@ -259,6 +269,16 @@ public class BudgetCommand implements CitySubcommand {
             city = cityManager.cityAt(player.getLocation());
         }
         return city;
+    }
+
+    private void refreshBudget(City city) {
+        if (city == null) {
+            return;
+        }
+        budgetService.previewCity(city, true);
+        if (scoreboardService != null) {
+            scoreboardService.refreshNow();
+        }
     }
 
     private String buildSummaryMessage(City city, BudgetSnapshot snapshot) {

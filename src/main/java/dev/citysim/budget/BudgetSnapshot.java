@@ -20,7 +20,7 @@ public class BudgetSnapshot {
     public double toleratedTax;
     public double collectionEfficiency;
     public int trust;
-    public int trustDelta;
+    public double trustDelta;
     public String trustState;
     public boolean austerityEnabled;
 

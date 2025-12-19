@@ -115,6 +115,10 @@ public class ScoreboardService {
         return displayPreferencesStore.isScoreboardEnabled(player.getUniqueId());
     }
 
+    public void refreshNow() {
+        tick();
+    }
+
     private void tick() {
         var manager = Bukkit.getScoreboardManager();
         if (manager == null) {
@@ -231,16 +235,17 @@ public class ScoreboardService {
     }
 
     private List<String> buildLines(City city, Mode mode) {
-        List<String> raw = mode == Mode.FULL ? buildFullLines(city) : buildCompactLines(city);
+        BudgetSnapshot preview = budgetService != null ? budgetService.previewCity(city) : null;
+        List<String> raw = mode == Mode.FULL ? buildFullLines(city, preview) : buildCompactLines(city, preview);
         return decorateLines(raw);
     }
 
-    private List<String> buildFullLines(City city) {
+    private List<String> buildFullLines(City city, BudgetSnapshot preview) {
         List<String> lines = new ArrayList<>(12);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
-        addIfPresent(lines, formatTrustLine(city));
-        addIfPresent(lines, formatBudgetLine(city));
+        addIfPresent(lines, formatTrustLine(city, preview));
+        addIfPresent(lines, formatBudgetLine(city, preview));
         addIfPresent(lines, formatGdpLine(city));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatLandLine(city));
@@ -252,11 +257,11 @@ public class ScoreboardService {
         return lines;
     }
 
-    private List<String> buildCompactLines(City city) {
+    private List<String> buildCompactLines(City city, BudgetSnapshot preview) {
         List<String> lines = new ArrayList<>(5);
         addIfPresent(lines, formatProsperityLine(city));
         addIfPresent(lines, formatPopulationLine(city));
-        addIfPresent(lines, formatBudgetLine(city));
+        addIfPresent(lines, formatBudgetLine(city, preview));
         addIfPresent(lines, formatGdpPerCapitaLine(city));
         addIfPresent(lines, formatSectorLine(city));
         return lines;
@@ -287,11 +292,10 @@ public class ScoreboardService {
         return formatLine(NamedTextColor.GREEN, "Pop: ", formatted);
     }
 
-    private String formatBudgetLine(City city) {
-        if (city == null || budgetService == null) {
+    private String formatBudgetLine(City city, BudgetSnapshot snapshot) {
+        if (city == null) {
             return null;
         }
-        BudgetSnapshot snapshot = budgetService.previewCity(city);
         if (snapshot == null) {
             snapshot = city.lastBudgetSnapshot;
         }
@@ -306,13 +310,18 @@ public class ScoreboardService {
         return formatLine(NamedTextColor.GOLD, "Budget: ", treasury + " (" + net + ")");
     }
 
-    private String formatTrustLine(City city) {
+    private String formatTrustLine(City city, BudgetSnapshot snapshot) {
         if (city == null) {
             return null;
         }
-        int trust = Math.max(0, Math.min(100, city.trust));
+        if (snapshot == null) {
+            snapshot = city.lastBudgetSnapshot;
+        }
+        int trust = snapshot != null ? snapshot.trust : city.trust;
+        trust = Math.max(0, Math.min(100, trust));
         String label = trustLabel(trust);
-        return formatLine(NamedTextColor.AQUA, "Trust: ", trust + " (" + label + ")");
+        TrendDirection trend = arrowForMetric(city, TrendUtil.Metric.TRUST, trust);
+        return formatLineWithArrow(NamedTextColor.AQUA, "Trust: ", trust + " (" + label + ")", trend);
     }
 
     private String trustLabel(int trust) {
