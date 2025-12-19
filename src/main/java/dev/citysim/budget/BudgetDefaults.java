@@ -29,6 +29,7 @@ public final class BudgetDefaults {
     public static final double AUSTERITY_TRUST_IMPACT_MIN = 8.0;
     public static final long AUSTERITY_MIN_ON_INTERVALS = 2L;
     public static final long AUSTERITY_COOLDOWN_INTERVALS = 2L;
+    public static final long AUSTERITY_CONFIRM_WINDOW_INTERVALS = 1L;
     public static final double TRUST_NEUTRAL_BAND_MIN = 50.0;
     public static final double TRUST_NEUTRAL_BAND_MAX = 70.0;
     public static final int TRUST_DELTA_CAP_POS = 1;

@@ -301,8 +301,8 @@ public class BudgetCommand implements CitySubcommand {
     private boolean confirmAusterity(CommandSender sender, City city, String[] args) {
         long nowTick = currentTick(sender);
         long lastPrompt = city.austerityEnablePromptTick;
-        long interval = budgetService != null ? budgetService.getBudgetIntervalTicks() : 6000L;
-        if (nowTick > 0 && nowTick - lastPrompt <= interval / 2 && city.austerityEnablePromptTick != 0L) {
+        long window = budgetService != null ? budgetService.getAusterityConfirmWindowTicks() : 3000L;
+        if (nowTick > 0 && nowTick - lastPrompt <= window && city.austerityEnablePromptTick != 0L) {
             city.austerityEnablePromptTick = 0L;
             return true;
         }
@@ -325,7 +325,7 @@ public class BudgetCommand implements CitySubcommand {
         lines.add("<white>Current trust: %d → projected: %d</white>".formatted(trustBefore, projectedTrust));
         lines.add("<white>Admin/Logistics/Public Works capped at %.0f%% while ON.</white>".formatted(cap * 100.0));
         String rerun = "/city budget austerity on" + (args != null && args.length >= 2 ? " " + args[1] : "");
-        lines.add("<gray>Run %s again within ~%ds to confirm.</gray>".formatted(rerun, Math.max(1, (int) (interval / 20 / 2))));
+        lines.add("<gray>Run %s again within ~%ds to confirm.</gray>".formatted(rerun, Math.max(1, (int) (window / 20))));
         sender.sendMessage(AdventureMessages.mini(String.join("\n", lines)));
 
         city.austerityEnablePromptTick = nowTick;
@@ -333,9 +333,6 @@ public class BudgetCommand implements CitySubcommand {
     }
 
     private long currentTick(CommandSender sender) {
-        if (sender instanceof Player p) {
-            return p.getWorld().getFullTime();
-        }
         return System.currentTimeMillis() / 50L;
     }
 

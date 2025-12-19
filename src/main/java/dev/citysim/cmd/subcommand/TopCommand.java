@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import dev.citysim.util.FormatUtil;
 import java.util.Locale;
 
 public class TopCommand implements CitySubcommand {
@@ -113,7 +114,7 @@ public class TopCommand implements CitySubcommand {
             @Override
             String formatLine(int rank, City city) {
                 return "%2d. %s — GDP %s • pop %s • prosp %d%%"
-                        .formatted(rank, city.name, formatShort(city.gdp), formatNumber(city.population), city.prosperity);
+                        .formatted(rank, city.name, FormatUtil.formatShort(city.gdp), FormatUtil.formatNumber(city.population), city.prosperity);
             }
         },
         GDP_PER_CAPITA("GDP per capita") {
@@ -129,7 +130,7 @@ public class TopCommand implements CitySubcommand {
             @Override
             String formatLine(int rank, City city) {
                 return "%2d. %s — GDP/cap %s • pop %s • prosp %d%%"
-                        .formatted(rank, city.name, formatShort(city.gdpPerCapita), formatNumber(city.population), city.prosperity);
+                        .formatted(rank, city.name, FormatUtil.formatShort(city.gdpPerCapita), FormatUtil.formatNumber(city.population), city.prosperity);
             }
         },
         LAND_VALUE("land value") {
@@ -145,7 +146,7 @@ public class TopCommand implements CitySubcommand {
             @Override
             String formatLine(int rank, City city) {
                 return "%2d. %s — Land %s • pop %s • prosp %d%%"
-                        .formatted(rank, city.name, formatShort(city.landValue), formatNumber(city.population), city.prosperity);
+                        .formatted(rank, city.name, FormatUtil.formatShort(city.landValue), FormatUtil.formatNumber(city.population), city.prosperity);
             }
         },
         TRUST("trust") {
@@ -209,28 +210,6 @@ public class TopCommand implements CitySubcommand {
             };
         }
     }
-
-    private static String formatShort(double value) {
-        if (!Double.isFinite(value) || value == 0.0) {
-            return "0";
-        }
-        double abs = Math.abs(value);
-        String[] suffixes = {"", "K", "M", "B", "T"};
-        int index = 0;
-        while (abs >= 1000.0 && index < suffixes.length - 1) {
-            value /= 1000.0;
-            abs /= 1000.0;
-            index++;
-        }
-        if (index == 0) {
-            return String.format(Locale.US, "%,.0f", value);
-        }
-        return String.format(Locale.US, "%,.1f%s", value, suffixes[index]);
-    }
-
-        private static String formatNumber(long value) {
-            return String.format(Locale.US, "%,d", value);
-        }
 
         private static double currentTreasury(City city) {
             if (city == null) {

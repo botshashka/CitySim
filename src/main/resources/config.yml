@@ -11,6 +11,25 @@ updates:
   # Lighting samples for non-high-rise cities focus on parcels with beds; high-rises
   # continue to scan their full claimed volume because interior light drives prosperity.
 
+
+  tolerance:
+    base: 0.06   # GDP tax tolerance base (decimal)
+    bonus: 0.10  # Tolerance gain from trust
+    min: 0.02
+
+  land_tax:
+    enabled: true
+    rate: 0.05    # expressed as decimal (5%); players set via percent inputs
+    tolerance:
+      base: 0.05
+      bonus: 0.08
+      min: 0.01
+
+  austerity:
+    min_on_intervals: 2          # intervals are budget ticks
+    cooldown_intervals: 2
+    confirm_window_intervals: 1
+
 visualization:
   enabled: true
   particle: DUST
@@ -229,11 +248,3 @@ budget:
   admin_per_capita: 1.0
   transit_cost: 14.0
   lighting_cost: 10.0
-  land_tax:
-    enabled: true
-    rate: 0.05 # expressed as decimal (5%); players set this via percent inputs
-
-ui:
-  bossbar:
-    show_level_progress: true
-    show_on_cooldown: true

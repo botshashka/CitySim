@@ -32,6 +32,14 @@ public class BudgetService {
     private double landTaxToleranceMin = BudgetDefaults.LAND_TRUST_TOLERANCE_MIN;
     private long austerityMinOnIntervals = BudgetDefaults.AUSTERITY_MIN_ON_INTERVALS;
     private long austerityCooldownIntervals = BudgetDefaults.AUSTERITY_COOLDOWN_INTERVALS;
+    private long austerityConfirmWindowIntervals = BudgetDefaults.AUSTERITY_CONFIRM_WINDOW_INTERVALS;
+    private double trustCollectionFloor = BudgetDefaults.TRUST_COLLECTION_FLOOR;
+    private double overTaxCollectionFloor = BudgetDefaults.OVER_TAX_COLLECTION_FLOOR;
+    private double overTaxScale = BudgetDefaults.OVER_TAX_SCALE;
+    private double overTaxScaleBonus = BudgetDefaults.OVER_TAX_SCALE_BONUS;
+    private double policyTrustImpactMin = BudgetDefaults.POLICY_TRUST_IMPACT_MIN;
+    private double policyTrustImpactScale = BudgetDefaults.POLICY_TRUST_IMPACT_SCALE;
+    private double trustEmaAlpha = BudgetDefaults.TRUST_EMA_ALPHA;
 
     private static final long PREVIEW_TTL_MS = 5000L;
 
@@ -54,14 +62,22 @@ public class BudgetService {
         adminPerCapita = safeNonNegative(config.getDouble("budget.admin_per_capita", BudgetDefaults.ADMIN_PER_CAPITA), BudgetDefaults.ADMIN_PER_CAPITA);
         transitCost = safeNonNegative(config.getDouble("budget.transit_cost", BudgetDefaults.TRANSIT_COST), BudgetDefaults.TRANSIT_COST);
         lightingCost = safeNonNegative(config.getDouble("budget.lighting_cost", BudgetDefaults.LIGHTING_COST), BudgetDefaults.LIGHTING_COST);
-        taxBaseTolerance = clamp(config.getDouble("budget.tolerance.base", BudgetDefaults.TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_TAX_RATE);
-        taxToleranceBonus = clamp(config.getDouble("budget.tolerance.bonus", BudgetDefaults.TRUST_TOLERANCE_BONUS), 0.0, 1.0);
-        taxToleranceMin = clamp(config.getDouble("budget.tolerance.min", BudgetDefaults.TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_TAX_RATE);
-        landTaxBaseTolerance = clamp(config.getDouble("budget.land_tax.tolerance.base", BudgetDefaults.LAND_TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
-        landTaxToleranceBonus = clamp(config.getDouble("budget.land_tax.tolerance.bonus", BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS), 0.0, 1.0);
-        landTaxToleranceMin = clamp(config.getDouble("budget.land_tax.tolerance.min", BudgetDefaults.LAND_TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
+        taxBaseTolerance = clampWithWarn("budget.tolerance.base", config.getDouble("budget.tolerance.base", BudgetDefaults.TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_TAX_RATE);
+        taxToleranceBonus = clampWithWarn("budget.tolerance.bonus", config.getDouble("budget.tolerance.bonus", BudgetDefaults.TRUST_TOLERANCE_BONUS), 0.0, 1.0);
+        taxToleranceMin = clampWithWarn("budget.tolerance.min", config.getDouble("budget.tolerance.min", BudgetDefaults.TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_TAX_RATE);
+        landTaxBaseTolerance = clampWithWarn("budget.land_tax.tolerance.base", config.getDouble("budget.land_tax.tolerance.base", BudgetDefaults.LAND_TRUST_BASE_TOLERANCE), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
+        landTaxToleranceBonus = clampWithWarn("budget.land_tax.tolerance.bonus", config.getDouble("budget.land_tax.tolerance.bonus", BudgetDefaults.LAND_TRUST_TOLERANCE_BONUS), 0.0, 1.0);
+        landTaxToleranceMin = clampWithWarn("budget.land_tax.tolerance.min", config.getDouble("budget.land_tax.tolerance.min", BudgetDefaults.LAND_TRUST_TOLERANCE_MIN), 0.0, BudgetDefaults.MAX_LAND_TAX_RATE);
         austerityMinOnIntervals = Math.max(0, config.getLong("budget.austerity.min_on_intervals", BudgetDefaults.AUSTERITY_MIN_ON_INTERVALS));
         austerityCooldownIntervals = Math.max(0, config.getLong("budget.austerity.cooldown_intervals", BudgetDefaults.AUSTERITY_COOLDOWN_INTERVALS));
+        austerityConfirmWindowIntervals = Math.max(1, config.getLong("budget.austerity.confirm_window_intervals", BudgetDefaults.AUSTERITY_CONFIRM_WINDOW_INTERVALS));
+        overTaxScale = clampWithWarn("budget.over_tax.scale", config.getDouble("budget.over_tax.scale", BudgetDefaults.OVER_TAX_SCALE), 0.0, Double.MAX_VALUE);
+        overTaxScaleBonus = clampWithWarn("budget.over_tax.scale_bonus", config.getDouble("budget.over_tax.scale_bonus", BudgetDefaults.OVER_TAX_SCALE_BONUS), 0.0, Double.MAX_VALUE);
+        trustCollectionFloor = clampWithWarn("budget.trust.collection_floor", config.getDouble("budget.trust.collection_floor", BudgetDefaults.TRUST_COLLECTION_FLOOR), 0.0, 1.0);
+        overTaxCollectionFloor = clampWithWarn("budget.trust.over_tax_collection_floor", config.getDouble("budget.trust.over_tax_collection_floor", BudgetDefaults.OVER_TAX_COLLECTION_FLOOR), 0.0, 1.0);
+        policyTrustImpactMin = clampWithWarn("budget.trust.policy_impact_min", config.getDouble("budget.trust.policy_impact_min", BudgetDefaults.POLICY_TRUST_IMPACT_MIN), 0.0, 100.0);
+        policyTrustImpactScale = clampWithWarn("budget.trust.policy_impact_scale", config.getDouble("budget.trust.policy_impact_scale", BudgetDefaults.POLICY_TRUST_IMPACT_SCALE), 0.0, 500.0);
+        trustEmaAlpha = clampWithWarn("budget.trust.ema_alpha", config.getDouble("budget.trust.ema_alpha", BudgetDefaults.TRUST_EMA_ALPHA), 0.0, 1.0);
     }
 
     public void start() {
@@ -223,6 +239,10 @@ public class BudgetService {
 
     public long getAusterityCooldownTicks() {
         return Math.max(0L, austerityCooldownIntervals * getBudgetIntervalTicks());
+    }
+
+    public long getAusterityConfirmWindowTicks() {
+        return Math.max(1L, austerityConfirmWindowIntervals * getBudgetIntervalTicks());
     }
 
     private BudgetSnapshot computeSnapshot(City city, boolean preview, TrustAdjustmentMode trustMode) {
@@ -393,6 +413,14 @@ public class BudgetService {
         return Math.max(0.0, Math.min(maxRate, value));
     }
 
+    private double clampWithWarn(String key, double value, double min, double max) {
+        double clamped = clamp(value, min, max);
+        if (clamped != value && plugin != null) {
+            plugin.getLogger().warning(key + " out of range; clamped to " + clamped + " (was " + value + ")");
+        }
+        return clamped;
+    }
+
     private double effectiveAdminMultiplier(City city, double actual) {
         double capped = city.austerityEnabled ? Math.min(actual, BudgetDefaults.AUSTERITY_CAP) : actual;
         return clampMultiplier(capped);
@@ -413,7 +441,7 @@ public class BudgetService {
         double floor = BudgetDefaults.TRUST_COLLECTION_FLOOR;
         double overShare = TaxOverage.maxOverageFraction(gdpTaxRate, landTaxRate, toleratedTax, toleratedLandTax);
         if (overShare > 0.0) {
-            floor = BudgetDefaults.TRUST_COLLECTION_FLOOR + (BudgetDefaults.OVER_TAX_COLLECTION_FLOOR - BudgetDefaults.TRUST_COLLECTION_FLOOR) * overShare;
+            floor = trustCollectionFloor + (overTaxCollectionFloor - trustCollectionFloor) * overShare;
         }
         return floor + (1.0 - floor) * trustRatio;
     }
@@ -450,8 +478,8 @@ public class BudgetService {
                 snapshot.toleratedTax,
                 snapshot.toleratedLandTax);
         if (overRate > 0.0) {
-            double penalty = overRate * BudgetDefaults.OVER_TAX_SCALE;
-            penalty += overRate * overRate * BudgetDefaults.OVER_TAX_SCALE_BONUS;
+            double penalty = overRate * overTaxScale;
+            penalty += overRate * overRate * overTaxScaleBonus;
             if (penalty < 1) {
                 penalty = 1;
             }
@@ -480,8 +508,8 @@ public class BudgetService {
         double overFraction = TaxOverage.maxOverageFraction(newTaxRate, newLandRate, tolerance, toleranceLand);
         double impact = 0.0;
         if (overFraction > 0.0) {
-            impact = overFraction * BudgetDefaults.POLICY_TRUST_IMPACT_SCALE;
-            impact = Math.max(BudgetDefaults.POLICY_TRUST_IMPACT_MIN, impact);
+            impact = overFraction * policyTrustImpactScale;
+            impact = Math.max(policyTrustImpactMin, impact);
         } else if (city.austerityEnabled) {
             boolean healthy = city.treasury > 0.0
                     && (snapshot.expenses.administration == null || snapshot.expenses.administration.state == BudgetSubsystemState.FUNDED)
@@ -523,7 +551,7 @@ public class BudgetService {
 
     private int smoothTrust(int current, double delta) {
         double target = clamp(current + delta, 0.0, 100.0);
-        double alpha = clamp(BudgetDefaults.TRUST_EMA_ALPHA, 0.0, 1.0);
+        double alpha = clamp(trustEmaAlpha, 0.0, 1.0);
         double blended = current + alpha * (target - current);
         int smoothed = clampTrust((int) Math.round(blended));
         if (smoothed == current && Math.abs(target - current) >= 1.0 && delta != 0.0) {
